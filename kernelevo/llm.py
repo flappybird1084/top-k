@@ -157,6 +157,10 @@ class StubLLM(BaseLLM):
                 jobs.append({"lineage": lineages[i % len(lineages)],
                              "strategy": f"stub:{kind}", "parent": None})
             return Response(json.dumps({"jobs": jobs}))
+        if self.role == "subagent" and meta.get("recipe_phase"):
+            # recipe mode: return the baseline source (a valid recipe clone)
+            src = meta.get("fallback_source") or "def build_model(): pass"
+            return Response(f"```python\n{src}\n```")
         if self.role == "subagent":
             from kernelevo import fixtures
             job = meta["job"]

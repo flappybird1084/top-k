@@ -37,7 +37,10 @@ _queue: "queue.Queue[str]" = queue.Queue()
 
 STAGES = [("[adapter]", "writing adapter"), ("[ingest]", "ingesting"),
           ("[profile]", "profiling"), ("[calibrate]", "calibrating"),
-          ("=== generation", "optimizing"), ("[loop] stopped", "finishing")]
+          ("[baseline]", "measuring baseline"),
+          ("=== generation", "optimizing"),
+          ("=== recipe", "optimizing (recipe)"),
+          ("=== finals", "finals"), ("[loop] stopped", "finishing")]
 
 
 def _job_path(jid):
@@ -141,6 +144,10 @@ def _run_job(jid):
                 cmd += ["--llm", job["llm"]]
             if job.get("spend_cap"):
                 cmd += ["--spend-cap", str(job["spend_cap"])]
+            if job.get("mode") == "recipe":
+                cmd += ["--mode", "recipe"]
+                if job.get("recipe"):
+                    cmd += ["--recipe-json", json.dumps(job["recipe"])]
             job.update(status="running", stage="starting", run_dir=run_dir)
             save_job(job)
             write_line(f"$ {' '.join(cmd)}")
@@ -218,6 +225,11 @@ FORM = """
  <input type=number name=max_debug_turns value=5 min=1 max=20>
 </fieldset>
 <fieldset><legend>run</legend>
+ <label>mode</label>
+ <select name=mode>
+  <option value=kernel>kernel evolution — Triton kernels vs torch.compile</option>
+  <option value=recipe>recipe golf — architecture + hyperparams vs held-out val loss</option>
+ </select>
  <label>profile</label>
  <select name=profile><option>DEV</option><option>RUN</option></select>
  <label>llm override (blank = from profile)</label>
@@ -227,6 +239,32 @@ FORM = """
  <select name=execution_target>
   <option value=molab>molab remote — runs on the notebook's GPU</option>
   <option value=local>local — this machine's GPU</option></select>
+</fieldset>
+<fieldset><legend>recipe golf knobs (used only in recipe mode)</legend>
+ <label>architecture generations · candidates · train seconds each</label>
+ <div style="display:flex;gap:.5rem">
+  <input type=number name=arch_gens value=2 min=0>
+  <input type=number name=arch_cands value=8 min=1>
+  <input type=number name=arch_secs value=60 min=10></div>
+ <label>hyperparam generations · candidates · train seconds each</label>
+ <div style="display:flex;gap:.5rem">
+  <input type=number name=hp_gens value=1 min=0>
+  <input type=number name=hp_cands value=8 min=1>
+  <input type=number name=hp_secs value=120 min=10></div>
+ <label>mixed generations · train seconds (0 = skipped)</label>
+ <div style="display:flex;gap:.5rem">
+  <input type=number name=mixed_gens value=0 min=0>
+  <input type=number name=mixed_secs value=180 min=10></div>
+ <label>finals: top-K · train seconds each</label>
+ <div style="display:flex;gap:.5rem">
+  <input type=number name=finals_k value=2 min=1>
+  <input type=number name=finals_secs value=300 min=30></div>
+ <label>param budget ratio · loss margin (rel) · eval batches · parallel agents</label>
+ <div style="display:flex;gap:.5rem">
+  <input type=number name=param_ratio value=1.10 step=0.01>
+  <input type=number name=loss_margin value=0.003 step=0.001>
+  <input type=number name=eval_batches value=8 min=1>
+  <input type=number name=parallelism value=8 min=1></div>
 </fieldset>
 <fieldset><legend>molab connection (per-notebook)</legend>
  <label>paste the whole "Pair with agent" prompt from molab here — it contains the
@@ -252,7 +290,17 @@ FORM = """
  <td class=muted>{{ j.get('stage','') }}</td></tr>{% endfor %}</table>
 {% else %}<p class=muted>no jobs yet</p>{% endif %}"""
 
-HEADLINE_T = """{% if evo and evo['baseline_ms'] %}
+HEADLINE_T = """{% if evo and evo['recipe'] and evo['base_val'] %}
+<div class=head>
+ <div>baseline val loss<br><b>{{ '%.4f'|format(evo['base_val']) }}</b></div>
+ <div>best evolved val loss<br><b>{{ '%.4f'|format(evo['best_val'])
+      if evo['best_val'] else '—' }}</b></div>
+ <div>improvement<br><b class="{{ 'good' if evo['val_pct'] and evo['val_pct'] > 0 }}">
+  {{ '−%.2f%%'|format(evo['val_pct']) if evo['val_pct'] and evo['val_pct'] > 0
+     else 'none yet' }}</b></div>
+ <div>accepted recipes<br><b>{{ evo['n_accepted'] }}</b></div>
+</div>
+{% elif evo and evo['baseline_ms'] %}
 <div class=head>
  {% if evo['eager_ms'] %}<div>eager step (no compile)<br>
   <b>{{ '%.2f'|format(evo['eager_ms']) }}ms</b></div>{% endif %}
@@ -411,6 +459,26 @@ def create_job():
         comments=f.get("comments", "").strip(),
         max_debug_turns=int(f.get("max_debug_turns") or 5),
         profile=f.get("profile", "DEV"),
+        mode=f.get("mode", "kernel"),
+        recipe=dict(
+            phases=[
+                dict(kind="architecture", generations=int(f.get("arch_gens") or 2),
+                     candidates=int(f.get("arch_cands") or 8),
+                     train_seconds=int(f.get("arch_secs") or 60)),
+                dict(kind="mixed", generations=int(f.get("mixed_gens") or 0),
+                     candidates=int(f.get("arch_cands") or 8),
+                     train_seconds=int(f.get("mixed_secs") or 180)),
+                dict(kind="hyperparam", generations=int(f.get("hp_gens") or 1),
+                     candidates=int(f.get("hp_cands") or 8),
+                     train_seconds=int(f.get("hp_secs") or 120)),
+            ],
+            finals_top_k=int(f.get("finals_k") or 2),
+            finals_train_seconds=int(f.get("finals_secs") or 300),
+            param_budget_ratio=float(f.get("param_ratio") or 1.10),
+            loss_margin_rel=float(f.get("loss_margin") or 0.003),
+            eval_batches=int(f.get("eval_batches") or 8),
+            subagent_parallelism=int(f.get("parallelism") or 8),
+        ) if f.get("mode") == "recipe" else None,
         llm=f.get("llm", "").strip() or None,
         execution_target=f.get("execution_target", "local"),
         molab=dict(notebook_url=f.get("molab_url", "").strip(),
@@ -446,6 +514,9 @@ def _job_evolution(jid):
         db.close()
     except sqlite3.Error:
         return None
+    recipe_mode = any(r.get("val_loss") is not None for r in rows)
+    baselines = {r.get("train_secs"): r.get("val_loss") for r in rows
+                 if r["generation"] == 0 and r.get("val_loss") is not None}
     baseline = next((r["incumbent_step_time_ms"] for r in rows
                      if r["incumbent_step_time_ms"]), None)
     accepted = [r for r in rows if r["accepted"] and r["step_time_ms"]]
@@ -468,6 +539,21 @@ def _job_evolution(jid):
         c["code"] = None
         if code_local and os.path.exists(code_local):
             c["code"] = open(code_local, errors="replace").read()[:15000]
+        if recipe_mode:
+            v, secs = r.get("val_loss"), r.get("train_secs")
+            base = baselines.get(secs)
+            if v is not None and base:
+                d = 100.0 * (base - v) / base
+                c["pill"] = "p-acc" if r["accepted"] else "p-slow"
+                c["headline"] = (f"val loss {v:.4f} ({d:+.2f}% vs baseline "
+                                 f"@{int(secs)}s){' ACCEPTED' if r['accepted'] else ''}")
+            elif (r.get("failure_note") or "").startswith("[infra]"):
+                c["pill"], c["headline"] = "p-infra", "infrastructure failure"
+            else:
+                c["pill"] = "p-rej"
+                c["headline"] = (r.get("failure_note") or "failed to load")[:90]
+            gens.setdefault(r["generation"], []).append(c)
+            continue
         st, inc = r["step_time_ms"], r["incumbent_step_time_ms"]
         lat, ilat = r["latency_us"], r["incumbent_latency_us"]
         if r["accepted"]:
@@ -491,11 +577,18 @@ def _job_evolution(jid):
         else:
             c["pill"], c["headline"] = "p-slow", "correct — benchmarks did not run"
         gens.setdefault(r["generation"], []).append(c)
+    best_val = min((r["val_loss"] for r in rows
+                    if r.get("val_loss") is not None and r["generation"] > 0),
+                   default=None) if recipe_mode else None
+    base_val = max(baselines.items())[1] if baselines else None  # longest budget
     return dict(
+        recipe=recipe_mode, base_val=base_val, best_val=best_val,
+        val_pct=_pct(best_val, base_val) if recipe_mode else None,
         baseline_ms=baseline, best_ms=best, eager_ms=eager_ms,
         improvement_pct=_pct(best, baseline),
         vs_eager_pct=_pct(best, eager_ms),
-        n_accepted=len(accepted),
+        n_accepted=len(accepted) if not recipe_mode else
+            sum(1 for r in rows if r["accepted"] and r["generation"] > 0),
         generations=[{"n": g, "cands": cs,
                       "n_acc": sum(1 for c in cs if c["accepted"])}
                      for g, cs in sorted(gens.items())])

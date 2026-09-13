@@ -128,6 +128,32 @@ RUN = {
     ),
 }
 
+# Recipe-golf mode (staged evolution over training recipes, not kernels).
+# Signal: held-out validation loss after a wall-clock-budgeted train. Phases:
+# architecture(+optimizer) generations first, then hyperparam-only generations
+# (architecture locked to the parent by parameter fingerprint), then finals.
+# DEV totals ≈ 42 min GPU: 2×8×60s arch + 1×8×120s hyperparam + 2×300s finals.
+RECIPE = dict(
+    phases=[
+        dict(kind="architecture", generations=2, candidates=8, train_seconds=60),
+        dict(kind="mixed", generations=0, candidates=8, train_seconds=180),  # skipped for now
+        dict(kind="hyperparam", generations=1, candidates=8, train_seconds=120),
+    ],
+    finals_top_k=2,
+    finals_train_seconds=300,
+    eval_batches=8,             # held-out val batches averaged for the signal
+    loss_margin_rel=0.003,      # beat baseline val loss by >0.3% to count as accepted
+    param_budget_ratio=1.10,    # candidate params <= baseline * ratio
+    subagent_parallelism=8,
+    recipe_max_repairs=1,       # repairs for load/sanity failures (inside eval slot)
+    eval_timeout_grace_s=150,   # worker timeout = train_seconds + grace
+)
+
+import copy as _copy
+
+for _profile in (DEV, RUN):     # RUN uses the same recipe schedule for now
+    _profile["recipe"] = _copy.deepcopy(RECIPE)
+
 PROFILES = {"DEV": DEV, "RUN": RUN}
 
 

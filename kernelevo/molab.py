@@ -312,6 +312,10 @@ class MolabTarget:
             args += ["--llm", job["llm"]]
         if job.get("spend_cap"):
             args += ["--spend-cap", str(job["spend_cap"])]
+        if job.get("mode") == "recipe":
+            args += ["--mode", "recipe"]
+            if job.get("recipe"):
+                args += ["--recipe-json", json.dumps(job["recipe"])]
 
         env_updates = dict(env_updates,
                            KEVO_RELAY_DIR=work + "/run/search_relay")

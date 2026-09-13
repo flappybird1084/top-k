@@ -28,7 +28,10 @@ CREATE TABLE IF NOT EXISTS candidates (
   compile_ok INTEGER, correct_ok INTEGER, repairs_used INTEGER,
   latency_us REAL, incumbent_latency_us REAL,
   step_time_ms REAL, incumbent_step_time_ms REAL, samples_per_s REAL, mfu REAL,
-  accepted INTEGER, failure_note TEXT, flags TEXT, created_at REAL);
+  accepted INTEGER, failure_note TEXT, flags TEXT, created_at REAL,
+  -- recipe-golf columns (null for kernel candidates)
+  val_loss REAL, phase TEXT, train_secs REAL, model_params INTEGER,
+  arch_fp TEXT);
 CREATE TABLE IF NOT EXISTS generations (
   id INTEGER PRIMARY KEY, model_id INTEGER, started_at REAL, finished_at REAL,
   n_candidates INTEGER, n_accepted INTEGER, llm_usd REAL, stop_reason TEXT);
