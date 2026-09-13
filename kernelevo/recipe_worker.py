@@ -57,13 +57,42 @@ def _holdout_loss(adapter, model, n_batches):
     return sum(losses) / len(losses)
 
 
+def _wandb_run(job):
+    """Per-candidate W&B run (own charts), named <run-id>-g<gen>-s<idx>.
+    Entirely optional/fire-and-forget."""
+    import os
+    wcfg = job.get("wandb")
+    if not wcfg or not os.environ.get("WANDB_API_KEY") or job.get("check_only"):
+        return None
+    try:
+        import wandb
+        return wandb.init(
+            project=os.environ.get("WANDB_PROJECT") or "kernel-evolution",
+            entity=os.environ.get("WANDB_ENTITY") or None,
+            name=wcfg.get("name"), group=wcfg.get("group"),
+            tags=wcfg.get("tags"), config=wcfg.get("config"),
+            settings=wandb.Settings(silent=True))
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def main():
     job = json.load(open(sys.argv[1]))
     device, seed = job["device"], job["seed"]
     res = dict(ok=False, gate="load", val_loss=None, n_params=None,
                steps=None, arch_fp=None, note=None)
+    wb = _wandb_run(job)
 
     def out():
+        if wb is not None:
+            try:
+                if res.get("val_loss") is not None:
+                    wb.log({"val/loss": res["val_loss"]})
+                    wb.summary["val_loss"] = res["val_loss"]
+                wb.summary["gate"] = res["gate"]
+                wb.finish()
+            except Exception:  # noqa: BLE001
+                pass
         print("KEVO_RESULT " + json.dumps(res))
 
     adapter, _ = load_adapter(job["base_adapter"])
@@ -129,6 +158,12 @@ def main():
             opt.step()
             if hasattr(model, "post_optimizer_step"):
                 model.post_optimizer_step()  # e.g. EMA target updates (JEPA)
+            if wb is not None and step % 5 == 0:
+                try:
+                    wb.log({"train/loss": float(loss),
+                            "train/lr": opt.param_groups[0]["lr"]}, step=step)
+                except Exception:  # noqa: BLE001
+                    pass
             step += 1
             if job.get("check_only") and step >= 2:
                 break

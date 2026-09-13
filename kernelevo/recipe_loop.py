@@ -91,6 +91,15 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
         lineage_ids[kind] = archive.add_lineage(model_id, kind, [], 0.0)
 
     pool = pool or LLMPool(cfg)
+    run_prefix = (cfg.get("wandb_group") or os.path.basename(out_dir) or "run")
+    run_prefix = run_prefix.removeprefix("kevo_")
+
+    def wmeta(suffix, phase_kind, strategy=None, train_seconds=None):
+        return dict(name=f"{run_prefix}-{suffix}", group=cfg.get("wandb_group"),
+                    tags=["recipe", phase_kind],
+                    config=dict(strategy=(strategy or "")[:250],
+                                phase=phase_kind, train_seconds=train_seconds))
+
     active_phases = [p for p in rc["phases"] if p["generations"] > 0]
     budgets = sorted({p["train_seconds"] for p in active_phases}
                      | {rc["finals_train_seconds"]})
@@ -100,7 +109,9 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
     for secs in budgets:
         job = dict(base_adapter=adapter_name, candidate_path="BASELINE",
                    train_seconds=secs, eval_batches=rc["eval_batches"],
-                   seed=cfg["seed"], device=cfg["device"], param_cap=None)
+                   seed=cfg["seed"], device=cfg["device"], param_cap=None,
+                   wandb=wmeta(f"baseline-{secs}s", "baseline",
+                               "baseline", secs))
         r = _run_worker(job, os.path.join(cand_dir, f"baseline_{secs}s"),
                         secs + rc["eval_timeout_grace_s"])
         if not r.get("ok"):
@@ -159,6 +170,7 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                 return bool(r.get("ok")), (r.get("note") or r.get("gate") or "")
 
             llm = pool.subagent_for(i)
+            job["_idx"] = i
             fut = ex.submit(
                 recipes.author_recipe, llm, phase, job, base_source,
                 parent_src, loss_source, param_cap, lessons,
@@ -198,7 +210,10 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                     train_seconds=phase["train_seconds"],
                     eval_batches=rc["eval_batches"], seed=cfg["seed"],
                     device=cfg["device"], param_cap=param_cap,
-                    expected_arch_fp=expected_fp), a["code_path"],
+                    expected_arch_fp=expected_fp,
+                    wandb=wmeta(f"g{gen_index}-s{job.get('_idx', 0)}",
+                                phase["kind"], a["strategy"],
+                                phase["train_seconds"])), a["code_path"],
                     phase["train_seconds"] + rc["eval_timeout_grace_s"])
                 if r.get("ok"):
                     accepted = r["val_loss"] < baseline[phase["train_seconds"]] * \
@@ -298,11 +313,12 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
     fsecs = rc["finals_train_seconds"]
     print(f"\n=== finals: {len(finalists)} candidate(s) at {fsecs}s each ===")
     winner = None
-    for fr in finalists:
+    for fi, fr in enumerate(finalists):
         r = _run_worker(dict(
             base_adapter=adapter_name, candidate_path=fr["code_path"],
             train_seconds=fsecs, eval_batches=rc["eval_batches"],
-            seed=cfg["seed"], device=cfg["device"], param_cap=param_cap),
+            seed=cfg["seed"], device=cfg["device"], param_cap=param_cap,
+            wandb=wmeta(f"final-s{fi}", "finals", fr["strategy"], fsecs)),
             fr["code_path"], fsecs + rc["eval_timeout_grace_s"])
         if not r.get("ok"):
             print(f"[finals] candidate {fr['id']} failed: {r.get('note')}")
