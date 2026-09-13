@@ -119,7 +119,8 @@ def _run_job(jid):
             save_job(job)
             try:
                 rc = MolabTarget(job.get("molab")).dispatch(
-                    job, ROOT, _job_env(job), write_line)
+                    job, ROOT, _job_env(job), write_line,
+                    artifacts_dir=os.path.join(JOBS_DIR, jid, "run"))
             except Exception as e:  # noqa: BLE001 — connection/protocol errors
                 write_line(f"[molab] dispatch error: {type(e).__name__}: {e}")
                 rc = 1
@@ -246,6 +247,13 @@ JOB = """
  <tr><td>comments</td><td>{{ job.get('comments') or '—' }}</td></tr>
  <tr><td>run dir</td><td>{{ job.get('run_dir') or '—' }}</td></tr>
 </table>
+<h2>generated code &amp; artifacts</h2>
+{% if files %}<table><tr><th>file</th><th>size</th></tr>
+{% for f in files %}<tr>
+ <td><a href="{{ url_for('job_file', jid=job['id'], path=f[0]) }}">{{ f[0] }}</a></td>
+ <td class=muted>{{ f[1] }}</td></tr>{% endfor %}</table>
+{% else %}<p class=muted>nothing synced yet — files appear when the run finishes
+ (molab) or as they are produced (local)</p>{% endif %}
 <h2>log</h2>
 <pre>{{ log }}</pre>"""
 
@@ -303,6 +311,18 @@ def create_job():
     return redirect(url_for("job_page", jid=job["id"]))
 
 
+def _job_files(jid):
+    base = os.path.join(JOBS_DIR, jid, "run")
+    out = []
+    for root, dirs, fs in os.walk(base):
+        dirs[:] = [d for d in dirs
+                   if d not in ("inductor-cache", "wandb", "repo", "__pycache__")]
+        for f in fs:
+            p = os.path.join(root, f)
+            out.append((os.path.relpath(p, base), f"{os.path.getsize(p):,}B"))
+    return sorted(out)
+
+
 @app.get("/jobs/<jid>")
 def job_page(jid):
     job = load_job(jid)
@@ -312,8 +332,21 @@ def job_page(jid):
         log = "\n".join(lines[-200:])
     except OSError:
         log = "(no log yet)"
-    body = render_template_string(JOB, job=masked(job), log=log)
+    body = render_template_string(JOB, job=masked(job), log=log,
+                                  files=_job_files(jid))
     return render_template_string(PAGE, body=body, warn=_env_warnings())
+
+
+@app.get("/jobs/<jid>/file")
+def job_file(jid):
+    from flask import Response, abort, send_file
+    base = os.path.realpath(os.path.join(JOBS_DIR, jid, "run"))
+    full = os.path.realpath(os.path.join(base, request.args.get("path", "")))
+    if not full.startswith(base + os.sep) or not os.path.isfile(full):
+        abort(404)
+    if full.endswith((".py", ".json", ".txt")):
+        return Response(open(full, errors="replace").read(), mimetype="text/plain")
+    return send_file(full, as_attachment=True)
 
 
 @app.get("/api/jobs/<jid>")

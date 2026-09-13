@@ -139,13 +139,58 @@ def _project_tarball(root: str) -> bytes:
     return buf.getvalue()
 
 
+ARTIFACT_EXTS = (".py", ".json", ".sqlite", ".txt")
+ARTIFACT_SKIP_DIRS = ("repo", "inductor-cache", "wandb", "__pycache__", "compile_cache")
+
+
+def fetch_artifacts(client: MolabClient, work: str, dest_dir: str, write_line) -> int:
+    """Copy the remote run's small artifacts (kernels, adapter, seeds, targets,
+    archive) back next to the job so the web UI can show them."""
+    ok, out, _ = client.run(
+        "import os, json\n"
+        f"_r = os.path.join({work!r}, 'run')\n"
+        "_files = []\n"
+        "for _root, _dirs, _fs in os.walk(_r):\n"
+        f"    _dirs[:] = [d for d in _dirs if d not in {ARTIFACT_SKIP_DIRS!r}]\n"
+        "    for _f in _fs:\n"
+        f"        if _f.endswith({ARTIFACT_EXTS!r}) and not _f.endswith('.ingest.json'):\n"
+        "            _p = os.path.join(_root, _f)\n"
+        "            if os.path.getsize(_p) <= 2_000_000:\n"
+        "                _files.append([os.path.relpath(_p, _r), os.path.getsize(_p)])\n"
+        "print(json.dumps(_files))\n")
+    if not ok:
+        return 0
+    files = json.loads(out.strip().splitlines()[-1])
+    for rel, size in files:
+        local = os.path.join(dest_dir, rel)
+        os.makedirs(os.path.dirname(local), exist_ok=True)
+        remote = work + "/run/" + rel
+        with open(local, "wb") as f:
+            off = 0
+            while off < size:
+                ok, out, _ = client.run(
+                    "import base64\n"
+                    f"_f = open({remote!r}, 'rb')\n"
+                    f"_f.seek({off})\n"
+                    "print(base64.b64encode(_f.read(200000)).decode())\n")
+                if not ok:
+                    break
+                chunk = base64.b64decode(out.strip().splitlines()[-1])
+                if not chunk:
+                    break
+                f.write(chunk)
+                off += len(chunk)
+    write_line(f"[molab] synced {len(files)} artifact file(s) into the job directory")
+    return len(files)
+
+
 class MolabTarget:
     def __init__(self, details: dict):
         self.details = details or {}
 
     def dispatch(self, job: dict, project_root: str, env_updates: dict,
                  write_line, require_gpu: bool = True,
-                 poll_interval: float = 5.0) -> int:
+                 poll_interval: float = 5.0, artifacts_dir: str | None = None) -> int:
         """Run the job on the remote notebook; streams its log through
         write_line(line). Returns the remote search.py exit code."""
         url, token = parse_connection(self.details)
@@ -285,6 +330,11 @@ class MolabTarget:
             for line in chunk.splitlines():
                 write_line(line)
             if status["exit"] is not None:
-                write_line(f"[molab] remote run finished with exit {status['exit']}; "
-                           f"archive at {work}/run/archive.sqlite on the notebook")
+                write_line(f"[molab] remote run finished with exit {status['exit']}")
+                if artifacts_dir:
+                    try:
+                        fetch_artifacts(client, work, artifacts_dir, write_line)
+                    except Exception as e:  # noqa: BLE001 — sync is best-effort
+                        write_line(f"[molab] artifact sync failed: {e}; files remain "
+                                   f"at {work}/run on the notebook")
                 return int(status["exit"])
