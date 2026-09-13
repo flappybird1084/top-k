@@ -41,6 +41,9 @@ def load_prepared(args,cfg,archive):
             if prepared['config'][key]!=cfg[key]: raise ValueError('Prepared configuration differs: '+key)
         if prepared['config'].get('functional_discovery',False)!=cfg.get('functional_discovery',False):
             raise ValueError('Prepared configuration differs: functional_discovery')
+        if cfg.get('source_identity'):
+            from kernel_evolution.provenance import assert_compatible
+            assert_compatible(prepared['config'].get('source_identity'),cfg['source_identity'])
         return prepared
     emit(archive,'prepare_started',adapter=args.adapter,lineage=args.lineage)
     request=dict(action='prepare',adapter=args.adapter,config=cfg,run_dir=str(root),lineage=args.lineage)
@@ -356,6 +359,8 @@ def main():
     if args.candidates:cfg['candidates_per_gen']=args.candidates
     root=Path(args.run_dir).resolve();root.mkdir(parents=True,exist_ok=True);args.run_dir=str(root)
     cfg['run_name']=root.name
+    from kernel_evolution.provenance import identity
+    cfg['source_identity']=identity(Path(__file__).parent)
     os.environ['TORCHINDUCTOR_CACHE_DIR']=str(root/'inductor_cache')
     archive=Archive(root/'archive.sqlite')
     if not archive.rows('SELECT id FROM run_config'):

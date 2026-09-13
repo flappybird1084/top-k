@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(root))
+from kernel_evolution.provenance import identity
 files = {}
 for folder in ['kernel_evolution', 'adapters', 'tests']:
     for p in (root/folder).rglob('*.py'):
@@ -14,6 +16,7 @@ for name in ['config.py', 'search.py', 'pyproject.toml', 'README.md', 'IMPLEMENT
     p = root/name
     if p.exists():
         files[name] = base64.b64encode(p.read_bytes()).decode()
+files['source_manifest.json']=base64.b64encode(json.dumps(identity(root)).encode()).decode()
 code = '''import base64, json
 from pathlib import Path
 root = Path('/marimo/top-k')
