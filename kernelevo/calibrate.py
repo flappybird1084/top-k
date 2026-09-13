@@ -13,11 +13,19 @@ shapes), before generation 1.
 
 from __future__ import annotations
 
+import gc
 import os
 import statistics
 import time
 
 import torch
+
+
+def _release_gpu():
+    """Big models leave tens of GB reserved between phases; worker subprocesses
+    share the GPU and starve unless the orchestrator returns memory eagerly."""
+    gc.collect()
+    torch.cuda.empty_cache()
 
 import config as cfgmod
 from kernelevo import bench, fixtures, ops
@@ -61,6 +69,8 @@ def calibrate(cfg: dict, runner, targets: dict, out_dir: str) -> dict:
                                       cfg["gate3_warmup"], cfg["gate3_iters"]))
         if i < reps - 1:
             time.sleep(span / max(1, reps - 1))
+    del compiled
+    _release_gpu()
     lat_spread = _spread(lat_reps)
     gate3_margin = max(cfg["gate3_margin"], lat_spread)
     cfg["gate3_margin"] = gate3_margin
@@ -76,17 +86,24 @@ def calibrate(cfg: dict, runner, targets: dict, out_dir: str) -> dict:
         o = ops.REGISTRY[lin["op"]]
         comp = torch.compile(o.eager, dynamic=False)
         for argspec in lin["shapes"]:
-            a1 = ops.make_inputs(o.name, argspec, device, cfg["seed"])
-            a2 = ops.make_inputs(o.name, argspec, device, cfg["seed"])
-            out_e, out_c = o.eager(*a1), comp(*a2)
-            diff = (out_c.detach().float() - out_e.detach().float()).abs()
-            max_abs = float(diff.max())
-            max_rel = float((diff / (out_e.detach().float().abs() + 1e-12)).max())
+            with torch.no_grad():  # floors need outputs only; grads would hold
+                a1 = ops.make_inputs(o.name, argspec, device, cfg["seed"])
+                a2 = ops.make_inputs(o.name, argspec, device, cfg["seed"])
+                out_e, out_c = o.eager(*a1), comp(*a2)
+                diff = (out_c.float() - out_e.float()).abs()
+                max_abs = float(diff.max())
+                max_rel = float((diff / (out_e.float().abs() + 1e-12)).max())
             key = _dtype_key(out_e.dtype)
             floors[f"{lin['op']}/{key}"] = dict(max_abs=max_abs, max_rel=max_rel)
             tol[key][0] = max(tol[key][0], 2 * max_rel) if max_rel < 1 else tol[key][0]
             tol[key][1] = max(tol[key][1], 2 * max_abs)
+            del a1, a2, out_e, out_c, diff
+        del comp
     cfg["tol"] = tol
+    _release_gpu()
+    print(f"[calibrate] orchestrator GPU memory before self-test: "
+          f"{torch.cuda.memory_allocated() / 2**30:.2f}GB allocated, "
+          f"{torch.cuda.memory_reserved() / 2**30:.2f}GB reserved")
 
     # 4. Verifier self-test — both planted cheats must die at gate 2.
     cheat_dir = os.path.join(out_dir, "candidates")

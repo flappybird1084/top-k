@@ -150,6 +150,8 @@ def run_profile(adapter, cfg, info: dict, out_dir: str) -> dict:
     with open(os.path.join(out_dir, "targets.json"), "w") as f:
         json.dump(targets, f, indent=2)
 
-    del model, opt
+    import gc
+    del model, opt, prof, step
+    gc.collect()
     torch.cuda.empty_cache()
     return targets
