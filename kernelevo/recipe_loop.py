@@ -9,10 +9,11 @@ from __future__ import annotations
 import inspect
 import json
 import os
+import re
 import subprocess
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from kernelevo import ingest, recipes
 from kernelevo.archive import Archive
@@ -125,49 +126,59 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
         gen_index += 1
         gen_id = archive.start_generation(model_id)
         outs = []
-        with ThreadPoolExecutor(max_workers=rc["subagent_parallelism"]) as ex:
-            futs = []
-            for i, job in enumerate(jobs):
-                parent = parents_by_id.get(job.get("parent"))
-                parent_src = None
-                if parent and parent.get("code_path") and \
-                        os.path.exists(parent["code_path"]):
-                    parent_src = open(parent["code_path"]).read()
-
-                def save_fn(src, attempt, _i=i):
-                    p = os.path.join(cand_dir,
-                                     f"g{gen_index}_{phase['kind']}_{_i}_a{attempt}.py")
-                    with open(p, "w") as f:
-                        f.write(src)
-                    return p
-
-                def check_fn(path, _secs=phase["train_seconds"]):
-                    r = _run_worker(dict(
-                        base_adapter=adapter_name, candidate_path=path,
-                        train_seconds=0, eval_batches=1, seed=cfg["seed"],
-                        device=cfg["device"], param_cap=param_cap,
-                        check_only=True), path, 240)
-                    return bool(r.get("ok")), (r.get("note") or r.get("gate") or "")
-
-                llm = pool.subagent_for(i)
-                futs.append(ex.submit(
-                    recipes.author_recipe, llm, phase, job, base_source,
-                    parent_src, loss_source, param_cap, lessons,
-                    rc["recipe_max_repairs"], save_fn, check_fn,
-                    recipes.baseline_recipe_source(adapter_name)))
-            authored = []
-            for job, fut in zip(jobs, futs):
-                try:
-                    authored.append((job, fut.result()))
-                except Exception as e:  # noqa: BLE001
-                    authored.append((job, dict(
-                        strategy=job["strategy"], parent=job.get("parent"),
-                        code_path=None, repairs_used=0, load_ok=False,
-                        model_name=None,
-                        failure_note=f"[infra] author crashed: {e}")))
-
         n_acc = 0
-        for job, a in authored:
+        # authoring runs 8-wide; each candidate's (serial, GPU-exclusive)
+        # evaluation starts the moment ITS authoring completes — later
+        # candidates keep generating while earlier ones train
+        ex = ThreadPoolExecutor(max_workers=rc["subagent_parallelism"])
+        fut_to_job = {}
+        for i, job in enumerate(jobs):
+            parent = parents_by_id.get(job.get("parent"))
+            parent_src = None
+            if parent and parent.get("code_path") and \
+                    os.path.exists(parent["code_path"]):
+                parent_src = open(parent["code_path"]).read()
+
+            def save_fn(src, attempt, _i=i):
+                src = "".join(m + "\n" for m in re.findall(
+                    r"^from __future__ import .*$", src, re.MULTILINE)) + \
+                    re.sub(r"^from __future__ import .*$\n?", "", src,
+                           flags=re.MULTILINE)
+                p = os.path.join(cand_dir,
+                                 f"g{gen_index}_{phase['kind']}_{_i}_a{attempt}.py")
+                with open(p, "w") as f:
+                    f.write(src)
+                return p
+
+            def check_fn(path):
+                r = _run_worker(dict(
+                    base_adapter=adapter_name, candidate_path=path,
+                    train_seconds=0, eval_batches=1, seed=cfg["seed"],
+                    device=cfg["device"], param_cap=param_cap,
+                    check_only=True), path, 240)
+                return bool(r.get("ok")), (r.get("note") or r.get("gate") or "")
+
+            llm = pool.subagent_for(i)
+            fut = ex.submit(
+                recipes.author_recipe, llm, phase, job, base_source,
+                parent_src, loss_source, param_cap, lessons,
+                rc["recipe_max_repairs"], save_fn, check_fn,
+                recipes.baseline_recipe_source(adapter_name))
+            fut_to_job[fut] = job
+
+        authored = []
+        for fut in as_completed(fut_to_job):
+            job = fut_to_job[fut]
+            try:
+                authored.append((job, fut.result()))
+            except Exception as e:  # noqa: BLE001
+                authored.append((job, dict(
+                    strategy=job["strategy"], parent=job.get("parent"),
+                    code_path=None, repairs_used=0, load_ok=False,
+                    model_name=None,
+                    failure_note=f"[infra] author crashed: {e}")))
+            # evaluate the just-authored candidate now, while others generate
+            job, a = authored[-1]
             row = dict(lineage_id=lineage_ids[phase["kind"]],
                        generation=gen_index, strategy=a["strategy"],
                        parent_id=a.get("parent") if isinstance(a.get("parent"), int) else None,
@@ -225,6 +236,7 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                                       if r.get("val_loss")] + ([v] if v else []),
                                      default=None),
             })
+        ex.shutdown(wait=True)
         archive.finish_generation(gen_id, len(outs), n_acc, pool.total_usd())
 
         # curator lessons
