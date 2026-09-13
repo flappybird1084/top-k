@@ -71,11 +71,16 @@ def install_candidate(harness, path):
     """Install only instance-local behavior and reject immediate state changes."""
     from kernel_evolution.runtime import clone
     from kernel_evolution.verifier import compare
-    # torch.compile performs lazy framework initialization, including legitimate
-    # optimizer class wrapping. Initialize its constructor before attributing
-    # subsequent global changes to candidate code. This executes no model step.
+    # Dynamo initializes some framework patches only while executing the first
+    # graph (not while constructing torch.compile). Warm original-model initial
+    # and steady-state optimizer graphs before importing any candidate code.
+    # Restore all training state afterward; candidate mutations remain guarded.
     if getattr(harness, 'config', {}).get('step_backend') == 'inductor':
-        harness.step_callable({})
+        try:
+            harness.state_after_step({})
+            harness.capture_step(harness.step_callable({}))
+        finally:
+            harness.restore()
     model, optimizer = harness.model, harness.optimizer
     named = {name: id(p) for name, p in model.named_parameters()}
     trainable = {name: p.requires_grad for name, p in model.named_parameters()}

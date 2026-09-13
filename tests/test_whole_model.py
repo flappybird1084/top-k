@@ -116,24 +116,48 @@ class WholeModelTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'multiple shapes'):
                 selftest(h, records[:1], cfg)
 
-    def test_compiler_constructor_initializes_before_install_guard_without_running_step(self):
+    def test_original_compiled_execution_initializes_guard_and_restores_state(self):
         from kernel_evolution.whole_model import _assert_invariants
+        from kernel_evolution.runtime import clone
         h = self.harness()
         h.config = {'step_backend': 'inductor'}
-        calls = []
+        initial = clone(h.model.state_dict())
+        initial_optimizer = copy.deepcopy(h.optimizer.state_dict())
+        executions = []
+        def restore():
+            h.model.load_state_dict(initial)
+            h.optimizer.load_state_dict(copy.deepcopy(initial_optimizer))
+            h.optimizer.zero_grad(set_to_none=True)
         def step():
-            calls.append('executed')
-            return h.model(torch.ones(2, 3)).sum()
+            executions.append('executed')
+            h.optimizer.zero_grad(set_to_none=True)
+            loss = h.model(torch.ones(2, 3)).square().mean()
+            loss.backward()
+            h.optimizer.step()
+            return loss.detach()
         def step_callable(replacements):
-            h.compiled_step = torch.compile(step)
+            if h.compiled_step is None:
+                # Dynamo's eager backend executes real graphs and lazy framework
+                # patches without requiring an installed native CPU compiler.
+                h.compiled_step = torch.compile(step, backend='eager')
             return h.compiled_step
+        def state_after_step(replacements):
+            restore()
+            return step_callable(replacements)()
+        h.compiled_step = None
+        h.restore = restore
+        h.state_after_step = state_after_step
         h.step_callable = step_callable
+        h.capture_step = lambda fn: fn()
         self.install(h, '    return None\n')
+        self.assertGreaterEqual(len(executions), 2)
         self.assertIsNone(h.compiled_step)
-        h.step_callable({})
-        _assert_invariants(h)
-        self.assertEqual(calls, [])
         self.assertEqual(h.optimizer.state, {})
+        for name, value in h.model.state_dict().items():
+            torch.testing.assert_close(value, initial[name], rtol=0, atol=0)
+        h.step_callable({})()
+        _assert_invariants(h)
+        restore()
 
     def test_shared_class_patch_still_rejected_with_member_name(self):
         h = self.harness()
