@@ -123,8 +123,13 @@ def profile_harness(harness):
         raise ValueError('Compiled attribution requires the inductor step backend')
     fn = harness.step_callable({})
     harness.restore()
-    for _ in range(harness.config['profile_warmup']):
-        fn()
+    for index in range(harness.config['profile_warmup']):
+        # AdamW initialization can produce a second graph on the next step.
+        # Capture these variants before measuring; timing never includes compile.
+        if index < 2:
+            harness.capture_step(fn)
+        else:
+            fn()
     torch.cuda.synchronize()
     steps = harness.config['profile_steps']
     with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA]) as prof:
