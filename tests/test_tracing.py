@@ -83,3 +83,20 @@ class TraceTests(unittest.TestCase):
         self.traces.flush=Mock()
         self.traces.close()
         self.traces.flush.assert_called_once_with(timeout=5)
+
+    def test_background_open_span_exports_before_finish(self):
+        import time
+        op_factory=Mock(side_effect=lambda name: 'eager:'+name)
+        traces=Traces(self.archive,self.client,enabled=True,op_factory=op_factory)
+        try:
+            span=traces.start('live',started_at=1)
+            limit=time.monotonic()+2
+            while not traces.url(span) and time.monotonic()<limit: time.sleep(.01)
+            self.assertIsNotNone(traces.url(span))
+            self.assertIsNone(self.client.calls[span].ended_at)
+            traces.finish(span,ended_at=2)
+            traces.flush(timeout=2)
+            self.assertEqual(self.archive.rows('SELECT exported_end FROM trace_outbox')[0]['exported_end'],1)
+            op_factory.assert_called_once_with('live')
+        finally:
+            traces.close()

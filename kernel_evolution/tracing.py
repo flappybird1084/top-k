@@ -6,10 +6,21 @@ import time
 import uuid
 
 
+def _trace_operation(**inputs):
+    """Operation identity for explicit platform spans; never executes agent work."""
+    return inputs
+
+
 class Traces:
-    def __init__(self, archive, client=None, *, enabled=False):
+    def __init__(self, archive, client=None, *, enabled=False, op_factory=None):
         self.archive, self.client, self.enabled = archive, client, enabled
         self.calls = {}
+        self.ops = {}
+        if op_factory is None and client is not None and type(client).__module__.startswith('weave.'):
+            import weave
+            op_factory = lambda name: weave.op(name=name, eager_call_start=True,
+                                               enable_code_capture=False)(_trace_operation)
+        self.op_factory = op_factory or (lambda name: name)
         self.lock = threading.RLock()
         self.wake, self.stop = threading.Event(), threading.Event()
         archive.execute('''CREATE TABLE IF NOT EXISTS trace_outbox (
@@ -60,7 +71,9 @@ class Traces:
         if row['parent_id']:
             parent_row = self.archive.rows('SELECT * FROM trace_outbox WHERE id=?', (row['parent_id'],))[0]
             parent = self._create(parent_row)
-        call = self.client.create_call(row['name'], json.loads(row['inputs_json']), parent=parent,
+        if row['name'] not in self.ops:
+            self.ops[row['name']] = self.op_factory(row['name'])
+        call = self.client.create_call(self.ops[row['name']], json.loads(row['inputs_json']), parent=parent,
             attributes=json.loads(row['attributes_json']), use_stack=False,
             _call_id_override=row['id'], started_at=dt.datetime.fromtimestamp(row['started_at'], dt.timezone.utc))
         self.calls[row['id']] = call

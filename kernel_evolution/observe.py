@@ -34,7 +34,8 @@ class Mirror:
                 {'ready': True}, started_at=stamp, ended_at=time.time(),
                 attributes={'span_kind': 'platform_self_test'})
             self.traces.flush(timeout=30)
-            if not self.traces.url(probe):
+            delivered=archive.rows('SELECT exported_end FROM trace_outbox WHERE id=?',(probe,))
+            if not self.traces.url(probe) or not delivered[0]['exported_end']:
                 self.traces.close(timeout=1)
                 raise RuntimeError('Required Weave trace read-back failed; no LLM calls may start')
             archive.event('weave_ready', {'url': self.traces.url(probe)})
