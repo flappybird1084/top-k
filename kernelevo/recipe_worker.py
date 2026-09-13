@@ -91,7 +91,10 @@ def main():
                     wb.log({"val/loss": res["val_loss"]})
                     wb.summary["val_loss"] = res["val_loss"]
                 wb.summary["gate"] = res["gate"]
-                wb.finish()
+                if res.get("note"):        # error trace inspectable in W&B
+                    wb.summary["error"] = res["note"][:4000]
+                # exit_code=1 marks the run Failed (red) in the W&B UI
+                wb.finish(exit_code=0 if res.get("ok") else 1)
             except Exception:  # noqa: BLE001
                 pass
         print("KEVO_RESULT " + json.dumps(res))

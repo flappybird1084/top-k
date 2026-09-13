@@ -24,6 +24,28 @@ from kernelevo.obs import Mirror, weave_op, current_trace_url
 RECIPE_IDLE_TIMEOUT_S = 90   # kill an eval silent this long; worker heartbeats every ~8s
 
 
+def _log_failed_wandb(meta, gate, note):
+    """Candidates that fail AUTHORING never reach recipe_worker, so they'd have
+    no W&B run at all — give them one carrying the error trace, marked Failed,
+    so every slot in the group is inspectable. Fire-and-forget."""
+    if not meta or not os.environ.get("WANDB_API_KEY"):
+        return
+    try:
+        import wandb
+        r = wandb.init(project=os.environ.get("WANDB_PROJECT") or "kernel-evolution",
+                       entity=os.environ.get("WANDB_ENTITY") or None,
+                       name=meta.get("name"), group=meta.get("group"),
+                       tags=(meta.get("tags") or []) + ["failed"],
+                       config=meta.get("config"),
+                       reinit="create_new",   # never disturbs the Mirror run
+                       settings=wandb.Settings(silent=True))
+        r.summary["gate"] = gate
+        r.summary["error"] = (note or "no note")[:4000]
+        r.finish(exit_code=1)
+    except Exception:  # noqa: BLE001 — observability must never break the loop
+        pass
+
+
 def _execute_worker(job: dict, path_hint: str, timeout: int):
     from kernelevo.procstream import run_result_worker
     job_path = path_hint + ".rjob.json"
@@ -259,6 +281,11 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                                failure_note=str(note)[:1500])
                     print(f"[recipe] {phase['kind']} g{gen_index}: "
                           f"{r.get('gate')} — {str(note)[:100]}")
+            else:
+                _log_failed_wandb(
+                    wmeta(f"g{gen_index}-s{job.get('_idx', 0)}", phase["kind"],
+                          a["strategy"], phase["train_seconds"]),
+                    "author_failed", a.get("failure_note"))
             cid = archive.add_candidate(**row)
             row["id"] = cid
             outs.append(row)
