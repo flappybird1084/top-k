@@ -9,7 +9,7 @@ from pathlib import Path
 root=Path(__file__).resolve().parents[1]
 name=sys.argv[1] if len(sys.argv)>1 else 'sol-pilot'
 if not name.replace('-','').replace('_','').isalnum():raise ValueError('Invalid run name')
-code='''import base64,json,sqlite3,zlib
+code='''import base64,json,sqlite3,zlib,tempfile
 from pathlib import Path
 root=Path('/marimo/top-k/runs')/NAME
 files={}
@@ -26,11 +26,24 @@ for pattern in ['prepared.json','targets.json','profile.json','candidates/*.py',
                 'input/adapter*.py','input/manifest.json','launch.json','result.json']:
     for p in root.glob(pattern):
         files[str(p.relative_to(root))]=base64.b64encode(p.read_bytes()).decode()
-print('KE_TRANSFER_Z:'+base64.b64encode(zlib.compress(json.dumps(files).encode())).decode())
+payload=base64.b64encode(zlib.compress(json.dumps(files).encode())).decode()
+with tempfile.NamedTemporaryFile(mode='w',prefix='.transfer-',dir=root,delete=False) as transfer:
+    transfer.write(payload)
+print('KE_TRANSFER_INFO:'+json.dumps({'path':transfer.name,'length':len(payload)}))
 '''.replace('NAME',repr(name))
-proc=subprocess.run([sys.executable,str(root/'scripts/molab.py')],input=code,text=True,capture_output=True,check=True)
-line=next(x for x in proc.stdout.splitlines() if x.startswith('KE_TRANSFER_Z:'))
-files=json.loads(zlib.decompress(base64.b64decode(line.removeprefix('KE_TRANSFER_Z:'))))
+def execute(code,marker):
+    proc=subprocess.run([sys.executable,str(root/'scripts/molab.py')],input=code,text=True,capture_output=True,check=True)
+    return next(x.removeprefix(marker) for x in proc.stdout.splitlines() if x.startswith(marker))
+
+info=json.loads(execute(code,'KE_TRANSFER_INFO:'))
+chunks=[]
+try:
+    for start in range(0,info['length'],48000):
+        request='from pathlib import Path\nprint("KE_CHUNK:"+Path('+repr(info['path'])+').read_text()['+str(start)+':'+str(start+48000)+'])'
+        chunks.append(execute(request,'KE_CHUNK:'))
+    files=json.loads(zlib.decompress(base64.b64decode(''.join(chunks))))
+finally:
+    execute('from pathlib import Path\nPath('+repr(info['path'])+').unlink(missing_ok=True)\nprint("KE_CLEAN:done")','KE_CLEAN:')
 dest=root/'runs'/name
 for name,data in files.items():
     path=dest/name
