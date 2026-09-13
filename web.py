@@ -282,12 +282,13 @@ FORM = """
  <div style="display:flex;gap:.5rem">
   <input type=number name=finals_k value=2 min=1>
   <input type=number name=finals_secs value=300 min=30></div>
- <label>param budget ratio · loss margin (rel) · eval batches · parallel agents</label>
+ <label>param budget ratio · loss margin (rel) · eval batches · parallel agents · parent pool</label>
  <div style="display:flex;gap:.5rem">
   <input type=number name=param_ratio value=1.10 step=0.01>
   <input type=number name=loss_margin value=0.003 step=0.001>
   <input type=number name=eval_batches value=8 min=1>
-  <input type=number name=parallelism value=8 min=1></div>
+  <input type=number name=parallelism value=8 min=1>
+  <input type=number name=parent_pool value=4 min=1></div>
 </fieldset>
 <fieldset><legend>molab connection (per-notebook)</legend>
  <label>paste the whole "Pair with agent" prompt from molab here — it contains the
@@ -507,6 +508,7 @@ def create_job():
             loss_margin_rel=float(f.get("loss_margin") or 0.003),
             eval_batches=int(f.get("eval_batches") or 8),
             subagent_parallelism=int(f.get("parallelism") or 8),
+            parent_pool=int(f.get("parent_pool") or 4),
         ) if f.get("mode") == "recipe" else None,
         llm=f.get("llm", "").strip() or None,
         execution_target=f.get("execution_target", "local"),

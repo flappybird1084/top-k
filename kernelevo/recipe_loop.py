@@ -302,7 +302,7 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                 break
             lessons = archive.lessons_tail(model_id, cfg["lessons_tail"])
             evaluated = [r for r in results_all if r.get("val_loss")]
-            parents = sorted(evaluated, key=lambda r: r["val_loss"])[:4]
+            parents = sorted(evaluated, key=lambda r: r["val_loss"])[:rc.get("parent_pool", 4)]
             parents_by_id = {p["id"]: p for p in parents}
             base_summary = dict(
                 model=model_name, params=info["n_params"], param_cap=param_cap,
