@@ -50,6 +50,7 @@ class CompiledProfileTests(unittest.TestCase):
         duplicate=copy.deepcopy(regions[0]);duplicate['source_path']='another.py'
         report=attribute(regions+[duplicate],event,**kwargs)
         self.assertEqual(report['kernels'][0]['mapping'],'matched')
+        self.assertTrue(report['kernels'][0]['attribution_unambiguous'])
         duplicate['source_hash']='different'
         report=attribute(regions+[duplicate],event,**kwargs)
         self.assertEqual(report['kernels'][0]['mapping'],'ambiguous')
@@ -65,6 +66,14 @@ class CompiledProfileTests(unittest.TestCase):
         self.assertEqual(profile['targets'][0]['eager_pct_step_time'],50)
         self.assertEqual(profile['targets'][0]['pct_step_time'],1)
         self.assertEqual(profile['targets'][1]['op_time_ms'],0)
+
+    def test_non_triton_metadata_never_qualifies(self):
+        regions=parse_source(SOURCE)
+        regions[0]['has_triton_jit']=False
+        report=attribute(regions,[dict(name='triton_poi_fused_ema_0',duration_us=100)],
+                         steps=1,step_time_ms=1,known_ops=['ema_update'],ema_decay=.996)
+        self.assertEqual(report['operations']['ema_update']['region_time_ms'],0)
+        self.assertFalse(report['kernels'][0]['emits_triton'])
 
     def test_invalid_timing_rejected(self):
         with self.assertRaises(ValueError):

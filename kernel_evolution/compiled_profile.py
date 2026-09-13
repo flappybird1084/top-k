@@ -91,12 +91,12 @@ def attribute(regions, kernel_events, *, steps, step_time_ms, known_ops, ema_dec
         # Duplicate source captures may describe the same kernel. Conflicting
         # metadata/source hashes for a reused name make attribution ambiguous.
         signatures = {(r['source_hash'], tuple(r['original_aten'])) for r in matches}
-        unique = len(signatures) == 1
+        unique = len(signatures) == 1 and all(r['has_triton_jit'] for r in matches)
         associated = classify(matches[0], known_ops, ema_decay) if unique else []
         row = dict(name=name, cuda_time_ms=duration, calls=counts[name],
                    pct_step_time=100 * duration / step_time_ms,
                    mapping='matched' if unique else ('ambiguous' if matches else 'unmapped'),
-                   associated_ops=associated,
+                   associated_ops=associated, emits_triton=unique, attribution_unambiguous=unique,
                    sources=[{k:r[k] for k in ('source_path','source_line','kernel_name','original_aten','source_nodes','source_hash')} for r in matches])
         rows.append(row)
         for op in associated:
@@ -107,7 +107,7 @@ def attribute(regions, kernel_events, *, steps, step_time_ms, known_ops, ema_dec
     return dict(backend='whole_step_inductor', steps=steps, step_time_ms=step_time_ms,
                 total_cuda_time_ms=sum(totals.values()), kernels=rows, operations=by_op,
                 unmapped_cuda_time_ms=sum(r['cuda_time_ms'] for r in rows if r['mapping']!='matched'),
-                accounting='CUDA leaf durations; fused region costs overlap between associated operations and are not exclusive operation time')
+                accounting='CUDA leaf durations; fused region costs overlap between associated operations and bound only their contribution within these matched regions. External GEMM and unmapped costs are excluded; this is neither exclusive operation time nor a bound on total operation time')
 
 
 def profile_harness(harness):
@@ -158,6 +158,7 @@ def augment_targets(profile, report, *, allowed_ops, min_pct_step_time):
         target['eager_op_time_ms'] = target['op_time_ms']
         target.update(pct_step_time=pct,op_time_ms=cost,compiled_attribution=data,
                       timing_basis='associated_compiled_region_upper_bound',
+                      compiled_triton_observed=any(r.get('emits_triton') and r.get('attribution_unambiguous') for r in data.get('regions',[])),
                       eligible=op in allowed_ops and pct >= min_pct_step_time and bool(data.get('regions')))
     profile['compiled_profile'] = report
     profile['eager_step_time_ms'] = profile['step_time_ms']
