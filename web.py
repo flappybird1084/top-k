@@ -114,16 +114,20 @@ def _run_job(jid):
 
     try:
         if job["execution_target"] == "molab":
-            from kernelevo.molab import MolabTarget
             job.update(status="running", stage="connecting to molab")
             save_job(job)
-            try:
-                rc = MolabTarget(job.get("molab")).dispatch(
-                    job, ROOT, _job_env(job), write_line,
-                    artifacts_dir=os.path.join(JOBS_DIR, jid, "run"))
-            except Exception as e:  # noqa: BLE001 — connection/protocol errors
-                write_line(f"[molab] dispatch error: {type(e).__name__}: {e}")
-                rc = 1
+            # subprocess so each job runs the CURRENT dispatch code from disk,
+            # even if this server process has been up for days
+            env = dict(os.environ)
+            env["KEVO_REMOTE_ENV"] = json.dumps(_job_env(job))
+            proc = subprocess.Popen(
+                [sys.executable, "-u", "-m", "kernelevo.molab_dispatch",
+                 _job_path(jid), ROOT, os.path.join(JOBS_DIR, jid, "run")],
+                cwd=ROOT, env=env, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            for line in proc.stdout:
+                write_line(line)
+            rc = proc.wait()
         else:
             run_dir = os.path.join(JOBS_DIR, jid, "run")
             cmd = [sys.executable, "-u", "search.py", "--profile", job["profile"],
