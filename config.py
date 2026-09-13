@@ -86,6 +86,9 @@ DEV = {
         max_generations=2,
         candidates_per_gen=2,
         max_repairs=1,
+        # spec said $3, but at ~500M-model scale (big prompts, long kernels) a
+        # single generation costs ~$2 — $3 dies mid-generation-2 every time
+        spend_cap_usd=10,
         # Per-generation phase budgets (replaces the spec's single gen_wallclock):
         # authoring (planner + subagent LLM calls + compile + gate 2) and
         # evaluation (gates 3-4) each get their own slice, so slow authoring can
@@ -93,7 +96,6 @@ DEV = {
         # calls 60-120s each, first gate-3 inductor compile 30-90s.
         llm_budget_s=300,
         eval_budget_s=300,
-        spend_cap_usd=3,
         retire_after=2,
         systemic_halt_after=2,
         llm="stub",

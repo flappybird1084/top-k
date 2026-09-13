@@ -37,7 +37,7 @@ def run_candidate(job: dict, job_index: int, generation: int, ctx) -> dict:
     for attempt in range(cfg["max_repairs"] + 1):
         why = ctx.budget_exceeded()
         if why:
-            result["failure_note"] = f"aborted before attempt {attempt}: {why}"
+            result["failure_note"] = f"[infra] aborted before attempt {attempt}: {why}"
             return result
         resp = llm.complete(messages, meta={"job": job, "attempt": attempt})
         src = extract_code(resp.text)
