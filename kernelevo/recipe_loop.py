@@ -108,6 +108,8 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
         baseline[secs] = r["val_loss"]
         print(f"[baseline] {secs}s train -> val loss {r['val_loss']:.4f} "
               f"({r['steps']} steps)")
+        mirror._log({f"baseline/val_loss_{secs}s": r["val_loss"],
+                     f"baseline/steps_{secs}s": r["steps"]})
         archive.add_candidate(
             lineage_id=lineage_ids["architecture"], generation=0,
             strategy=f"baseline (base adapter + harness AdamW) @{secs}s",
@@ -211,10 +213,18 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
             cid = archive.add_candidate(**row)
             row["id"] = cid
             outs.append(row)
-            try:
-                mirror._log({f"recipe/{phase['kind']}/val_loss": row.get("val_loss")})
-            except Exception:  # noqa: BLE001
-                pass
+            base_v = baseline[phase["train_seconds"]]
+            v = row.get("val_loss")
+            mirror._log({
+                "cand/id": cid, "cand/generation": gen_index,
+                f"cand/{phase['kind']}/val_loss": v,
+                "cand/delta_pct": (100 * (base_v - v) / base_v) if v else None,
+                "cand/accepted": row["accepted"],
+                "cand/params": row.get("model_params"),
+                "best/val_loss": min([r["val_loss"] for r in results_all + outs
+                                      if r.get("val_loss")] + ([v] if v else []),
+                                     default=None),
+            })
         archive.finish_generation(gen_id, len(outs), n_acc, pool.total_usd())
 
         # curator lessons
@@ -298,6 +308,7 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
         print(f"[finals] val {r['val_loss']:.4f} vs baseline "
               f"{baseline[fsecs]:.4f} ({delta:+.2f}%)"
               f"{' ACCEPTED' if accepted else ''} — {fr['strategy'][:70]}")
+        mirror._log({"finals/val_loss": r["val_loss"], "finals/delta_pct": delta})
         if r.get("ok") and (winner is None or r["val_loss"] < winner["val_loss"]):
             winner = dict(fr, final_val_loss=r["val_loss"], final_id=cid)
 
@@ -311,6 +322,25 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
         print(f"[result] winning recipe: {winner['code_path']}")
     else:
         print("[result] no recipe beat the baseline at finals scale")
+    if mirror.run is not None:
+        try:
+            import wandb
+            mirror.run.summary["baseline_300s"] = baseline[fsecs]
+            if winner:
+                mirror.run.summary["winner_300s"] = winner["final_val_loss"]
+                mirror.run.summary["improvement_pct"] = \
+                    100 * (baseline[fsecs] - winner["final_val_loss"]) / baseline[fsecs]
+                mirror.run.summary["winner_strategy"] = winner["strategy"][:250]
+            rows = [dict(r) for r in archive.db.execute(
+                "SELECT c.id, c.generation, c.parent_id, c.phase, c.strategy, "
+                "c.val_loss, c.accepted, c.train_secs FROM candidates c "
+                "JOIN lineages l ON c.lineage_id=l.id WHERE l.model_id=? "
+                "ORDER BY c.id", (model_id,))]
+            mirror.run.log({"lineage": wandb.Table(
+                columns=list(rows[0].keys()),
+                data=[list(r.values()) for r in rows])})
+        except Exception:  # noqa: BLE001 — mirror is fire-and-forget
+            pass
     mirror.finish("recipe_complete")
     print(f"[loop] stopped: recipe_complete; total LLM spend "
           f"${pool.total_usd():.2f}; archive at "
