@@ -1,6 +1,7 @@
 """Optional one-way telemetry. Archive commits always precede mirror enqueue."""
 import queue
 import threading
+from .tracing import Traces
 
 try:
     import weave
@@ -15,6 +16,30 @@ class Mirror:
         self.url=None
         self.archive=archive
         self.enabled=config.get('wandb_mode')=='online'
+        client = None
+        if self.enabled:
+            try:
+                import weave
+                client = weave.init(config['wandb_entity']+'/'+config['wandb_project'])
+            except Exception as exc:
+                archive.event('weave_unavailable', {'error': str(exc)})
+                if config.get('require_traces'): raise RuntimeError('Required Weave initialization failed') from exc
+        self.traces = Traces(archive, client, enabled=self.enabled)
+        archive.traces = self.traces
+        if self.enabled and config.get('require_traces'):
+            import time
+            stamp = time.time()
+            probe = self.traces.record('platform_trace_readiness',
+                {'purpose': 'Verify platform trace delivery before any LLM call; no LLM used'},
+                {'ready': True}, started_at=stamp, ended_at=time.time(),
+                attributes={'span_kind': 'platform_self_test'})
+            self.traces.flush(timeout=30)
+            if not self.traces.url(probe):
+                self.traces.close(timeout=1)
+                raise RuntimeError('Required Weave trace read-back failed; no LLM calls may start')
+            archive.event('weave_ready', {'url': self.traces.url(probe)})
+        elif config.get('require_traces'):
+            raise RuntimeError('Required Weave traces need wandb_mode=online')
         if self.enabled:
             self.thread=threading.Thread(target=self._loop,args=(config,),daemon=True)
             self.thread.start()
@@ -30,10 +55,6 @@ class Mirror:
                 name=config.get('run_name'),settings=wandb.Settings(init_timeout=30,disable_git=True))
             self.url=run.url
             self.archive.event('wandb_connected',{'url':self.url})
-            try:
-                import weave
-                weave.init(config['wandb_entity']+'/'+config['wandb_project'])
-            except Exception as exc: self.archive.event('weave_unavailable',{'error':str(exc)})
             while True:
                 item=self.queue.get()
                 if item is None: break
@@ -54,6 +75,7 @@ class Mirror:
             except queue.Full: self.archive.event('mirror_dropped',{'reason':'queue_full'})
 
     def finish(self):
+        self.traces.close()
         if self.enabled:
             self.log_sentinel()
             self.thread.join(timeout=15)
