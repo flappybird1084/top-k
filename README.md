@@ -40,6 +40,12 @@ reuses its measured calibration and seed sources; completed generations are not
 rerun. CPU execution cannot produce accepted GPU candidates. Model parameters,
 optimizer state, RNG, and the fixed batch are restored for paired step timing.
 Data loading and correctness checks are outside timed regions.
+Functional discovery is enabled by default. It recognizes supported LayerNorm
+and Linear→GELU patterns in FX graphs and verifies loss, all parameter gradients,
+tensor state, and scalar module state across three restored RNG states before
+using a rewrite. It preserves the adapter's model object and parameter identities.
+Unsupported traces and failed verification retain the existing module path, with
+the reason recorded in `profile.json`.
 Prepared directories with an older benchmark protocol are rejected. The original
 `sol-pilot` directory is historical evidence and cannot be resumed with the
 corrected direct-Inductor baseline.
@@ -96,9 +102,10 @@ repository. W&B and Codex credentials also stay outside source and notebook cell
 
 Remaining v3 work is explicit:
 
-- Extraction currently recognizes standard one-dimensional `nn.LayerNorm`,
-  adjacent Linear/GELU modules in Sequential, and explicit composite regions.
-  It does not yet discover arbitrary functional operator regions in an AOT graph.
+- Extraction recognizes standard one-dimensional `nn.LayerNorm`, module and
+  functional Linear/GELU patterns, functional LayerNorm with a weight, and explicit
+  composite regions. General AOT graph discovery and RMSNorm backward are still
+  incomplete; unsupported patterns remain eager and are not proposed for replacement.
 - Inductor seeds call captured backend entries directly after extraction, without
   the outer Dynamo wrapper. They are compiled per region; this is not a whole-step Inductor
   baseline. Report speedups against the named baseline and include native eager

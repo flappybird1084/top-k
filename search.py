@@ -39,6 +39,8 @@ def load_prepared(args,cfg,archive):
         # Profile, precision, and calibration identity cannot silently change on resume.
         for key in ['seed','batch_size','dtype','allowed_ops','min_pct_step_time']:
             if prepared['config'][key]!=cfg[key]: raise ValueError('Prepared configuration differs: '+key)
+        if prepared['config'].get('functional_discovery',False)!=cfg.get('functional_discovery',False):
+            raise ValueError('Prepared configuration differs: functional_discovery')
         return prepared
     emit(archive,'prepare_started',adapter=args.adapter,lineage=args.lineage)
     request=dict(action='prepare',adapter=args.adapter,config=cfg,run_dir=str(root),lineage=args.lineage)
@@ -265,8 +267,13 @@ def run(args,cfg,archive,prepared):
             results=[]
             try:
                 if cfg['llm']=='stub':
-                    jobs=[dict(lineage=active[i%len(active)]['id'],strategy=['Triton fixture','Broken compiler API','Incorrect gradient','Cached-output cheat'][((gen-1)*cfg['candidates_per_gen']+i)%4],
-                        parents=[active[i%len(active)]['incumbent_id']]) for i in range(cfg['candidates_per_gen'])]
+                    raw_jobs=[]
+                    for i in range(cfg['candidates_per_gen']):
+                        line=active[(i+gen-1)%len(active)]
+                        strategy=['Triton fixture','Broken compiler API','Incorrect gradient','Cached-output cheat'][((gen-1)*cfg['candidates_per_gen']+i)%4]
+                        raw_jobs.append(dict(lineage=line['id'],strategy=('FUSE: ' if line.get('fusion_of') else '')+strategy,
+                                             parents=[line['incumbent_id']] if line['incumbent_id'] else []))
+                    jobs=validated_jobs({'jobs':raw_jobs},archive,gen,cfg['candidates_per_gen'])
                 else:
                     planner=CodexOAuthLLM(archive,cfg,root,'planner');planner.generation=gen
                     cached_plan=archive.rows('SELECT results_json FROM search_cache WHERE query=?',(f'recovery_planner:{gen}',))
@@ -288,7 +295,7 @@ def run(args,cfg,archive,prepared):
                         try:c=f.result()
                         except Exception as exc:
                             c=dict(id=f'failed_{gen}_{i}',lineage_id=jobs[i]['lineage'],generation=gen,
-                                strategy=jobs[i]['strategy'],source_kind='mutation',model_name=cfg.get('subagent_llm','stub'),
+                                strategy=jobs[i]['strategy'],source_kind='mutation',model_name=subagent_model(cfg,gen,i),
                                 gate_reached=0,compile_ok=0,correct_ok=0,accepted=0,failure_note=str(exc),created_at=time.time())
                             archive.put('candidates',**c)
                         results.append(c)

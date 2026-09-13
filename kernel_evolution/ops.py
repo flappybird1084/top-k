@@ -55,6 +55,7 @@ class NormFunction(torch.autograd.Function):
         out, mean, rstd = torch.native_layer_norm(x, (x.shape[-1],), weight, bias, eps)
         ctx.save_for_backward(x, weight, mean, rstd)
         ctx.region = region
+        ctx.has_bias=bias is not None
         return out
 
     @staticmethod
@@ -62,7 +63,7 @@ class NormFunction(torch.autograd.Function):
         x, weight, mean, rstd = ctx.saved_tensors
         with ctx.region.record():
             dx, dw, db = ctx.region.invoke(x, dy.contiguous(), weight, mean, rstd)
-        return dx, dw, db, None, None
+        return dx, dw, db if ctx.has_bias else None, None, None
 
 
 class LayerNormRegion(Region):

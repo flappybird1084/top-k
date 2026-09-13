@@ -7,6 +7,9 @@ no configured cap on the number of sites in the group.
 
 A **handwritten Triton fixture** passed all four gates against a fresh baseline:
 
+[W&B fixture check](https://wandb.ai/stephenslee0127-acme/kernel-evolution/runs/f0otw8pb)
+contains the raw paired measurements and source artifact.
+
 | Measurement | Unfused direct Inductor | Fused fixture |
 | --- | ---: | ---: |
 | Complete EMA group, median | 1.6765 ms | 0.3064 ms |

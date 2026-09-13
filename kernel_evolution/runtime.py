@@ -70,6 +70,18 @@ class Harness:
         if self.loss.ndim != 0 or not self.loss.requires_grad or not torch.isfinite(self.loss):
             raise ValueError('Adapter loss must be scalar, finite, and require grad')
         self.model = instrument(self.model)
+        self.discovery={'backend':'modules','regions':[],'fallback_reason':None}
+        if config.get('functional_discovery',False):
+            from kernel_evolution.graph import discover_functional,validate_rewrite
+            original_forward=self.model.forward
+            self.discovery,rollback=discover_functional(self.model)
+            if self.discovery['regions']:
+                try:validate_rewrite(self.model,original_forward,self.adapter.loss_fn,self.batch,config)
+                except Exception as exc:
+                    rollback()
+                    self.discovery['regions']=[]
+                    self.discovery['fallback_reason']='Rewrite verification failed: '+str(exc)
+                else:self.discovery['verified']=True
         self.replacements={}
         self.fusion_issue=None
         from kernel_evolution.fusion import capture_ema_bindings
@@ -148,7 +160,7 @@ class Harness:
                 shapes=[dict(args=description,count=1)]))
         torch.save(self.cases,self.run_dir/'cases.pt')
         self.restore()
-        return dict(targets=targets,step_time_ms=step_ms,fusion_issue=self.fusion_issue,
+        return dict(targets=targets,step_time_ms=step_ms,fusion_issue=self.fusion_issue,discovery=self.discovery,
                     profiler_table=prof.key_averages().table(sort_by='self_cuda_time_total',row_limit=40))
 
     def time_set(self, replacements):
