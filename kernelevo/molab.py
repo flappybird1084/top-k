@@ -143,6 +143,42 @@ ARTIFACT_EXTS = (".py", ".json", ".sqlite", ".txt")
 ARTIFACT_SKIP_DIRS = ("repo", "inductor-cache", "wandb", "__pycache__", "compile_cache")
 
 
+def _fetch_file(client: MolabClient, remote: str, local: str, size: int):
+    os.makedirs(os.path.dirname(local), exist_ok=True)
+    with open(local + ".part", "wb") as f:
+        off = 0
+        while off < size:
+            ok, out, _ = client.run(
+                "import base64\n"
+                f"_f = open({remote!r}, 'rb')\n"
+                f"_f.seek({off})\n"
+                "print(base64.b64encode(_f.read(200000)).decode())\n")
+            if not ok:
+                return False
+            chunk = base64.b64decode(out.strip().splitlines()[-1])
+            if not chunk:
+                break
+            f.write(chunk)
+            off += len(chunk)
+    os.replace(local + ".part", local)
+    return True
+
+
+def fetch_archive(client: MolabClient, work: str, dest_dir: str) -> bool:
+    """Lightweight mid-run sync of just archive.sqlite so the web UI's evolution
+    panel updates while the run is still going."""
+    remote = work + "/run/archive.sqlite"
+    ok, out, _ = client.run(
+        "import os\n"
+        f"print(os.path.getsize({remote!r}) if os.path.exists({remote!r}) else 0)\n")
+    if not ok:
+        return False
+    size = int(out.strip().splitlines()[-1] or 0)
+    if not size:
+        return False
+    return _fetch_file(client, remote, os.path.join(dest_dir, "archive.sqlite"), size)
+
+
 def fetch_artifacts(client: MolabClient, work: str, dest_dir: str, write_line) -> int:
     """Copy the remote run's small artifacts (kernels, adapter, seeds, targets,
     archive) back next to the job so the web UI can show them."""
@@ -162,24 +198,7 @@ def fetch_artifacts(client: MolabClient, work: str, dest_dir: str, write_line) -
         return 0
     files = json.loads(out.strip().splitlines()[-1])
     for rel, size in files:
-        local = os.path.join(dest_dir, rel)
-        os.makedirs(os.path.dirname(local), exist_ok=True)
-        remote = work + "/run/" + rel
-        with open(local, "wb") as f:
-            off = 0
-            while off < size:
-                ok, out, _ = client.run(
-                    "import base64\n"
-                    f"_f = open({remote!r}, 'rb')\n"
-                    f"_f.seek({off})\n"
-                    "print(base64.b64encode(_f.read(200000)).decode())\n")
-                if not ok:
-                    break
-                chunk = base64.b64decode(out.strip().splitlines()[-1])
-                if not chunk:
-                    break
-                f.write(chunk)
-                off += len(chunk)
+        _fetch_file(client, work + "/run/" + rel, os.path.join(dest_dir, rel), size)
     write_line(f"[molab] synced {len(files)} artifact file(s) into the job directory")
     return len(files)
 
@@ -293,8 +312,15 @@ class MolabTarget:
         write_line(f"[molab] {out.strip().splitlines()[0]} — streaming remote log")
 
         offset, misses = 0, 0
+        last_archive_sync = 0.0
         while True:
             time.sleep(poll_interval)
+            if artifacts_dir and time.time() - last_archive_sync > 60:
+                try:
+                    fetch_archive(client, work, artifacts_dir)
+                except Exception:  # noqa: BLE001 — mid-run sync is best-effort
+                    pass
+                last_archive_sync = time.time()
             poll = (
                 "import os, json\n"
                 f"_w = {work!r}\n"

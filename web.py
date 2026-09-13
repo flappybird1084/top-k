@@ -183,6 +183,19 @@ PAGE = """<!doctype html><meta charset=utf-8>
  .warn{background:#fff5f5;border:1px solid #fc8181;border-radius:8px;color:#c53030;
        padding:.7rem 1rem;margin:1rem 0;font-size:.85rem}
  .warn ul{margin:.3rem 0 0;padding-left:1.2rem} .warn code{font-weight:600}
+ .head{background:#fff;border:1px solid #d5dae1;border-radius:8px;padding:.8rem 1rem;
+       margin:1rem 0;display:flex;gap:2rem;flex-wrap:wrap}
+ .head b{font-size:1.25rem} .good{color:#276749} .bad{color:#c53030}
+ details.gen{background:#fff;border:1px solid #d5dae1;border-radius:8px;
+             margin:.5rem 0;padding:.15rem .8rem}
+ details.gen>summary{font-weight:600;font-size:.9rem;padding:.4rem 0;cursor:pointer}
+ details.cand{border-top:1px solid #edf0f4;margin:.2rem 0;padding:.1rem .4rem}
+ details.cand>summary{font-size:.85rem;padding:.35rem 0;cursor:pointer}
+ .pill{padding:.05rem .45rem;border-radius:999px;font-size:.72rem;margin-right:.4rem}
+ .p-acc{background:#c6f6d5;color:#276749}.p-rej{background:#fed7d7;color:#c53030}
+ .p-slow{background:#feebc8;color:#975a16}.p-infra{background:#e2e8f0;color:#4a5568}
+ details.cand table{margin:.4rem 0}
+ details.code>summary{font-size:.8rem;color:#2b6cb0;cursor:pointer;padding:.2rem 0}
 </style>
 <h1>kernel evolution</h1>
 {{ warn|safe }}
@@ -251,6 +264,17 @@ JOB = """
  <tr><td>comments</td><td>{{ job.get('comments') or '—' }}</td></tr>
  <tr><td>run dir</td><td>{{ job.get('run_dir') or '—' }}</td></tr>
 </table>
+{% if evo and evo['baseline_ms'] %}
+<div class=head>
+ <div>baseline step<br><b>{{ '%.2f'|format(evo['baseline_ms']) }}ms</b></div>
+ <div>best evolved step<br><b>{{ '%.2f'|format(evo['best_ms']) if evo['best_ms']
+      else '—' }}{{ 'ms' if evo['best_ms'] else '' }}</b></div>
+ <div>speedup vs baseline<br><b class="{{ 'good' if evo['improvement_pct'] else '' }}">
+  {{ '−%.1f%%'|format(evo['improvement_pct']) if evo['improvement_pct']
+     else 'none yet' }}</b></div>
+ <div>accepted kernels<br><b>{{ evo['n_accepted'] }}</b></div>
+</div>
+{% endif %}
 <h2>generated code &amp; artifacts</h2>
 {% if files %}<table><tr><th>file</th><th>size</th></tr>
 {% for f in files %}<tr>
@@ -259,7 +283,46 @@ JOB = """
 {% else %}<p class=muted>nothing synced yet — files appear when the run finishes
  (molab) or as they are produced (local)</p>{% endif %}
 <h2>log</h2>
-<pre>{{ log }}</pre>"""
+<pre>{{ log }}</pre>
+{% if evo and evo['generations'] %}
+<h2>generations</h2>
+{% for g in evo['generations'] %}
+<details class=gen {{ 'open' if loop.last }}>
+ <summary>generation {{ g['n'] }} — {{ g['cands']|length }} candidate(s),
+  {{ g['n_acc'] }} accepted</summary>
+ {% for c in g['cands'] %}
+ <details class=cand>
+  <summary><span class="pill {{ c['pill'] }}">{{ c['op_name'] }}</span>
+   {{ c['headline'] }}</summary>
+  <table>
+   <tr><td>strategy</td><td>{{ c['strategy'] }}</td></tr>
+   <tr><td>gate reached</td><td>{{ c['gate_reached'] }} / 4
+       (repairs used: {{ c['repairs_used'] }})</td></tr>
+   {% if c['latency_us'] %}<tr><td>isolation latency</td>
+    <td>{{ '%.1f'|format(c['latency_us']) }}µs vs incumbent
+        {{ '%.1f'|format(c['incumbent_latency_us']) }}µs</td></tr>{% endif %}
+   {% if c['step_time_ms'] %}<tr><td>in-model step</td>
+    <td>{{ '%.2f'|format(c['step_time_ms']) }}ms vs incumbent
+        {{ '%.2f'|format(c['incumbent_step_time_ms']) }}ms</td></tr>{% endif %}
+   {% if c['samples_per_s'] %}<tr><td>samples/s · MFU</td>
+    <td>{{ '%.1f'|format(c['samples_per_s']) }} ·
+        {{ '%.3f'|format(c['mfu']) if c['mfu'] else '—' }}</td></tr>{% endif %}
+   {% if c['failure_note'] %}<tr><td>failure</td>
+    <td>{{ c['failure_note'][:400] }}</td></tr>{% endif %}
+   {% if c['model_name'] %}<tr><td>written by</td><td>{{ c['model_name'] }}</td></tr>{% endif %}
+  </table>
+  {% if c['code'] %}
+  <details class=code><summary>kernel source
+    {% if c['code_rel'] %}(<a href="{{ url_for('job_file', jid=job['id'],
+      path=c['code_rel']) }}">raw</a>){% endif %}</summary>
+   <pre>{{ c['code'] }}</pre>
+  </details>
+  {% endif %}
+ </details>
+ {% endfor %}
+</details>
+{% endfor %}
+{% endif %}"""
 
 
 def _env_warnings() -> str:
@@ -315,6 +378,73 @@ def create_job():
     return redirect(url_for("job_page", jid=job["id"]))
 
 
+def _pct(new, old):
+    return None if not new or not old else 100.0 * (old - new) / old
+
+
+def _job_evolution(jid):
+    """Read the (synced) archive and shape it for the per-generation panel."""
+    import sqlite3
+    db_path = os.path.join(JOBS_DIR, jid, "run", "archive.sqlite")
+    if not os.path.exists(db_path):
+        return None
+    try:
+        db = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        db.row_factory = sqlite3.Row
+        rows = [dict(r) for r in db.execute(
+            "SELECT c.*, l.op_name FROM candidates c "
+            "JOIN lineages l ON c.lineage_id = l.id ORDER BY c.generation, c.id")]
+        db.close()
+    except sqlite3.Error:
+        return None
+    baseline = next((r["incumbent_step_time_ms"] for r in rows
+                     if r["incumbent_step_time_ms"]), None)
+    accepted = [r for r in rows if r["accepted"] and r["step_time_ms"]]
+    best = min((r["step_time_ms"] for r in accepted), default=None)
+    gens = {}
+    for r in rows:
+        if r["generation"] == 0:
+            continue  # seed rows, not agent work
+        c = dict(r)
+        c["code_rel"] = (f"candidates/{os.path.basename(r['code_path'])}"
+                         if r.get("code_path") else None)
+        code_local = (os.path.join(JOBS_DIR, jid, "run", c["code_rel"])
+                      if c["code_rel"] else None)
+        c["code"] = None
+        if code_local and os.path.exists(code_local):
+            c["code"] = open(code_local, errors="replace").read()[:15000]
+        st, inc = r["step_time_ms"], r["incumbent_step_time_ms"]
+        lat, ilat = r["latency_us"], r["incumbent_latency_us"]
+        if r["accepted"]:
+            c["pill"], c["headline"] = ("p-acc",
+                f"ACCEPTED  −{inc - st:.2f}ms step ({_pct(st, inc):+.1f}% faster)")
+        elif st and inc:
+            d = _pct(st, inc)
+            c["pill"] = "p-slow"
+            c["headline"] = (f"in-model {d:+.1f}% vs incumbent — under the "
+                             f"acceptance margin" if d and d > 0 else
+                             f"in-model {d:+.1f}% — not faster")
+        elif lat and ilat:
+            c["pill"], c["headline"] = "p-slow", \
+                f"isolation {_pct(lat, ilat):+.1f}% vs incumbent — failed gate 3"
+        elif (r.get("failure_note") or "").startswith("[infra]"):
+            c["pill"], c["headline"] = "p-infra", "infrastructure failure (not the kernel's fault)"
+        elif r["gate_reached"] == 1:
+            c["pill"], c["headline"] = "p-rej", "failed correctness (gate 2)"
+        elif r["gate_reached"] == 0:
+            c["pill"], c["headline"] = "p-rej", "failed to compile (gate 1)"
+        else:
+            c["pill"], c["headline"] = "p-slow", "correct — benchmarks did not run"
+        gens.setdefault(r["generation"], []).append(c)
+    return dict(
+        baseline_ms=baseline, best_ms=best,
+        improvement_pct=_pct(best, baseline),
+        n_accepted=len(accepted),
+        generations=[{"n": g, "cands": cs,
+                      "n_acc": sum(1 for c in cs if c["accepted"])}
+                     for g, cs in sorted(gens.items())])
+
+
 def _job_files(jid):
     base = os.path.join(JOBS_DIR, jid, "run")
     out = []
@@ -337,7 +467,7 @@ def job_page(jid):
     except OSError:
         log = "(no log yet)"
     body = render_template_string(JOB, job=masked(job), log=log,
-                                  files=_job_files(jid))
+                                  files=_job_files(jid), evo=_job_evolution(jid))
     return render_template_string(PAGE, body=body, warn=_env_warnings())
 
 
