@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+runs/
+jobs/
+wandb/
+*.sqlite
+.DS_Store
+.inductor-cache/

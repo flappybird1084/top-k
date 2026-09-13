@@ -1,0 +1,12 @@
+torch>=2.4
+triton
+numpy
+pandas
+python-dotenv
+wandb
+weave
+anthropic
+openai
+marimo
+matplotlib
+flask
