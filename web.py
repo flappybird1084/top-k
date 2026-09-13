@@ -252,12 +252,16 @@ FORM = """
 
 HEADLINE_T = """{% if evo and evo['baseline_ms'] %}
 <div class=head>
- <div>baseline step<br><b>{{ '%.2f'|format(evo['baseline_ms']) }}ms</b></div>
+ {% if evo['eager_ms'] %}<div>eager step (no compile)<br>
+  <b>{{ '%.2f'|format(evo['eager_ms']) }}ms</b></div>{% endif %}
+ <div>torch.compile step<br><b>{{ '%.2f'|format(evo['baseline_ms']) }}ms</b></div>
  <div>best evolved step<br><b>{{ '%.2f'|format(evo['best_ms']) if evo['best_ms']
       else '—' }}{{ 'ms' if evo['best_ms'] else '' }}</b></div>
- <div>speedup vs baseline<br><b class="{{ 'good' if evo['improvement_pct'] else '' }}">
+ <div>vs torch.compile<br><b class="{{ 'good' if evo['improvement_pct'] else '' }}">
   {{ '−%.1f%%'|format(evo['improvement_pct']) if evo['improvement_pct']
      else 'none yet' }}</b></div>
+ {% if evo['vs_eager_pct'] %}<div>vs eager<br>
+  <b class=good>−{{ '%.1f%%'|format(evo['vs_eager_pct']) }}</b></div>{% endif %}
  <div>accepted kernels<br><b>{{ evo['n_accepted'] }}</b></div>
 </div>
 {% endif %}"""
@@ -444,6 +448,12 @@ def _job_evolution(jid):
                      if r["incumbent_step_time_ms"]), None)
     accepted = [r for r in rows if r["accepted"] and r["step_time_ms"]]
     best = min((r["step_time_ms"] for r in accepted), default=None)
+    eager_ms = None
+    try:
+        tj = json.load(open(os.path.join(JOBS_DIR, jid, "run", "targets.json")))
+        eager_ms = tj.get("step_time_ms")
+    except (OSError, ValueError):
+        pass
     gens = {}
     for r in rows:
         if r["generation"] == 0:
@@ -480,8 +490,9 @@ def _job_evolution(jid):
             c["pill"], c["headline"] = "p-slow", "correct — benchmarks did not run"
         gens.setdefault(r["generation"], []).append(c)
     return dict(
-        baseline_ms=baseline, best_ms=best,
+        baseline_ms=baseline, best_ms=best, eager_ms=eager_ms,
         improvement_pct=_pct(best, baseline),
+        vs_eager_pct=_pct(best, eager_ms),
         n_accepted=len(accepted),
         generations=[{"n": g, "cands": cs,
                       "n_acc": sum(1 for c in cs if c["accepted"])}

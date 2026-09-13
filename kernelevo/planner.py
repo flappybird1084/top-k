@@ -37,7 +37,9 @@ def plan(llm, targets: dict, summary: dict, lessons: list[str],
     msgs = prompts.planner_prompt(targets, summary, lessons, n_jobs, generation,
                                   fuse_allowed, search_enabled=can_research)
     jobs = None
-    for round_ in range(MAX_RESEARCH_ROUNDS + 1):
+    research_used = 0
+    empty_retry_used = False
+    for _ in range(MAX_RESEARCH_ROUNDS + 3):
         resp = llm.complete(msgs, json_mode=True,
                             meta={"active_lineages": active, "n_jobs": n_jobs,
                                   "generation": generation})
@@ -47,7 +49,8 @@ def plan(llm, targets: dict, summary: dict, lessons: list[str],
             print(f"[planner] unparseable output ({e}); skipping generation")
             return []
         question = obj.get("research")
-        if question and can_research and round_ < MAX_RESEARCH_ROUNDS:
+        if question and can_research and research_used < MAX_RESEARCH_ROUNDS:
+            research_used += 1
             brief = researchmod.research(researcher_llm, str(question))
             print(f"[planner] research: {str(question)[:70]} -> "
                   f"{len(brief)} char brief")
@@ -56,10 +59,22 @@ def plan(llm, targets: dict, summary: dict, lessons: list[str],
                 {"role": "user", "content":
                  "Research brief:\n" + brief +
                  f'\n\nContinue: one more {{"research": "..."}} '
-                 f'({MAX_RESEARCH_ROUNDS - 1 - round_} left) or the final '
+                 f'({MAX_RESEARCH_ROUNDS - research_used} left) or the final '
                  f'{{"jobs": [...]}}.'}]
             continue
         jobs = obj.get("jobs")
+        # an empty plan silently wastes a whole generation (and a barren tick
+        # per lineage) — push back once before accepting it
+        if isinstance(jobs, list) and not jobs and not empty_retry_used:
+            empty_retry_used = True
+            print("[planner] returned zero jobs; re-prompting once")
+            msgs = msgs + [
+                {"role": "assistant", "content": resp.text},
+                {"role": "user", "content":
+                 f"You proposed zero jobs, which wastes the generation. Propose "
+                 f'between 1 and {n_jobs} jobs now as {{"jobs": [...]}} for the '
+                 f"active lineages."}]
+            continue
         break
     if not isinstance(jobs, list):
         print("[planner] no job list produced; skipping generation")

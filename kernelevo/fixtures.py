@@ -101,6 +101,13 @@ import torch.nn.functional as F
 def kernel(logits, targets, ignore_index=-100):
     return F.cross_entropy(logits, targets, ignore_index=ignore_index)
 ''',
+    "linear_cross_entropy": '''\
+import torch.nn.functional as F
+
+
+def kernel(x, weight, targets, ignore_index=-100):
+    return F.cross_entropy(F.linear(x, weight), targets, ignore_index=ignore_index)
+''',
 }
 
 

@@ -386,6 +386,44 @@ _register(OpDef(
 ))
 
 
+# 10. LM-head projection + cross-entropy as ONE boundary (loss-side fusion the
+# compiler never crosses: candidates may avoid materializing [N, V] logits).
+def _lce_eager(x: torch.Tensor, weight: torch.Tensor, targets: torch.Tensor,
+               ignore_index: int = -100):
+    return _F_CROSS_ENTROPY(F.linear(x, weight), targets, ignore_index=ignore_index)
+
+
+def _lce_make_inputs(op, argspec, device, seed):
+    g = _seeded(seed)
+    x_e, w_e, t_e, ii = argspec
+    x = _make_tensor(x_e, device, g, x_e.get("grad", True))
+    w = _make_tensor(w_e, device, g, w_e.get("grad", True))
+    V = w_e["shape"][0]
+    targets = torch.randint(0, V, t_e["shape"], generator=g).to(device)
+    return [x, w, targets, ii["value"] if ii["kind"] == "scalar" else -100]
+
+
+def _lce_perturb(argspec):
+    spec = json.loads(json.dumps(argspec))
+    spec[0]["shape"][0] += 8
+    spec[2]["shape"][0] += 8
+    return spec
+
+
+_register(OpDef(
+    name="linear_cross_entropy",
+    eager=_lce_eager,
+    signature="kernel(x: Tensor[N, D], weight: Tensor[V, D], targets: LongTensor[N], "
+              "ignore_index: int) -> Tensor[] (scalar)  "
+              "# mean cross_entropy(x @ weight.T, targets), entries with "
+              "targets==ignore_index excluded. nn.Linear weight layout, no bias. "
+              "Must support autograd wrt x and weight.",
+    differentiable=True,
+    make_inputs=_lce_make_inputs,
+    perturb=_lce_perturb,
+))
+
+
 # ---------------------------------------------------------------- adapter-facing API
 
 def ema_update(target, online, momentum):
@@ -422,3 +460,7 @@ def geglu_mlp(x, w1, w2, approximate="none"):
 
 def cross_entropy(logits, targets, ignore_index=-100):
     return _dispatch("cross_entropy", logits, targets, ignore_index)
+
+
+def linear_cross_entropy(x, weight, targets, ignore_index=-100):
+    return _dispatch("linear_cross_entropy", x, weight, targets, ignore_index)

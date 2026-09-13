@@ -175,6 +175,12 @@ Hard requirements:
   custom RMSNorm class) are NOT intercepted automatically — route them through
   ops.rms_norm(x, weight, eps) when the weight is a flat [D] tensor; leave
   norms with oddly-shaped weights native.
+- If the model ends with a bias-free Linear head (tied or untied) whose logits
+  feed a plain cross-entropy loss, route head+loss together in loss_fn:
+  hidden = run the trunk only (stop before the head), then
+  `loss = ops.linear_cross_entropy(hidden.reshape(-1, D), head_weight,
+  targets.reshape(-1))`. This single boundary is the largest optimization
+  surface — prefer it over separate head matmul + ops.cross_entropy.
 - DTYPES: op call sites require x, w, b in the SAME dtype. Repos that cast
   activations to bf16 mid-forward (nanochat does) while keeping fp32 weights
   will crash with "expected mat1 and mat2 to have the same dtype". Fix it

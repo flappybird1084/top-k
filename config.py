@@ -35,10 +35,14 @@ _DEFAULT_PRICE = (5.0, 25.0)
 _COMMON = dict(
     seed=1234,
     device="cuda",
+    # what gets optimized: "train" = full step (fwd+loss+bwd+optimizer, gradients
+    # verified); "inference" = forward-only under no_grad (no autograd required
+    # of kernels; gradient checks skipped as meaningless)
+    objective="train",
     # lineage set = profiler output ∩ allowed_ops (spec §3.3)
     allowed_ops=["ema_update", "masked_gather_add", "layer_norm", "gelu_mlp",
                  "rms_norm", "relu2_mlp", "swiglu_mlp", "geglu_mlp",
-                 "cross_entropy"],
+                 "cross_entropy", "linear_cross_entropy"],
     min_pct_step_time=5.0,
     profile_warmup=20,
     profile_steps=10,

@@ -48,17 +48,26 @@ def time_steps(step, warmup: int, iters: int) -> float:
     return _median_event_time(step, warmup, iters)
 
 
-def make_step(adapter, model, opt, data_iter):
-    def step():
+def make_step(adapter, model, opt, data_iter, objective="train"):
+    def next_batch():
         nonlocal data_iter
         try:
-            batch = next(data_iter)
+            return next(data_iter)
         except StopIteration:
             # Finite loaders (common in generated adapters) cycle: a fresh
             # loader yields the same batches in the same order, so timing
             # stays deterministic across measurements.
             data_iter = iter(adapter.get_dataloader("train"))
-            batch = next(data_iter)
+            return next(data_iter)
+
+    if objective == "inference":
+        def step():
+            with torch.no_grad():
+                return adapter.loss_fn(model, next_batch())
+        return step
+
+    def step():
+        batch = next_batch()
         opt.zero_grad(set_to_none=True)
         loss = adapter.loss_fn(model, batch)
         loss.backward()

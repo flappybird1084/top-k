@@ -328,12 +328,18 @@ def _print_final_summary(archive, model_id, targets):
                      if r["incumbent_step_time_ms"]), targets.get("step_time_ms"))
     accepted = [r for r in rows if r["accepted"] and r["step_time_ms"]]
     best = min(accepted, key=lambda r: r["step_time_ms"], default=None)
+    eager_ms = targets.get("step_time_ms")  # profiled step = eager impls
     print("\n[result] ================= final performance =================")
+    if eager_ms and baseline:
+        print(f"[result] reference: eager (no compile) {eager_ms:.2f}ms | "
+              f"torch.compile incumbents {baseline:.2f}ms")
     if baseline and best:
         pct = 100.0 * (baseline - best["step_time_ms"]) / baseline
+        vs_eager = (f" | {100.0 * (eager_ms - best['step_time_ms']) / eager_ms:+.1f}% "
+                    f"vs eager" if eager_ms else "")
         mfu = f" | MFU {best['mfu']:.3f}" if best.get("mfu") else ""
-        print(f"[result] step time: {baseline:.2f}ms baseline -> "
-              f"{best['step_time_ms']:.2f}ms best ({pct:+.1f}%){mfu} | "
+        print(f"[result] step time: {baseline:.2f}ms torch.compile baseline -> "
+              f"{best['step_time_ms']:.2f}ms best ({pct:+.1f}%){vs_eager}{mfu} | "
               f"{len(accepted)} accepted kernel(s)")
     elif baseline:
         print(f"[result] no kernels accepted — step time unchanged at "
