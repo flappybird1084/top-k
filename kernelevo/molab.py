@@ -27,7 +27,7 @@ import urllib.error
 import urllib.request
 
 REMOTE_DEPS = ["triton", "numpy", "pandas", "python-dotenv", "wandb", "weave",
-               "anthropic", "openai"]
+               "anthropic", "openai", "datasets", "tiktoken"]
 UPLOAD_CHUNK = 400_000  # base64 chars per execute call
 EXCLUDE_DIRS = {".git", "__pycache__", "runs", "jobs", ".venv", "venv", "wandb",
                 "notebooks"}
