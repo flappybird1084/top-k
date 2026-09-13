@@ -4,8 +4,13 @@ from unittest.mock import patch
 import ui_server as ui
 from kernelevo.archive import SCHEMA
 
+
+def finish_discovery(jid):
+ job=ui.web.load_job(jid);job['status']='awaiting_data';ui.web.save_job(job)
+
 class UI(unittest.TestCase):
  def setUp(self):
+  self.discovery=patch.object(ui,'start_discovery',side_effect=finish_discovery);self.discovery.start();self.addCleanup(self.discovery.stop)
   self.tmp=tempfile.TemporaryDirectory();self.p=Path(self.tmp.name);self.old=ui.web.JOBS_DIR;ui.web.JOBS_DIR=str(self.p);self.client=ui.app.test_client()
  def tearDown(self):ui.web.JOBS_DIR=self.old;self.tmp.cleanup()
  def test_create_idempotent_and_data_queue(self):

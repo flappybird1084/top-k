@@ -2,6 +2,8 @@
 const form = document.querySelector('#repo-form');
 const input = document.querySelector('#repository');
 const note = document.querySelector('#form-note');
+// Reset the default after browser form-state restoration on reload.
+window.addEventListener('pageshow',()=>{document.querySelector('#search-mode').value='kernel'});
 const paused = matchMedia('(prefers-reduced-motion: reduce)').matches;
 document.body.classList.toggle('still', paused);
 const sprites = [...document.querySelectorAll('.sprite')];
@@ -21,6 +23,8 @@ const dataDialog=document.querySelector('#data-dialog'), dataForm=document.query
 const dataInput=document.querySelector('#data-link'), dataError=document.querySelector('#data-error');
 const dataCheck=document.querySelector('#data-check'), dataCheckText=document.querySelector('#data-check-text');
 const stop=document.querySelector('#stop-flow');
+let selectedDataset=null;
+dataInput.addEventListener('input',()=>{selectedDataset=null});
 let runId=null,timer=null,posting=false,lastState=null,requestKey=crypto.randomUUID();
 document.querySelector('#search-mode').addEventListener('change',()=>{requestKey=crypto.randomUUID()});
 input.addEventListener('input',()=>{if(!runId)requestKey=crypto.randomUUID()});
@@ -54,8 +58,20 @@ async function poll(){
     const state=await api('/api/runs/'+runId);lastState=state;input.value=state.repo||input.value;input.readOnly=!['failed','cancelled','complete'].includes(state.status);renderActivity(state);
     if(state.connection_error)message(state.connection_error);else message('');
     if(state.status==='awaiting_data'){
+      document.querySelector('#data-caption').textContent=state.message||'Which dataset would you like to use?';
+      document.querySelector('#discovery-summary').textContent=state.discovery_summary||'';
+      const choices=document.querySelector('#dataset-options');choices.replaceChildren();
+      for(const option of state.dataset_options||[]){
+        const button=document.createElement('button');button.type='button';button.className='dataset-option';
+        const title=document.createElement('strong');title.textContent=option.name;
+        const reason=document.createElement('span');reason.textContent=option.reason;button.append(title,reason);
+        button.addEventListener('click',()=>{dataInput.value=option.url;selectedDataset=option.name;dataInput.focus()});
+        const source=document.createElement('a');source.textContent='Source ↗';
+        try{const url=new URL(option.evidence);if(url.protocol==='https:'){source.href=url.href;source.target='_blank';source.rel='noopener noreferrer'}}catch{}
+        const row=document.createElement('div');row.append(button,source);choices.append(row);
+      }
       dataForm.hidden=false;dataCheck.hidden=true;dataForm.querySelector('button').disabled=false;
-      dataError.textContent=state.message&&!state.message.startsWith('Add')&&!state.message.startsWith('Confirm')?state.message:'';
+      dataError.textContent='';
       if(!dataDialog.open)dataDialog.showModal();
       submit.disabled=false;submit.setAttribute('aria-label','Add training data');return;
     }
@@ -63,7 +79,7 @@ async function poll(){
       if(dataDialog.open){dataForm.hidden=true;dataCheck.hidden=false;dataCheckText.textContent=state.message||'Preparing the run…'}
     }
     if(['running','complete'].includes(state.status)){
-      location.href='workspace.html?run='+runId;return;
+      location.href='assets/search.html?run='+runId;return;
     }
     if(['failed','cancelled'].includes(state.status)){
       message(state.message||'The run could not start.');submit.disabled=false;submit.textContent='↻';if(dataDialog.open)dataDialog.close();return;
@@ -84,7 +100,7 @@ form.addEventListener('submit',async e=>{
 dataForm.addEventListener('submit',async e=>{
   e.preventDefault();const button=dataForm.querySelector('button');button.disabled=true;dataError.textContent='';
   try{
-    await api('/api/runs/'+runId+'/data',{method:'POST',body:JSON.stringify({url:dataInput.value.trim()})});
+    await api('/api/runs/'+runId+'/data',{method:'POST',body:JSON.stringify({url:dataInput.value.trim(),dataset_choice:selectedDataset})});
     dataForm.hidden=true;dataCheck.hidden=false;dataCheckText.textContent='Checking data access and the training sample…';poll();
   }catch(err){dataError.textContent=err.message;button.disabled=false}
 });

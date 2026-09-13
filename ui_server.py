@@ -21,6 +21,7 @@ ROOT=Path(__file__).parent
 UI=ROOT/'ui'
 lock=threading.RLock()
 cache={}
+discovery_slots=threading.BoundedSemaphore(2)
 
 def job_path(jid):
     if not re.fullmatch(r'[a-f0-9]{32}',jid):raise ValueError('Invalid run ID')
@@ -75,21 +76,72 @@ def validate_provider(job):
             if keys and not any(env.get(key) for key in keys):
                 raise ValueError('Training is not configured yet. Set '+ ' or '.join(keys)+' on the server, then retry. Your links are saved.')
 
+def discover_repository(jid):
+    from kernelevo.repo_discovery import discover
+    with discovery_slots:
+        with lock:
+            job=read_json(job_path(jid)/'job.json')
+            if not job or job['status']!='exploring':return
+            job['stage']='Inspecting repository training code and searching for dataset sources…'
+            job['discovery_activity']=[{'message':job['stage'],'created_at':time.time()}]
+            web.save_job(job)
+        try:
+            finding=discover(job['repo'])
+            options=[]
+            for option in finding.get('options',[])[:4]:
+                try:
+                    options.append(dict(name=str(option['name'])[:100],url=data_url(option['url']),
+                        reason=redact(str(option.get('reason','')))[:500],evidence=data_url(option['evidence'])))
+                except (KeyError,ValueError,TypeError):continue
+            summary=redact(str(finding.get('summary','Repository review complete.')))[:1000]
+            question=redact(str(finding.get('question','Which dataset would you like to use?')))[:400]
+        except Exception:
+            options=[];summary='Repository search could not identify a dataset. Add your training data link to continue.'
+            question='Which dataset should this run use?'
+        with lock:
+            job=read_json(job_path(jid)/'job.json')
+            if not job or job['status']!='exploring':return
+            job.update(status='awaiting_data',stage=question,dataset_options=options,discovery_summary=summary)
+            job.setdefault('discovery_activity',[]).append({'message':summary,'created_at':time.time()})
+            web.save_job(job)
+
+def start_discovery(jid):
+    threading.Thread(target=discover_repository,args=(jid,),daemon=True).start()
+
+def evaluation_history(root):
+    """Retain started work even if its completion never reaches the archive."""
+    events={}
+    try:
+        with (root/'log.txt').open() as stream:
+            for line in stream:
+                if not line.startswith('[evaluation] '):continue
+                try:
+                    event=json.loads(line[len('[evaluation] '):]);eid=str(event['id'])
+                    if event.get('finished'):
+                        if eid in events:events[eid]['finished']=True
+                    else:events[eid]={**event,'id':eid}
+                except (ValueError,KeyError,TypeError):continue
+    except OSError:pass
+    return list(events.values())
+
 def snapshot(jid):
     root=job_path(jid);job=read_json(root/'job.json')
     if not job:raise FileNotFoundError()
     status={'done':'complete','interrupted':'failed'}.get(job['status'],job['status'])
     result=dict(id=jid,repo=job.get('repo'),data=job.get('data'),status=status,mode=job.get('mode','kernel'),message=job.get('stage',''),candidates=[],traces=[],activity=[],integrations=dict(job.get('integrations',{})))
+    result['related_runs']=job.get('related_runs',{})
+    result['dataset_options']=job.get('dataset_options',[])
+    result['discovery_summary']=job.get('discovery_summary','')
     result['active_evaluations']=list(job.get('active_evaluations',{}).values()) if status=='running' else []
     log=log_tail(root)
-    result['activity']=[{'message':line,'created_at':job['created_at']} for line in log.splitlines() if line.startswith(('[recipe]','[baseline]','[finals]','[agent]','[adapter]','[ingest]','[profile]','[calibrate]','[planner]','[gates]','[gate4]','[loop]'))][-12:]
+    result['activity']=job.get('discovery_activity',[])+[{'message':line,'created_at':job['created_at']} for line in log.splitlines() if line.startswith(('[recipe]','[baseline]','[finals]','[agent]','[adapter]','[ingest]','[profile]','[calibrate]','[planner]','[gates]','[gate4]','[loop]'))][-12:]
     db_path=root/'run/archive.sqlite'
     if db_path.exists():
         with closing(sqlite3.connect(db_path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
             db.row_factory=sqlite3.Row
             rows=[dict(r) for r in db.execute('SELECT c.*,l.op_name FROM candidates c JOIN lineages l ON c.lineage_id=l.id WHERE l.model_id=(SELECT MAX(id) FROM models) ORDER BY c.generation,c.id')]
             for row in rows:
-                candidate={k:row.get(k) for k in ('id','generation','strategy','accepted','gate_reached','step_time_ms','incumbent_step_time_ms','created_at','val_loss','phase','train_secs','model_params','parent_id','failure_note','correct_ok')}
+                candidate={k:row.get(k) for k in ('id','generation','strategy','accepted','gate_reached','step_time_ms','incumbent_step_time_ms','created_at','val_loss','phase','train_secs','model_params','parent_id','parents_json','model_name','failure_note','correct_ok')}
                 candidate['lineage_id']=row['op_name'];result['candidates'].append(candidate)
                 if row.get('weave_trace_url'):result['traces'].append(dict(id=str(row['id']),name=row['op_name'],url=row['weave_trace_url'],ended_at=0,error=None))
             result['architecture']={'candidates':[r for r in result['candidates'] if r.get('phase')]}
@@ -107,6 +159,18 @@ def snapshot(jid):
     targets=read_json(root/'run/targets.json',{})
     if result.get('baseline_ms') and targets.get('step_time_ms'):
         result['profiling']=dict(compiled_step_ms=result['baseline_ms'],eager_step_ms=targets['step_time_ms'],eligible_operations=len(targets.get('lineages',[])),operations_inspected=len(targets.get('lineages',[])))
+    disconnected='lost the notebook session' in log or job.get('connection_lost',False)
+    result['connection_lost']=disconnected
+    archived=result.get('candidates',[])+result.get('architecture',{}).get('candidates',[])
+    pending=[]
+    for event in evaluation_history(root):
+        match=re.match(r'^(\d+)-',event['id'])
+        generation=event.get('generation',int(match[1]) if match else None)
+        if any(r.get('strategy')==event.get('strategy') and (generation is None or r.get('generation')==generation) for r in archived):continue
+        event['generation']=generation
+        event['state']='disconnected' if disconnected else 'awaiting_sync' if event.get('finished') else 'running' if status=='running' else 'interrupted'
+        pending.append(event)
+    result['pending_evaluations']=pending
     result['bpd_comparison']=read_json(root/'run/result.json',{}).get('bpd_comparison',{})
     return result
 
@@ -135,16 +199,17 @@ def create():
     payload=request.get_json() or {}
     repo=repo_url(payload.get('repo',''))
     mode=payload.get('mode','recipe')
-    if mode not in ('recipe','kernel'):raise ValueError('Choose architecture or kernel search')
+    if mode not in ('recipe','kernel','both'):raise ValueError('Choose architecture, kernels, or both')
     key=request.headers.get('Idempotency-Key','')
     if not key:raise ValueError('Missing request identifier')
     jid=hashlib.sha256(key.encode()).hexdigest()[:32]
     with lock:
         old=read_json(job_path(jid)/'job.json')
-        if old and (old.get('repo')!=repo or old.get('mode','kernel')!=mode):raise ValueError('Request identifier already used')
+        if old and (old.get('repo')!=repo or old.get('requested_mode',old.get('mode','kernel'))!=mode):raise ValueError('Request identifier already used')
         if not old:
-            job=dict(id=jid,created_at=time.time(),status='awaiting_data',mode=mode,stage='Add a data link for the adapter agent.',repo=repo,adapter=None,comments='',max_debug_turns=5,profile=os.getenv('KEVO_UI_PROFILE','RUN'),llm=os.getenv('KEVO_UI_LLM') or None,execution_target=os.getenv('KEVO_UI_TARGET','molab'),molab={},wandb={})
+            job=dict(id=jid,created_at=time.time(),status='exploring',mode=mode,requested_mode=mode,stage='Repository agent queued for dataset discovery.',repo=repo,adapter=None,comments='',max_debug_turns=5,profile=os.getenv('KEVO_UI_PROFILE','RUN'),llm=os.getenv('KEVO_UI_LLM') or None,execution_target=os.getenv('KEVO_UI_TARGET','molab'),molab={},wandb={})
             web.save_job(job)
+            start_discovery(jid)
     return {'id':jid},202
 
 @app.post('/api/runs/<jid>/data')
@@ -168,7 +233,22 @@ def submit_data(jid):
             if not connection.get('url') or not connection.get('token'):raise ValueError('Configure KEVO_MOLAB_CONNECTION_FILE on the server before launching')
             job['molab']={'notebook_url':connection['url'],'connection':'--token '+connection['token']}
         job.update(data=url,comments='Use this training data link, preserving its revision and split: '+url+'. Verify data compatibility before optimization. Do not substitute synthetic data.',status='queued',stage='Queued for repository inspection and data verification.')
-        web.save_job(job);web._queue.put(jid)
+        choice=(request.get_json() or {}).get('dataset_choice')
+        selected=next((o for o in job.get('dataset_options',[]) if o['name']==choice and o['url']==url),None)
+        if selected:
+            job['dataset_choice']=selected['name']
+            job['comments']+=' User selected dataset/configuration: '+selected['name']+'. Repository evidence: '+selected['evidence']+'. '+selected['reason']
+        companion=None
+        if job.get('requested_mode',job.get('mode'))=='both':
+            import copy
+            kernel_id=hashlib.sha256((jid+':kernel').encode()).hexdigest()[:32]
+            job.update(mode='recipe',related_runs={'architecture':jid,'kernel':kernel_id})
+            companion=copy.deepcopy(job)
+            companion.update(id=kernel_id,mode='kernel',requested_mode='kernel',stage='Queued after architecture search.')
+            web.save_job(companion)
+        web.save_job(job)
+        web._queue.put(jid)
+        if companion:web._queue.put(companion['id'])
     return {'id':jid},202
 
 @app.get('/api/runs/<jid>/runtime')
@@ -207,8 +287,9 @@ def wandb_metrics(jid):
     except Exception:return {'metrics':[]},503
 
 def start_worker():
-    for job in web.list_jobs():
+    for job in sorted(web.list_jobs(),key=lambda j:(j["created_at"],j.get("related_runs",{}).get("kernel")==j["id"])):
         if job['status']=='running':
             job.update(status='interrupted',stage='Server restarted; inspect remote execution before restarting.');web.save_job(job)
         elif job['status']=='queued':web._queue.put(job['id'])
+        elif job['status']=='exploring':start_discovery(job['id'])
     threading.Thread(target=web._worker,daemon=True).start()

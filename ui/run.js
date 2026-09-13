@@ -1,6 +1,7 @@
 'use strict';
 const q=s=>document.querySelector(s);
 const params=new URLSearchParams(location.search);
+if(document.querySelector('#search-page-link'))document.querySelector('#search-page-link').href='assets/search.html?'+params;
 const escapeHTML=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function safeURL(value,brand=false){try{const url=new URL(value);if(!['https:','http:'].includes(url.protocol)||url.username||url.password)return null;if(brand&&(url.protocol!=='https:'||!['wandb.ai','www.wandb.ai'].includes(url.hostname)))return null;return url.href}catch{return null}}
 function identity(repo,data){if(repo){const url=safeURL(repo);if(url){const parsed=new URL(url);q('#repo-row').hidden=false;q('#repository').textContent=parsed.href;q('#repository').href=url}}if(data&&safeURL(data)){const url=new URL(data);q('#dataset').hidden=false;q('#dataset-link').textContent=url.href;q('#dataset-link').href=url.href}}
@@ -72,6 +73,11 @@ async function refresh(){
   const response=await fetch('/api/runs/'+encodeURIComponent(id),{signal:AbortSignal.timeout(8000),cache:'no-store'});
   if(!response.ok)throw Error('Unavailable');let data=await response.json();
   if(view!==evolution.view)return;
+  if(data.related_runs){
+   for(const kind of ['architecture','kernel'])if(data.related_runs[kind])params.set(kind+'_run',data.related_runs[kind]);
+   const target=params.get(view+'_run');
+   if(target&&target!==id){refresh();return;}
+  }
   if(!evolution.initialized&&!params.has('view'))evolution.view=data.mode==='recipe'?'architecture':'kernel';
   evolution.initialized=true;
   const mode=data.mode==='recipe'?'architecture':'kernel';
