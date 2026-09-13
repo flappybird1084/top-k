@@ -342,7 +342,7 @@ class MolabTarget:
         last_archive_sync = 0.0
         while True:
             time.sleep(poll_interval)
-            if artifacts_dir and time.time() - last_archive_sync > 60:
+            if artifacts_dir and time.time() - last_archive_sync > 10:
                 try:
                     fetch_archive(client, work, artifacts_dir)
                 except Exception:  # noqa: BLE001 — mid-run sync is best-effort

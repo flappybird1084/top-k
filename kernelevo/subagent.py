@@ -14,7 +14,7 @@ from kernelevo.obs import current_trace_url, weave_op
 
 
 @weave_op
-def run_candidate(job: dict, job_index: int, generation: int, ctx) -> dict:
+def _run_candidate(job: dict, job_index: int, generation: int, ctx) -> dict:
     """ctx: loop.GenContext — cfg, runner, pool, lineage/parent lookups, budget checks."""
     cfg = ctx.cfg
     llm = ctx.pool.subagent_for(job_index)
@@ -71,3 +71,11 @@ def run_candidate(job: dict, job_index: int, generation: int, ctx) -> dict:
         result.update(correct_ok=True, gate_reached=2, failure_note=None)
         return result
     return result
+
+
+def run_candidate(job, job_index, generation, ctx):
+    import json,time
+    event=dict(id=f'{generation}-{job_index}',kernel=job['lineage'],strategy=job['strategy'],started_at=time.time(),stage='Generating and checking correctness')
+    print('[evaluation] '+json.dumps(event),flush=True)
+    try:return _run_candidate(job,job_index,generation,ctx)
+    finally:print('[evaluation] '+json.dumps({'id':event['id'],'finished':True}),flush=True)

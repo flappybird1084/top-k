@@ -20,6 +20,7 @@ import argparse
 import json
 import os
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -51,8 +52,12 @@ def load_job(jid):
 
 def save_job(job):
     os.makedirs(os.path.join(JOBS_DIR, job["id"]), exist_ok=True)
-    with open(_job_path(job["id"]), "w") as f:
+    path = _job_path(job["id"])
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
         json.dump(job, f, indent=2)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
 
 
 def list_jobs():
@@ -69,6 +74,7 @@ def list_jobs():
 
 def masked(job):
     j = dict(job)
+    j.pop("molab", None)
     if j.get("wandb", {}).get("api_key"):
         j["wandb"] = {**j["wandb"], "api_key": "••••"}
     return j
@@ -107,6 +113,21 @@ def _run_job(jid):
     def write_line(line):
         logf.write(line.rstrip("\n") + "\n")
         logf.flush()
+        for key,pattern in (('wandb_url',r'https://wandb.ai/[\w.-]+/[\w.-]+/runs/[\w]+'),('weave_url',r'https://wandb.ai/[\w.-]+/[\w.-]+/weave')):
+            matches=re.findall(pattern,line)
+            if matches:
+                job.setdefault('integrations',{})[key]=matches[-1]
+                save_job(job)
+
+        if line.startswith('[evaluation] '):
+            try:
+                event=json.loads(line[len('[evaluation] '):])
+                active=job.setdefault('active_evaluations',{})
+                if event.get('finished'):active.pop(event['id'],None)
+                else:active[event['id']]=event
+                save_job(job)
+            except (ValueError,KeyError):pass
+
         for marker, stage in STAGES:
             if marker in line and job["stage"] != stage:
                 job["stage"] = stage
