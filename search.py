@@ -38,6 +38,10 @@ def main():
     ap.add_argument("--max-generations", type=int, default=None)
     ap.add_argument("--spend-cap", type=float, default=None,
                     help="override spend_cap_usd for this run")
+    ap.add_argument("--mode", default="kernel", choices=["kernel", "recipe"],
+                    help="kernel evolution (default) or recipe-golf")
+    ap.add_argument("--recipe-json", default=None,
+                    help="JSON overrides merged into cfg['recipe']")
     args = ap.parse_args()
 
     import torch
@@ -54,6 +58,9 @@ def main():
         cfg["max_generations"] = args.max_generations
     if args.spend_cap:
         cfg["spend_cap_usd"] = args.spend_cap
+    if args.recipe_json:
+        import json as _json
+        cfg["recipe"].update(_json.loads(args.recipe_json))
 
     if args.repo:
         name = os.path.basename(args.repo.rstrip("/")).replace(".git", "") or "repo"
@@ -85,7 +92,12 @@ def main():
                 args.repo, args.comments,
                 args.max_debug_turns or cfg["max_debug_turns"],
                 out_dir, pool.adapter, cfg["device"], cfg["seed"])
-        loop.run(cfg, adapter_spec, out_dir, only_lineage=args.lineage, pool=pool)
+        if args.mode == "recipe":
+            from kernelevo import recipe_loop
+            recipe_loop.run(cfg, adapter_spec, out_dir, pool=pool)
+        else:
+            loop.run(cfg, adapter_spec, out_dir, only_lineage=args.lineage,
+                     pool=pool)
     except KeyboardInterrupt:
         print("\n[search] interrupted", file=sys.stderr)
         sys.exit(130)

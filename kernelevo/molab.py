@@ -27,7 +27,7 @@ import urllib.error
 import urllib.request
 
 REMOTE_DEPS = ["triton", "numpy", "pandas", "python-dotenv", "wandb", "weave",
-               "anthropic", "openai"]
+               "anthropic", "openai", "datasets", "tiktoken"]
 UPLOAD_CHUNK = 400_000  # base64 chars per execute call
 EXCLUDE_DIRS = {".git", "__pycache__", "runs", "jobs", ".venv", "venv", "wandb",
                 "notebooks"}
@@ -185,18 +185,31 @@ def _fetch_file(client: MolabClient, remote: str, local: str, size: int):
 
 
 def fetch_archive(client: MolabClient, work: str, dest_dir: str) -> bool:
-    """Lightweight mid-run sync of just archive.sqlite so the web UI's evolution
-    panel updates while the run is still going."""
-    remote = work + "/run/archive.sqlite"
+    """Mid-run sync: archive.sqlite plus any NEW candidate/recipe source files,
+    so a terminated sandbox can never take accepted code with it."""
     ok, out, _ = client.run(
-        "import os\n"
-        f"print(os.path.getsize({remote!r}) if os.path.exists({remote!r}) else 0)\n")
+        "import os, json, glob\n"
+        f"_w = {work!r}\n"
+        "_files = []\n"
+        "for _p in ([os.path.join(_w, 'run', 'archive.sqlite')]\n"
+        "           + glob.glob(os.path.join(_w, 'run', 'recipes', '*.py'))\n"
+        "           + glob.glob(os.path.join(_w, 'run', 'candidates', '*.py'))\n"
+        "           + glob.glob(os.path.join(_w, 'run', 'adapter.py'))):\n"
+        "    if os.path.exists(_p):\n"
+        "        _files.append([os.path.relpath(_p, os.path.join(_w, 'run')),\n"
+        "                       os.path.getsize(_p)])\n"
+        "print(json.dumps(_files))\n")
     if not ok:
         return False
-    size = int(out.strip().splitlines()[-1] or 0)
-    if not size:
-        return False
-    return _fetch_file(client, remote, os.path.join(dest_dir, "archive.sqlite"), size)
+    files = json.loads(out.strip().splitlines()[-1])
+    for rel, size in files:
+        local = os.path.join(dest_dir, rel)
+        # source files are immutable once written — skip already-synced ones
+        if rel.endswith(".py") and os.path.exists(local) \
+                and os.path.getsize(local) == size:
+            continue
+        _fetch_file(client, work + "/run/" + rel, local, size)
+    return True
 
 
 def fetch_artifacts(client: MolabClient, work: str, dest_dir: str, write_line) -> int:
@@ -311,6 +324,10 @@ class MolabTarget:
             args += ["--max-generations", str(job["max_generations"])]
         if job.get("spend_cap"):
             args += ["--spend-cap", str(job["spend_cap"])]
+        if job.get("mode") == "recipe":
+            args += ["--mode", "recipe"]
+            if job.get("recipe"):
+                args += ["--recipe-json", json.dumps(job["recipe"])]
 
         env_updates = dict(env_updates,
                            KEVO_RELAY_DIR=work + "/run/search_relay")

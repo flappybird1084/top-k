@@ -49,6 +49,24 @@ Key invariants that hold the design together:
 
 The archive schema (`models`, `calibration`, `lineages`, `candidates`, `generations`, `lessons`) and the planner/subagent/curator prompt contents are specified in the design spec — consult it before changing either.
 
+## Recipe-golf mode (branch `rian-recipe-golf`)
+
+`--mode recipe` (or the web form's mode select) switches from kernel evolution
+to staged evolution over **training recipes**: architecture(+optimizer)
+generations first, then hyperparameter generations (architecture locked to the
+parent by parameter-shape fingerprint), then finals. Signal = held-out
+validation loss after wall-clock-budgeted training. The harness owns
+everything gameable: data, the base adapter's loss, val batches, eval code,
+seeds, budgets, and a parameter cap. Candidates are single files exposing
+`build_model()` / `make_optimizer(model)` / optional `lr_schedule(step)` /
+`TRAIN_HINTS`. Key modules: `kernelevo/recipes.py` (contract + prompts +
+authoring), `kernelevo/recipe_worker.py` (subprocess: budgeted train + holdout
+eval; gates load/param_cap/arch_lock/sanity), `kernelevo/recipe_loop.py`
+(phases → finals). Config: `cfg["recipe"]` (see `RECIPE` in config.py; all
+knobs exposed in the web form and via `--recipe-json`). DEV schedule ≈ 42 min
+GPU: 2×8×60s arch + 1×8×120s hyperparam + 2×300s finals. Wall-clock budgets
+introduce ±1-step noise in val loss — `loss_margin_rel` absorbs it.
+
 ## Running and testing
 
 **Use uv for all Python tooling in this project** (user requirement): install dependencies with `uv pip install -r requirements.txt` / `uv pip install <pkg>` — never bare `pip` — and invoke Python as `uv run python …` (or the project venv's `python`), not `python3`. The molab remote dispatcher also prefers `uv pip` on the notebook, falling back to pip only if uv is absent.
