@@ -63,7 +63,9 @@ def register(prepared,archive):
     for t in prepared['targets']:
         cid='seed_'+t['id']
         archive.put('lineages',id=t['id'],model_id=model['id'],op_name=t['op'],shapes_json=json.dumps(t['shapes']),
-            pct_step_time=t['pct_step_time'],incumbent_id=cid,barren_generations=0,retired=0)
+            pct_step_time=t['pct_step_time'],incumbent_id=None if t.get('fusion_of') else cid,
+            fusion_of=t.get('fusion_of'),call_sites=t.get('call_sites'),barren_generations=0,retired=0)
+        if t.get('fusion_of'):continue
         archive.put('candidates',id=cid,lineage_id=t['id'],generation=0,strategy='Inductor generation-zero incumbent',
             source_kind='inductor',code_path=t['seed_paths'][0],source_hash=source_hash(Path(t['seed_paths'][0]).read_text()),
             model_name='inductor',gate_reached=2,compile_ok=1,correct_ok=1,accepted=1,created_at=time.time(),
@@ -81,18 +83,21 @@ def validated_jobs(raw,archive,generation,limit):
     for job in raw.get('jobs',[])[:limit]:
         lineage=job.get('lineage')
         if lineage not in active: raise ValueError('Planner named unknown/retired lineage: '+str(lineage))
-        parents=job.get('parents') or [active[lineage]['incumbent_id']]
-        fusion=str(job.get('strategy','')).lstrip().upper().startswith('FUSE:')
+        fusion_of=active[lineage].get('fusion_of')
+        fusion=bool(fusion_of) or str(job.get('strategy','')).lstrip().upper().startswith('FUSE:')
+        default_parent=active[lineage]['incumbent_id']
+        if default_parent is None and fusion_of:
+            default_parent=archive.rows('SELECT incumbent_id FROM lineages WHERE id=?',(fusion_of,))[0]['incumbent_id']
+        parents=job.get('parents') or [default_parent]
+        if fusion and generation<2:raise ValueError('Fusion requires generation >=2')
+        if fusion and (not fusion_of or (active[lineage].get('call_sites') or 0)<2):
+            raise ValueError('Fusion requires a discovered executable contract with at least two call sites')
         for parent in parents:
             rows=archive.rows('SELECT * FROM candidates WHERE id=?',(parent,))
             if not rows or not rows[0]['correct_ok']: raise ValueError('Invalid parent: '+parent)
             if fusion and not rows[0]['accepted']: raise ValueError('Fusion requires accepted parents')
-            if rows[0]['lineage_id']!=lineage:
-                # Cross-region fusion requires an executable graph contract. Fail closed
-                # until the planner supplies one through the graph integration layer.
-                raise ValueError('Cross-region fusion is not supported by the current module integration backend')
-        if fusion and generation<2: raise ValueError('Fusion requires generation >=2')
-        if fusion:raise ValueError('Executable cross-region fusion contract is not implemented yet')
+            if rows[0]['lineage_id'] not in ({lineage,fusion_of} if fusion else {lineage}):
+                raise ValueError('Parent is outside this executable operation/fusion contract')
         selected.append(dict(lineage=lineage,strategy=str(job['strategy']),parents=parents,fusion=fusion))
     if not selected: raise ValueError('Planner returned no valid jobs')
     return selected
@@ -116,6 +121,10 @@ def source_prompt(job,archive,targets):
         'These returned tensors ARE the gradients; no second-order derivative is requested. For other operations expose '
         'autograd through all differentiable inputs. For ema_update the contract is kernel(target,source,decay)->Tensor; '
         'return target*decay + source*(1-decay), preserve shape/dtype, and do not mutate inputs. '
+        'For fused_ema_update: kernel(*args) takes target0,source0,target1,source1,...,decay; '
+        'returns a tuple with one EMA result per target/source pair in order. All pairs are independent. '
+        'Fuse their computation into Triton launches; preserve each shape/dtype and never mutate inputs. '
+        'The number of pairs is the number of selected call sites, not a single tensor dimension. '
         'Return JSON with source only. Do not execute tools or grade your own output.',
         strategy=job['strategy'],shapes=target['shapes'],parents=parents,
         eager_reference=reference.read_text()[:4000],lessons=archive.lessons(),fetched_triton_reference=reference_snippets,
@@ -248,7 +257,7 @@ def run(args,cfg,archive,prepared):
         for gen in range(previous+1,cfg['max_generations']+1):
             if time.monotonic()>=deadline:stop='run_deadline';break
             if budget.spent>=budget.limit:stop='spend_cap_usd';break
-            active=archive.rows('SELECT * FROM lineages WHERE retired=0')
+            active=archive.rows('SELECT * FROM lineages WHERE retired=0 AND (fusion_of IS NULL OR ? >= 2)',(gen,))
             if not active:stop='all_lineages_retired';break
             gen_deadline=min(deadline,time.monotonic()+cfg['gen_wallclock_s'])
             archive.put('generations',id=gen,model_id=args.adapter,started_at=time.time(),n_candidates=0,n_accepted=0,llm_usd=budget.spent)
@@ -263,8 +272,10 @@ def run(args,cfg,archive,prepared):
                     cached_plan=archive.rows('SELECT results_json FROM search_cache WHERE query=?',(f'recovery_planner:{gen}',))
                     raw=json.loads(cached_plan[0]['results_json']) if cached_plan else planner.complete([{'role':'user','content':json.dumps(dict(
                         task=f'Propose {cfg["candidates_per_gen"]} distinct specific Triton optimization strategies. '
-                        'Use existing lineage IDs and parent IDs. Target module contracts cannot yet express cross-region fusion; '
-                        'do not propose cross-region fusion. You may use native web search for prior art. JSON only.',
+                        'Use existing lineage IDs and parent IDs. From generation 2, targets with fusion_of support FUSE jobs '
+                        'across the listed call sites; one accepted parent may seed multiple call sites. '
+                        'Do not fuse unrelated operations without a listed executable contract. '
+                        'You may use native web search for prior art. JSON only.',
                         generation=gen,targets=prepared['targets'],archive=archive.summary(gen),lessons=archive.lessons()))}],
                         json_mode=True,schema=JOB_SCHEMA,timeout=min(cfg['max_call_seconds'],gen_deadline-time.monotonic()))
                     jobs=validated_jobs(raw,archive,gen,cfg['candidates_per_gen'])

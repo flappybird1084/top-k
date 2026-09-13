@@ -10,7 +10,7 @@ files = {}
 for folder in ['kernel_evolution', 'adapters', 'tests']:
     for p in (root/folder).rglob('*.py'):
         files[str(p.relative_to(root))] = base64.b64encode(p.read_bytes()).decode()
-for name in ['config.py', 'search.py', 'pyproject.toml', 'README.md', 'IMPLEMENTATION_NOTES.md','PILOT_RESULTS.md']:
+for name in ['config.py', 'search.py', 'pyproject.toml', 'README.md', 'IMPLEMENTATION_NOTES.md','PILOT_RESULTS.md','FUSION_RESULTS.md']:
     p = root/name
     if p.exists():
         files[name] = base64.b64encode(p.read_bytes()).decode()

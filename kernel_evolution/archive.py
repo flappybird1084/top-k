@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS models(id TEXT PRIMARY KEY, name TEXT, adapter_path T
 CREATE TABLE IF NOT EXISTS calibration(model_id TEXT PRIMARY KEY, noise_spread REAL, gate3_margin REAL,
  gate4_margin REAL, tol_json TEXT, cheats_rejected INTEGER, details_json TEXT);
 CREATE TABLE IF NOT EXISTS lineages(id TEXT PRIMARY KEY, model_id TEXT, op_name TEXT, shapes_json TEXT,
- pct_step_time REAL, incumbent_id TEXT, barren_generations INTEGER DEFAULT 0, retired INTEGER DEFAULT 0);
+ pct_step_time REAL, incumbent_id TEXT, barren_generations INTEGER DEFAULT 0, retired INTEGER DEFAULT 0,
+ fusion_of TEXT, call_sites INTEGER);
 CREATE TABLE IF NOT EXISTS candidates(id TEXT PRIMARY KEY, lineage_id TEXT, generation INTEGER,
  parent_id TEXT, parents_json TEXT, strategy TEXT, source_kind TEXT, code_path TEXT, source_hash TEXT,
  model_name TEXT, weave_trace_url TEXT, wandb_run_url TEXT, gate_reached INTEGER DEFAULT 0,
@@ -46,6 +47,10 @@ class Archive:
         self.db.execute('PRAGMA journal_mode=WAL')
         self.db.execute('PRAGMA synchronous=FULL')
         self.db.executescript(SCHEMA)
+        columns={r['name'] for r in self.db.execute('PRAGMA table_info(lineages)')}
+        for name,kind in [('fusion_of','TEXT'),('call_sites','INTEGER')]:
+            if name not in columns:self.db.execute(f'ALTER TABLE lineages ADD COLUMN {name} {kind}')
+        self.db.commit()
 
     def rows(self, sql, args=()):
         with self.lock:

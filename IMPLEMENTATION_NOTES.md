@@ -56,6 +56,9 @@ Verification decisions:
   account for measurement noise; do not lower them to create an acceptance.
 - Add an optional post-optimizer adapter hook for EMA. Use a graph integration
   layer with argument, gradient, and mutation contracts for replacement/fusion.
+- User clarification: fusion may combine multiple call sites of the same accepted
+  kernel. Independent EMA call sites are now integrated; unrelated graph operations
+  and arbitrary site subsets still require an executable contract.
 - Disposable CUDA workers permit recovery when the GPU remains healthy; device
   failure may require stopping rather than claiming a guaranteed GPU reset.
 

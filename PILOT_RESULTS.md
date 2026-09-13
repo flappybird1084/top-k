@@ -23,7 +23,8 @@ and the generated candidate sources have been retrieved to the local workspace.
 | Curator | $0.2383768 |
 
 Dollar amounts estimate token cost at the configured published API rates. They
-are not an OAuth subscription invoice or a measurement of GPU rental costs.
+cover calls issued by the search harness. Interactive implementation work in this
+Codex task and GPU rental costs are excluded; this is not an OAuth subscription invoice.
 
 The workload was a 5,922,816-parameter JEPA-style model, batch 16, CIFAR-10 resized
 to 64px, FP32 on an RTX PRO 6000 Blackwell Server Edition. Profiling selected EMA

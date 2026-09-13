@@ -6,7 +6,7 @@ same numerical and complete-step gates as a single-region candidate.
 """
 from dataclasses import dataclass
 import torch
-from kernel_evolution.ops import EMARegion,ema_update
+from kernel_evolution.ops import EMARegion,fused_ema_update
 
 
 @dataclass
@@ -51,9 +51,7 @@ def arguments(bindings):
     return (*[value for b in bindings for value in (b.target,b.source)],bindings[0].decay)
 
 
-def reference(*args):
-    if (len(args)-1)%2:raise ValueError('Expected target/source pairs followed by decay')
-    return tuple(ema_update(t,s,args[-1]) for t,s in zip(args[:-1:2],args[1:-1:2]))
+reference=fused_ema_update
 
 
 def composed(parent):

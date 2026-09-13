@@ -5,6 +5,7 @@ import statistics
 import sys
 import time
 import traceback
+from unittest.mock import patch
 from pathlib import Path
 import torch
 from kernel_evolution.runtime import Harness, inductor_seed, load_source, cuda_times, summarize, clone
@@ -29,6 +30,7 @@ def prepare(request):
     cheat_results={}
     for target in profile['targets']:
         if not target['eligible']: continue
+        if target.get('fusion_of'):continue
         op=target['id']
         cases=case_list(harness.cases,op)
         seed,sources=inductor_seed(op,cases,root/'seeds')
@@ -40,12 +42,14 @@ def prepare(request):
         seeds[op]=seed
         floors[op]=gate2(op,seed,cases,cfg,floor=True)
     targets=[t for t in profile['targets'] if t['eligible']]
+    for t in targets:
+        if t.get('fusion_of'):
+            parent=next(p for p in targets if p['id']==t['fusion_of'])
+            t['seed_paths']=parent['seed_paths']
+            t['eager_reference']='kernel_evolution.ops.fused_ema_update'
     if not targets:
         return dict(status='no_targets',profile=profile)
     cfg=dict(cfg)
-    from triton.runtime import driver
-    target=driver.active.get_current_target()
-    cfg['gpu_target']=dict(backend=target.backend,arch=target.arch,warp_size=target.warp_size)
     from triton.runtime import driver
     target=driver.active.get_current_target()
     cfg['gpu_target']=dict(backend=target.backend,arch=target.arch,warp_size=target.warp_size)
@@ -53,7 +57,8 @@ def prepare(request):
     cfg['rtol']=max(cfg['rtol'],2*max(v['max_rel'] for v in floors.values()))
     for target in targets:
         op=target['id']
-        gate2(op,seeds[op],case_list(harness.cases,op),cfg)
+        if not target.get('fusion_of'):
+            gate2(op,seeds[op],case_list(harness.cases,op),cfg)
         cheat_results[op]=selftest(op,case_list(harness.cases,op),cfg)
     # Calibrate isolated and full-step drift over the same five-minute interval.
     samples=[]
@@ -96,8 +101,17 @@ def evaluate(request):
         selected=case_list(cases,op)
         fn=load_source(request['code_path'])
         result['details']['source_flags']=source_scan(Path(request['code_path']).read_text())
-        fn(*clone(selected[0]['args']))
+        from triton.runtime.jit import JITFunction
+        launch=JITFunction.run
+        launches=[]
+        def track(jit,*args,**kwargs):
+            if not kwargs.get('warmup',False):launches.append(jit.__name__)
+            return launch(jit,*args,**kwargs)
+        with patch.object(JITFunction,'run',track):
+            fn(*clone(selected[0]['args']))
         torch.cuda.synchronize()
+        if not launches:raise TypeError('Candidate entry point launched no Triton JIT kernel')
+        result['details']['modal_triton_launches']=launches
         result.update(compile_ok=1,gate_reached=2)
         result['details']['correctness']=gate2(op,fn,selected,cfg)
         result.update(correct_ok=1,gate_reached=3)
@@ -108,7 +122,11 @@ def evaluate(request):
             if path is None:
                 incumbents[name],_=inductor_seed(name,case_list(cases,name),root/'seeds_runtime')
             else: incumbents[name]=load_source(path)
-        micro=gate3(op,incumbents[op],fn,selected,cfg)
+        baseline=incumbents.get(op)
+        if op=='fused_ema_update' and baseline is None:
+            from kernel_evolution.fusion import composed
+            baseline=composed(incumbents['ema_update'])
+        micro=gate3(op,baseline,fn,selected,cfg)
         result['details']['gate3']=micro
         result.update(latency_us=micro['candidate']*1000,incumbent_latency_us=micro['baseline']*1000)
         if micro['status']!='pass':

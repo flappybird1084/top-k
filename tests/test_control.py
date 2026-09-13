@@ -130,6 +130,15 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(result['repairs_used'],1)
         self.assertEqual(provider.call_args.kwargs['model'],'gpt-5.6-sol')
 
+    def test_fusion_can_reuse_one_accepted_kernel_across_many_sites(self):
+        self.archive.put('lineages',id='ema',incumbent_id='seed',retired=0)
+        self.archive.put('lineages',id='fused_ema',fusion_of='ema',call_sites=77,retired=0)
+        self.archive.put('candidates',id='seed',lineage_id='ema',correct_ok=1,accepted=1)
+        raw={'jobs':[{'lineage':'fused_ema','parents':['seed'],'strategy':'FUSE: all EMA call sites'}]}
+        with self.assertRaises(ValueError):validated_jobs(raw,self.archive,1,4)
+        jobs=validated_jobs(raw,self.archive,2,4)
+        self.assertTrue(jobs[0]['fusion'])
+        self.assertEqual(jobs[0]['parents'],['seed'])
 
 
 if __name__=='__main__':unittest.main()

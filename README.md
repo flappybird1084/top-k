@@ -2,12 +2,16 @@
 
 An evolutionary Triton search with a deterministic verifier, SQLite archive,
 Codex OAuth model calls, and optional W&B/Weave observation. The current GPU-tested
-slice runs JEPA-style EMA replacement through all four gates. It is not yet the
+slice runs JEPA-style EMA replacement and fusion across independent EMA call sites
+through all four gates. It is not yet the
 entire Design Spec v3.
 
 The first Sol pilot is complete: five evaluated generations, 20 candidates,
 $2.7142 in token-equivalent cost, and no confirmed speedup after a baseline audit.
 See [PILOT_RESULTS.md](PILOT_RESULTS.md) for preserved evidence and the corrections.
+The subsequent handwritten fusion fixture reduced step time by 14.2% against a
+fresh direct-Inductor baseline; see [FUSION_RESULTS.md](FUSION_RESULTS.md). This
+validates the implementation, and is separate from the Sol pilot's search results.
 
 The first live pilot uses GPT-5.6 Sol, four candidates per generation, at most five
 generations, and a $100 API-equivalent ceiling. The ceiling is a guardrail, not a
@@ -53,6 +57,21 @@ four-block measurement; uncertain results are archived as inconclusive. Each
 candidate's GPU work runs in a disposable process. A timeout kills its process
 group; persistent device failure may require stopping the environment.
 
+CPU workers capture modal Triton launches using fake tensors, compile for the
+recorded GPU target without initializing CUDA, and cache source/shape/target
+artifacts before joining the GPU queue. Unsupported host scaffolding is deferred
+to the GPU worker. Autotuning measurements and additional autograd compilation
+remain on the GPU. Repair calls release the GPU lock. `compile_workers` and
+`llm_concurrency` bound the workers; `subagent_models` optionally alternates models,
+and each repair retains its candidate's original model.
+
+From generation 2, a discovered `fused_ema_update` target may fuse all independent
+EMA call sites using one or more accepted parent kernels. Its parent EMA lineage
+and unfused variants remain available. Fusion tracing rejects aliases, dependencies,
+and hooks with other state mutations. The complete tuple of EMA updates is the
+unit of isolated comparison; gate 4 compares the original unfused hook with the
+fused replacement. Normal timing excludes profiler labels.
+
 Demo data is publicly available:
 
 - JEPA-style ViT: 5,922,816 total parameters, CIFAR-10 resized to 64px, fixed 4x4
@@ -84,12 +103,13 @@ Remaining v3 work is explicit:
   the outer Dynamo wrapper. They are compiled per region; this is not a whole-step Inductor
   baseline. Report speedups against the named baseline and include native eager
   step time when interpreting results.
-- Cross-region fusion and CPU compilation overlapping GPU verification are not
-  implemented. Cross-region fusion proposals fail closed.
+- Fusion currently covers independent EMA call sites. Arbitrary cross-operation
+  graph fusion and selecting arbitrary subsets of sites are not yet implemented;
+  proposals without an executable contract fail closed.
 - The active provider is Codex OAuth. Other provider adapters, retrieved-source
   candidate ingestion, and native-search result caching still need completion.
-  `providers.py` contains API adapter prototypes and `fusion.py` an experimental
-  EMA fusion contract; neither is connected to the live search.
+  `providers.py` contains API adapter prototypes that are not connected to the
+  live search.
 - W&B/Weave mirroring exists, but the full requested panel set, complete provider
   child-span coverage, and all trace URL fields need further integration.
 

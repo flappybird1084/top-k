@@ -69,9 +69,12 @@ def kernel(target,source,decay):
 
 
 def fixture(index,op):
-    if op not in {'layer_norm_backward','ema_update'}:
-        return f'from kernel_evolution.ops import {op} as kernel\n', 'fixture_reference'
-    base=NORM if op=='layer_norm_backward' else EMA
+    if op=='fused_ema_update':
+        from kernel_evolution.fusion import FIXTURE
+        base=FIXTURE
+    elif op in {'layer_norm_backward','ema_update'}:
+        base=NORM if op=='layer_norm_backward' else EMA
+    else:raise ValueError('No Triton fixture is implemented for '+op+'; eager is never a candidate')
     kind=index%4
     if kind==0: return base,'fixture_triton'
     if kind==1: return base.replace('tl.load(','tl.api_does_not_exist('),'fixture_compile_failure'

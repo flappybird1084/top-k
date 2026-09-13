@@ -62,6 +62,14 @@ def fresh_args(op, case, seed, unseen=False):
         shape=list(t.shape)
         if unseen: shape[0]+=7
         return torch.randn(shape,device=t.device,dtype=t.dtype),torch.randn(shape,device=s.device,dtype=s.dtype),d
+    if op=='fused_ema_update':
+        fresh=[]
+        for t,s in zip(args[:-1:2],args[1:-1:2]):
+            shape=list(t.shape)
+            if unseen:shape[0]+=7
+            fresh.extend([torch.randn(shape,device=t.device,dtype=t.dtype),
+                          torch.randn(shape,device=s.device,dtype=s.dtype)])
+        return (*fresh,args[-1])
     if op=='masked_gather_add':
         x,p,ix=args
         b,t,d=x.shape

@@ -70,6 +70,13 @@ class Harness:
         if self.loss.ndim != 0 or not self.loss.requires_grad or not torch.isfinite(self.loss):
             raise ValueError('Adapter loss must be scalar, finite, and require grad')
         self.model = instrument(self.model)
+        self.replacements={}
+        self.fusion_issue=None
+        from kernel_evolution.fusion import capture_ema_bindings
+        try:self.ema_bindings=capture_ema_bindings(self.model,getattr(self.adapter,'post_optimizer_step',None))
+        except ValueError as exc:
+            self.ema_bindings=[]
+            self.fusion_issue=str(exc)
         self.optimizer = torch.optim.AdamW([p for p in self.model.parameters() if p.requires_grad],
             lr=1e-4, betas=(.9,.999), eps=1e-8, weight_decay=.01, foreach=False)
         self.snapshot = clone(self.model.state_dict())
@@ -88,7 +95,11 @@ class Harness:
         loss.backward()
         self.optimizer.step()
         hook = getattr(self.adapter,'post_optimizer_step',None)
-        if hook:
+        if 'fused_ema_update' in self.replacements:
+            if not self.ema_bindings:raise ValueError('This adapter has no verified independent EMA fusion sites')
+            from kernel_evolution.fusion import apply
+            apply(self.ema_bindings,self.replacements['fused_ema_update'])
+        elif hook:
             hook(self.model)
         return loss.detach()
 
@@ -105,9 +116,13 @@ class Harness:
         self.restore()
         for _ in range(self.config['profile_warmup']): self.step()
         torch.cuda.synchronize()
-        with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU,torch.profiler.ProfilerActivity.CUDA],
-                                    record_shapes=True) as prof:
-            for _ in range(self.config['profile_steps']): self.step()
+        try:
+            for r in regions(self.model):r.profiling=True
+            with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU,torch.profiler.ProfilerActivity.CUDA],
+                                        record_shapes=True) as prof:
+                for _ in range(self.config['profile_steps']):self.step()
+        finally:
+            for r in regions(self.model):r.profiling=False
         torch.cuda.synchronize()
         step_ms = statistics.median(cuda_times(self.step,10,3))
         table = {e.key: float(e.device_time_total)/self.config['profile_steps']/1000
@@ -120,17 +135,30 @@ class Harness:
             targets.append(dict(id=name,op=name,pct_step_time=pct,op_time_ms=op_ms,
                 eligible=name in self.config['allowed_ops'] and pct>=self.config['min_pct_step_time'],
                 shapes=[dict(args=e['description'],count=e['count']) for e in entries]))
+        ema=next((t for t in targets if t['id']=='ema_update' and t['eligible']),None)
+        if self.ema_bindings and ema:
+            from kernel_evolution.fusion import arguments
+            args=clone(arguments(self.ema_bindings))
+            description=describe(args)
+            self.cases['fused_ema_update']={json.dumps(description,sort_keys=True):
+                dict(args=args,count=1,description=description)}
+            targets.append(dict(id='fused_ema_update',op='fused_ema_update',fusion_of='ema_update',
+                available_from_generation=2,call_sites=len(self.ema_bindings),
+                pct_step_time=ema['pct_step_time'],op_time_ms=ema['op_time_ms'],eligible=True,
+                shapes=[dict(args=description,count=1)]))
         torch.save(self.cases,self.run_dir/'cases.pt')
         self.restore()
-        return dict(targets=targets,step_time_ms=step_ms,
+        return dict(targets=targets,step_time_ms=step_ms,fusion_issue=self.fusion_issue,
                     profiler_table=prof.key_averages().table(sort_by='self_cuda_time_total',row_limit=40))
 
     def time_set(self, replacements):
+        self.replacements=replacements
         install(self.model,replacements)
         self.restore()
         return cuda_times(self.step,self.config['timed_steps'],self.config['warmup_steps'])
 
     def state_after_step(self,replacements):
+        self.replacements=replacements
         install(self.model,replacements)
         self.restore()
         loss=self.step()
@@ -140,6 +168,7 @@ class Harness:
     def flops(self):
         from torch.utils.flop_counter import FlopCounterMode
         self.restore()
+        self.replacements={}
         install(self.model,{})
         with FlopCounterMode(display=False) as counter:
             self.adapter.loss_fn(self.model,self.batch).backward()

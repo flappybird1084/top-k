@@ -1,5 +1,6 @@
 """Model-independent operation contracts and autograd bridges."""
 import torch
+from contextlib import nullcontext
 from torch import nn
 from torch.nn import functional as F
 
@@ -13,6 +14,12 @@ def ema_update(target, source, decay):
     return target*decay+source*(1.-decay)
 
 
+def fused_ema_update(*args):
+    """Independent target/source pairs, followed by one shared scalar decay."""
+    if len(args)<5 or (len(args)-1)%2:raise ValueError('Expected at least two target/source pairs and decay')
+    return tuple(ema_update(t,s,args[-1]) for t,s in zip(args[:-1:2],args[1:-1:2]))
+
+
 def masked_gather_add(x, positions, indices):
     return torch.gather(x+positions, 1, indices.unsqueeze(-1).expand(-1, -1, x.shape[-1]))
 
@@ -22,7 +29,7 @@ def gelu_mlp(x, weight, bias):
 
 
 REFERENCES = dict(layer_norm_backward=layer_norm_backward, ema_update=ema_update,
-                  masked_gather_add=masked_gather_add, gelu_mlp=gelu_mlp)
+                  masked_gather_add=masked_gather_add, gelu_mlp=gelu_mlp,fused_ema_update=fused_ema_update)
 
 
 class Region(nn.Module):
@@ -31,6 +38,10 @@ class Region(nn.Module):
         super().__init__()
         self.candidate = None
         self.observe = None
+        self.profiling=False
+
+    def record(self):
+        return torch.profiler.record_function('kernel_evolution::'+self.op_name) if self.profiling else nullcontext()
 
     def invoke(self, *args):
         if self.observe:
@@ -49,7 +60,7 @@ class NormFunction(torch.autograd.Function):
     @staticmethod
     def backward(ctx, dy):
         x, weight, mean, rstd = ctx.saved_tensors
-        with torch.profiler.record_function('kernel_evolution::layer_norm_backward'):
+        with ctx.region.record():
             dx, dw, db = ctx.region.invoke(x, dy.contiguous(), weight, mean, rstd)
         return dx, dw, db, None, None
 
@@ -66,14 +77,14 @@ class LayerNormRegion(Region):
 class EMARegion(Region):
     op_name = 'ema_update'
     def forward(self, target, source, decay):
-        with torch.profiler.record_function('kernel_evolution::ema_update'):
+        with self.record():
             return self.invoke(target, source, decay)
 
 
 class GatherRegion(Region):
     op_name = 'masked_gather_add'
     def forward(self, x, positions, indices):
-        with torch.profiler.record_function('kernel_evolution::masked_gather_add'):
+        with self.record():
             return self.invoke(x, positions, indices)
 
 
@@ -83,7 +94,7 @@ class MLPRegion(Region):
         super().__init__()
         self.weight, self.bias = linear.weight, linear.bias
     def forward(self, x):
-        with torch.profiler.record_function('kernel_evolution::gelu_mlp'):
+        with self.record():
             return self.invoke(x, self.weight, self.bias)
 
 
