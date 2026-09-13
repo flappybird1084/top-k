@@ -2,7 +2,7 @@ import json
 import time
 from pathlib import Path
 from typing import Protocol
-from kernel_evolution.budget import Budget
+from kernel_evolution.budget import Budget,PRICES
 from kernel_evolution.processes import run_worker
 
 
@@ -16,6 +16,8 @@ def usage_tokens(usage):
     # App-server reports both cumulative total and last-turn counts. Each lifecycle
     # starts a fresh thread, so use total to include native-search/tool turns.
     u=usage.get('total',usage)
+    if not isinstance(u,dict) or not any(k in u for k in ('input_tokens','inputTokens')) or not any(k in u for k in ('output_tokens','outputTokens')):
+        return None
     def get(snake,camel): return u.get(snake,u.get(camel,0))
     return dict(input_tokens=get('input_tokens','inputTokens'),
                 cached_input_tokens=get('cached_input_tokens','cachedInputTokens'),
@@ -26,6 +28,7 @@ class CodexOAuthLLM:
     def __init__(self,archive,config,run_dir,role,model=None):
         self.archive,self.config,self.root,self.role=archive,config,Path(run_dir),role
         self.model=model or config[role+'_llm']
+        if self.model not in PRICES:raise ValueError('Configure verified token pricing before using '+self.model)
         self.budget=Budget(archive,config['spend_cap_usd'])
         self.generation=0
 

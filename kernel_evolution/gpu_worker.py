@@ -46,6 +46,9 @@ def prepare(request):
     from triton.runtime import driver
     target=driver.active.get_current_target()
     cfg['gpu_target']=dict(backend=target.backend,arch=target.arch,warp_size=target.warp_size)
+    from triton.runtime import driver
+    target=driver.active.get_current_target()
+    cfg['gpu_target']=dict(backend=target.backend,arch=target.arch,warp_size=target.warp_size)
     cfg['atol']=max(cfg['atol'],2*max(v['max_abs'] for v in floors.values()))
     cfg['rtol']=max(cfg['rtol'],2*max(v['max_rel'] for v in floors.values()))
     for target in targets:

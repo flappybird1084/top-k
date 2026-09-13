@@ -128,9 +128,10 @@ def source_prompt(job,archive,targets):
 @op
 def implement(job,index,generation,archive,cfg,root,targets,deadline):
     cid=f'cand_{generation:02d}_{index:02d}_{uuid.uuid4().hex[:6]}'
+    model=subagent_model(cfg,generation,index)
     if cfg['llm']=='stub': source,kind=fixture((generation-1)*cfg['candidates_per_gen']+index,job['lineage'])
     else:
-        llm=CodexOAuthLLM(archive,cfg,root,'subagent');llm.generation=generation
+        llm=CodexOAuthLLM(archive,cfg,root,'subagent',model=model);llm.generation=generation
         source=llm.complete([{'role':'user','content':source_prompt(job,archive,targets)}],json_mode=True,
             schema=SOURCE_SCHEMA,timeout=min(cfg['max_call_seconds'],max(1,deadline-time.monotonic())))['source']
         kind='fusion' if job.get('fusion') else 'mutation'
@@ -139,39 +140,16 @@ def implement(job,index,generation,archive,cfg,root,targets,deadline):
     path.write_text(source)
     return dict(id=cid,lineage_id=job['lineage'],generation=generation,parent_id=job['parents'][0],
         parents_json=json.dumps(job['parents']),strategy=job['strategy'],source_kind=kind,code_path=str(path),
-        source_hash=source_hash(source),model_name='stub' if cfg['llm']=='stub' else cfg['subagent_llm'],created_at=time.time())
+        source_hash=source_hash(source),model_name=model,created_at=time.time())
 
 
-@op
-def verify(candidate,archive,cfg,root,args,prepared,deadline):
-    repairs=0
-    while True:
-        remaining=deadline-time.monotonic()
-        if remaining<=0:
-            result=dict(gate_reached=0,compile_ok=0,correct_ok=0,accepted=0,failure_note='gen_timeout');break
-        request=dict(action='evaluate',config=cfg,run_dir=str(root),adapter=args.adapter,
-            op=candidate['lineage_id'],code_path=candidate['code_path'],incumbents=incumbents(archive),
-            flops_per_sample=prepared['model']['flops_per_sample'],peak_flops=prepared['model']['peak_flops'])
-        result=run_worker('kernel_evolution.gpu_worker',request,root/'workers',remaining)
-        if result.get('status') in {'timeout','crash'}:
-            result.update(gate_reached=0,compile_ok=0,correct_ok=0,accepted=0)
-            break
-        if result.get('correct_ok') or repairs>=cfg['max_repairs'] or cfg['llm']=='stub':break
-        llm=CodexOAuthLLM(archive,cfg,root,'subagent');llm.generation=candidate['generation']
-        prompt=json.dumps({'task':'Repair this candidate. Return source only as JSON. Keep the same strategy and signature. '
-            'Do not execute commands. Raw external verifier feedback follows.',
-            'source':Path(candidate['code_path']).read_text(),'feedback':result.get('failure_note')})
-        try:
-            remaining=deadline-time.monotonic()
-            if remaining<=0:break
-            repaired=llm.complete([{'role':'user','content':prompt}],json_mode=True,schema=SOURCE_SCHEMA,
-                                 timeout=min(cfg['max_call_seconds'],remaining))['source']
-        except BudgetExceeded:break
-        original=Path(candidate['code_path'])
-        original.with_suffix(f'.repair{repairs}.py').write_text(original.read_text())
-        original.write_text(repaired)
-        candidate['source_hash']=source_hash(repaired)
-        repairs+=1
+def subagent_model(cfg,generation,index):
+    if cfg['llm']=='stub':return 'stub'
+    models=cfg.get('subagent_models') or [cfg['subagent_llm']]
+    return models[((generation-1)*cfg['candidates_per_gen']+index)%len(models)]
+
+
+def save_result(candidate,result,repairs,archive):
     candidate.update({k:v for k,v in result.items() if k in {
         'gate_reached','compile_ok','correct_ok','accepted','failure_note','latency_us','incumbent_latency_us',
         'step_time_ms','incumbent_step_time_ms','samples_per_s','mfu'}})
@@ -184,10 +162,74 @@ def verify(candidate,archive,cfg,root,args,prepared,deadline):
 
 
 @op
-def candidate_lifecycle(job,index,generation,archive,cfg,root,args,prepared,deadline,gpu_lock):
+def compile_offline(candidate,cfg,root,prepared,deadline,compile_lock):
+    target=next(t for t in prepared['targets'] if t['id']==candidate['lineage_id'])
+    gpu_target=prepared['config'].get('gpu_target')
+    if not gpu_target:return dict(status='deferred',reason='No recorded GPU compilation target')
+    with compile_lock:
+        remaining=deadline-time.monotonic()
+        if remaining<=0:return dict(status='timeout',failure_note='gen_timeout')
+        return run_worker('kernel_evolution.compile_worker',dict(code_path=candidate['code_path'],
+            args=target['shapes'][0]['args'],gpu_target=gpu_target,cache_dir=str(root/'compile_cache')),
+            root/'compile_workers',remaining,cuda=False)
+
+
+@op
+def verify(candidate,archive,cfg,root,args,prepared,deadline,gpu_lock,compile_lock):
+    repairs=0
+    while True:
+        remaining=deadline-time.monotonic()
+        if remaining<=0:
+            return save_result(candidate,dict(gate_reached=0,compile_ok=0,correct_ok=0,accepted=0,
+                                              failure_note='gen_timeout'),repairs,archive)
+        compiled=compile_offline(candidate,cfg,root,prepared,deadline,compile_lock)
+        if compiled.get('status')=='compile_error':
+            result=dict(gate_reached=1,compile_ok=0,correct_ok=0,accepted=0,
+                        failure_note=compiled['failure_note'],details={'cpu_compile':compiled})
+        elif compiled.get('status')=='timeout':
+            return save_result(candidate,dict(gate_reached=0,compile_ok=0,correct_ok=0,accepted=0,
+                                              failure_note='gen_timeout'),repairs,archive)
+        else:
+            with gpu_lock:
+                remaining=deadline-time.monotonic()
+                if remaining<=0:
+                    return save_result(candidate,dict(gate_reached=0,compile_ok=0,correct_ok=0,accepted=0,
+                                                      failure_note='gen_timeout'),repairs,archive)
+                request=dict(action='evaluate',config=cfg,run_dir=str(root),adapter=args.adapter,
+                    op=candidate['lineage_id'],code_path=candidate['code_path'],incumbents=incumbents(archive),
+                    flops_per_sample=prepared['model']['flops_per_sample'],peak_flops=prepared['model']['peak_flops'])
+                result=run_worker('kernel_evolution.gpu_worker',request,root/'workers',remaining)
+                result.setdefault('details',{})['cpu_compile']=compiled
+                if result.get('status') in {'timeout','crash'}:
+                    result.update(gate_reached=0,compile_ok=0,correct_ok=0,accepted=0)
+                    return save_result(candidate,result,repairs,archive)
+                if result.get('correct_ok') or repairs>=cfg['max_repairs'] or cfg['llm']=='stub':
+                    # Commit the new incumbent before the next GPU worker selects its baseline.
+                    return save_result(candidate,result,repairs,archive)
+        if repairs>=cfg['max_repairs'] or cfg['llm']=='stub':
+            return save_result(candidate,result,repairs,archive)
+        llm=CodexOAuthLLM(archive,cfg,root,'subagent',model=candidate['model_name'])
+        llm.generation=candidate['generation']
+        prompt=json.dumps({'task':'Repair this candidate. Return source only as JSON. Keep the same strategy and signature. '
+            'Do not execute commands. Raw external verifier feedback follows.',
+            'source':Path(candidate['code_path']).read_text(),'feedback':result.get('failure_note')})
+        try:
+            remaining=deadline-time.monotonic()
+            if remaining<=0:return save_result(candidate,result,repairs,archive)
+            repaired=llm.complete([{'role':'user','content':prompt}],json_mode=True,schema=SOURCE_SCHEMA,
+                                 timeout=min(cfg['max_call_seconds'],remaining))['source']
+        except BudgetExceeded:return save_result(candidate,result,repairs,archive)
+        original=Path(candidate['code_path'])
+        original.with_suffix(f'.repair{repairs}.py').write_text(original.read_text())
+        original.write_text(repaired)
+        candidate['source_hash']=source_hash(repaired)
+        repairs+=1
+
+
+@op
+def candidate_lifecycle(job,index,generation,archive,cfg,root,args,prepared,deadline,gpu_lock,compile_lock):
     candidate=implement(job,index,generation,archive,cfg,root,prepared['targets'],deadline)
-    with gpu_lock:
-        return verify(candidate,archive,cfg,root,args,prepared,deadline)
+    return verify(candidate,archive,cfg,root,args,prepared,deadline,gpu_lock,compile_lock)
 
 
 def run(args,cfg,archive,prepared):
@@ -227,8 +269,9 @@ def run(args,cfg,archive,prepared):
                         json_mode=True,schema=JOB_SCHEMA,timeout=min(cfg['max_call_seconds'],gen_deadline-time.monotonic()))
                     jobs=validated_jobs(raw,archive,gen,cfg['candidates_per_gen'])
                 gpu_lock=threading.Lock()
+                compile_lock=threading.BoundedSemaphore(cfg['compile_workers'])
                 with concurrent.futures.ThreadPoolExecutor(max_workers=cfg['llm_concurrency']) as pool:
-                    futures={pool.submit(candidate_lifecycle,j,i,gen,archive,cfg,root,args,prepared,gen_deadline,gpu_lock):i for i,j in enumerate(jobs)}
+                    futures={pool.submit(candidate_lifecycle,j,i,gen,archive,cfg,root,args,prepared,gen_deadline,gpu_lock,compile_lock):i for i,j in enumerate(jobs)}
                     for f in concurrent.futures.as_completed(futures):
                         i=futures[f]
                         try:c=f.result()

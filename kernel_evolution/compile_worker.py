@@ -22,6 +22,8 @@ def compile_candidate(request):
     from triton.compiler import ASTSource,compile,make_backend
     from triton.runtime.jit import JITFunction,create_function_from_signature
     from triton.runtime.autotuner import Autotuner
+    from triton.runtime.errors import OutOfResources,PTXASError
+    from triton.compiler.errors import CompileTimeAssertionFailure
     from kernel_evolution.runtime import load_source
 
     if torch.cuda.is_initialized():raise RuntimeError('CPU compiler unexpectedly initialized CUDA')
@@ -57,9 +59,19 @@ def compile_candidate(request):
     def capture_autotune(tuner,*args,**kwargs):
         # Compile every legal config. Do not benchmark or select a winner on CPU.
         tuner.nargs=dict(zip(tuner.arg_names,args))
+        errors=[]
+        successes=0
+        previous_errors=len(compiler_error)
         try:
             for config in tuner.prune_configs(kwargs):
-                tuner.fn.run(*args,**kwargs,**config.all_kwargs())
+                try:
+                    tuner.fn.run(*args,**kwargs,**config.all_kwargs())
+                    successes+=1
+                except (OutOfResources,PTXASError,CompileTimeAssertionFailure) as exc:errors.append(exc)
+            if not successes:
+                if errors:raise errors[-1]
+                raise RuntimeError('Autotuner has no legal configurations')
+            del compiler_error[previous_errors:]
         finally:tuner.nargs=None
 
     try:

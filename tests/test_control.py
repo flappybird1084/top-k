@@ -2,12 +2,15 @@ import concurrent.futures
 import json
 import tempfile
 import unittest
+import threading
+import time
+from unittest.mock import patch,Mock
 from types import SimpleNamespace
 from pathlib import Path
 from kernel_evolution.archive import Archive
 from kernel_evolution.budget import Budget,BudgetExceeded,cost
 from kernel_evolution.llm import usage_tokens
-from search import validated_jobs,load_prepared
+from search import validated_jobs,load_prepared,subagent_model,verify
 
 
 class ControlTests(unittest.TestCase):
@@ -47,6 +50,8 @@ class ControlTests(unittest.TestCase):
               'last':{'input_tokens':500,'output_tokens':5}}
         self.assertEqual(usage_tokens(data)['output_tokens'],500)
         self.assertAlmostEqual(cost('gpt-5.6-sol',3000,2000,500),.0148)
+        self.assertIsNone(usage_tokens({'total':{}}))
+        self.assertIsNone(usage_tokens({'total':{'input_tokens':123}}))
 
     def test_planner_cannot_parent_from_incorrect_candidate(self):
         self.archive.put('lineages',id='norm',incumbent_id='seed',retired=0)
@@ -97,6 +102,34 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(json.loads(audit['original_row_json'])['step_time_ms'],9)
         self.archive.invalidate_acceptance('candidate','baseline overhead',{})
         self.assertEqual(len(self.archive.rows('SELECT * FROM candidate_audits')),1)
+
+    def test_configured_agent_models_alternate_across_generations(self):
+        cfg={'llm':'codex_oauth','subagent_llm':'gpt-5.6-sol',
+             'subagent_models':['gpt-5.6-sol','gpt-6-astra'],'candidates_per_gen':3}
+        self.assertEqual([subagent_model(cfg,g,i) for g in (1,2) for i in range(3)],
+                         ['gpt-5.6-sol','gpt-6-astra']*3)
+
+    def test_repairs_do_not_hold_gpu_lock_and_keep_the_candidate_model(self):
+        root=Path(self.tmp.name);source=root/'candidate.py';source.write_text('def kernel(x): return x')
+        candidate=dict(id='test',generation=1,lineage_id='ema',code_path=str(source),model_name='gpt-5.6-sol')
+        self.archive.put('lineages',id='ema',incumbent_id='seed')
+        self.archive.put('candidates',id='seed',lineage_id='ema',source_kind='inductor')
+        gpu=threading.Lock()
+        llm=Mock()
+        def complete(*args,**kwargs):
+            self.assertFalse(gpu.locked())
+            return {'source':'def kernel(x): return x'}
+        llm.complete.side_effect=complete
+        cfg=dict(llm='codex_oauth',max_repairs=1,max_call_seconds=10)
+        prepared=dict(config={},targets=[{'id':'ema'}],model={'flops_per_sample':1,'peak_flops':1})
+        failure=dict(gate_reached=2,compile_ok=1,correct_ok=0,accepted=0,failure_note='raw mismatch')
+        success=dict(gate_reached=3,compile_ok=1,correct_ok=1,accepted=0,failure_note='gate3_slower')
+        with patch('search.run_worker',side_effect=[failure,success]),patch('search.CodexOAuthLLM',return_value=llm) as provider:
+            result=verify(candidate,self.archive,cfg,root,SimpleNamespace(adapter='demo'),prepared,
+                          time.monotonic()+10,gpu,threading.BoundedSemaphore(1))
+        self.assertEqual(result['repairs_used'],1)
+        self.assertEqual(provider.call_args.kwargs['model'],'gpt-5.6-sol')
+
 
 
 if __name__=='__main__':unittest.main()
