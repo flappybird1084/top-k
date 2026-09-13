@@ -89,10 +89,17 @@ def arch_fingerprint(model) -> str:
 
 # ------------------------------------------------------------------ planner
 
-def recipe_planner_prompt(phase, base_summary, outcomes, lessons, n_jobs, parents):
+def recipe_planner_prompt(phase, base_summary, outcomes, lessons, n_jobs, parents,
+                          research_enabled=False):
     rules = ("propose ARCHITECTURE/optimizer modification strategies"
              if phase["kind"] == "architecture" else
              "propose HYPERPARAMETER-tuning strategies (architecture is frozen)")
+    researchline = (
+        'A research subagent is available: to have it investigate prior art '
+        '(e.g. what worked in public training-speedrun efforts, papers, repos) '
+        'before you plan, respond with ONLY {"research": "<question>"} and its '
+        'brief will be returned to you (up to 2 dispatches). Optional — respond '
+        'with jobs directly if you do not need it.\n' if research_enabled else "")
     parent_txt = ("\n## Parents (id: summary)\n" + "\n".join(
         f"- {p['id']}: val_loss={p.get('val_loss')} — {str(p.get('strategy'))[:100]}"
         for p in parents) if parents else "")
@@ -115,6 +122,7 @@ def recipe_planner_prompt(phase, base_summary, outcomes, lessons, n_jobs, parent
          "is untested; re-proposing them in a simpler form is often worth a "
          "slot)\n\n"
          f"## Lessons\n" + ("\n".join(f"- {t}" for t in lessons) or "(none)") + "\n\n"
+         + researchline +
          'Respond with JSON: {"jobs": [{"strategy": <specific plain-language '
          'strategy>, "parent": <parent candidate id or null>}]}'},
     ]

@@ -313,16 +313,50 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                         for r in results_all[-16:]]
             print(f"\n=== recipe {phase['kind']} generation {gen_index + 1} — "
                   f"spend ${pool.total_usd():.2f} ===")
+            from kernelevo import researcher as researchmod
+            from kernelevo import websearch
+            can_research = websearch.available()
             msgs = recipes.recipe_planner_prompt(phase, base_summary, outcomes,
                                                  lessons, phase["candidates"],
-                                                 parents)
-            resp = pool.planner.complete(msgs, json_mode=True,
-                                         meta={"active_lineages": [phase["kind"]],
-                                               "n_jobs": phase["candidates"]})
-            try:
-                jobs = (_parse_jobs(resp.text) or [])[:phase["candidates"]]
-            except (ValueError, json.JSONDecodeError):
-                jobs = []
+                                                 parents,
+                                                 research_enabled=can_research)
+            jobs, research_used, empty_retry = [], 0, False
+            for _ in range(5):
+                resp = pool.planner.complete(
+                    msgs, json_mode=True,
+                    meta={"active_lineages": [phase["kind"]],
+                          "n_jobs": phase["candidates"]})
+                try:
+                    s, e = resp.text.find("{"), resp.text.rfind("}")
+                    obj = json.loads(resp.text[s:e + 1])
+                except (ValueError, json.JSONDecodeError):
+                    break
+                question = obj.get("research")
+                if question and can_research and research_used < 2:
+                    research_used += 1
+                    brief = researchmod.research(pool.researcher, str(question))
+                    print(f"[planner] research: {str(question)[:70]} -> "
+                          f"{len(brief)} char brief")
+                    msgs = msgs + [
+                        {"role": "assistant", "content": resp.text},
+                        {"role": "user", "content":
+                         "Research brief:\n" + brief +
+                         f'\n\nContinue: one more {{"research": "..."}} '
+                         f'({2 - research_used} left) or the final '
+                         f'{{"jobs": [...]}}.'}]
+                    continue
+                jobs = (obj.get("jobs") or [])[:phase["candidates"]]
+                if not jobs and not empty_retry:
+                    empty_retry = True
+                    print("[recipe] planner returned zero jobs; re-prompting once")
+                    msgs = msgs + [
+                        {"role": "assistant", "content": resp.text},
+                        {"role": "user", "content":
+                         f"Zero jobs wastes the generation. Propose between 1 "
+                         f'and {phase["candidates"]} jobs now as '
+                         f'{{"jobs": [...]}}.'}]
+                    continue
+                break
             if not jobs:
                 print("[recipe] planner produced no jobs; skipping generation")
                 continue
