@@ -255,6 +255,8 @@ FORM = """
  </select>
  <label>profile</label>
  <select name=profile><option>DEV</option><option>RUN</option></select>
+ <label>spend cap USD (blank = profile default: DEV $10, RUN $100)</label>
+ <input type=number name=spend_cap step=0.5 min=1 placeholder="e.g. 20">
  <label>llm override (blank = from profile)</label>
  <select name=llm><option value="">(from profile)</option><option>stub</option>
   <option>anthropic</option><option>openai</option><option>wandb</option></select>
@@ -511,6 +513,7 @@ def create_job():
             parent_pool=int(f.get("parent_pool") or 4),
         ) if f.get("mode") == "recipe" else None,
         llm=f.get("llm", "").strip() or None,
+        spend_cap=float(f["spend_cap"]) if f.get("spend_cap") else None,
         execution_target=f.get("execution_target", "local"),
         molab=dict(notebook_url=f.get("molab_url", "").strip(),
                    connection=f.get("molab_connection", "").strip()),
