@@ -62,3 +62,13 @@ backend now compiles the full step, including candidate integration, and checks
 parameter gradients as well as loss, parameters, and optimizer state. It
 requires a new calibration; earlier fusion timing is retained as historical
 integration evidence.
+
+The fresh whole-step recheck completed in `runs/strong-baseline-check/`.
+Calibration set a 5.05% isolation margin and an 8.54% step margin. Both planted
+cheats were rejected for each target, and all 33 tests passed on Molab.
+The same handwritten fixture passed correctness and isolation (1.6075 ms to
+0.3080 ms), but was **rejected at gate 4**: the compiled baseline took 7.0108 ms
+versus 7.3480 ms for the compiled fixture integration. Every paired block was
+slower. There is no confirmed fusion speedup against this stronger baseline.
+The result was saved to SQLite before being mirrored to the original fixture
+W&B run. No additional search-model calls were made.
