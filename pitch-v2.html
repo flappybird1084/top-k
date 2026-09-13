@@ -17,7 +17,7 @@
 <header class="pitch-header">
 <a class="wordmark" href="#repo" aria-label="Top-Kernel, first step">Top-K<small>ernel</small></a>
 <span class="track">CoreWeave Hacks · Best Use of ARIA</span>
-<span class="demo-badge">Interactive demo · illustrative data</span>
+<span class="demo-badge">Illustrative walkthrough · real evidence linked</span>
 </header>
 <nav class="flow-nav" aria-label="System walkthrough">
 <button data-step="0" aria-current="step"><span>1</span>Repository</button>
@@ -56,6 +56,7 @@
 <details class="trace repair"><summary><span><b class="status fail">Attempt 1</b> Shape mismatch</span><span>Inspect error + repair</span></summary><pre>RuntimeError: logits and targets have incompatible shapes</pre><p>The raw error returns to the writing agent, which revises the adapter.</p></details>
 <details class="trace repair"><summary><span><b class="status kept">Attempt 2</b> Verified</span><span>Inspect checks</span></summary><p>Model builds, a data batch loads, and the loss is finite, scalar, and supports gradients.</p></details>
 <div class="feedback-note"><span aria-hidden="true">↶</span><span>Fail → raw feedback → revise → verify</span></div>
+<details class="trace"><summary><span>Real failure evidence · CUDA out of memory</span><span>Inspect run ↗</span></summary><p>A separate controlled training demo: 3 successful steps, then an oversized batch triggers CUDA OOM under a 512 MiB process memory limit. We used ARIA to debug the failure.</p><a class="text-link" href="https://wandb.ai/rianbutala-ucla/kernel-evolution/runs/1795d5a5/logs" target="_blank" rel="noopener noreferrer">Read failure logs ↗</a></details>
 </div>
 <div class="contract"><p class="section-label">One shared interface</p><dl><div><dt>build_model()</dt><dd>The model to train</dd></div><div><dt>get_dataloader()</dt><dd>Training and validation batches</dd></div><div><dt>loss_fn()</dt><dd>The objective used to evaluate candidates</dd></div></dl><p class="scope-note">Every recipe is evaluated through the same adapter interface.</p></div>
 </div>
@@ -98,9 +99,9 @@
 <section data-panel="6" hidden aria-labelledby="stage-title">
 <div class="aria-grid"><div>
 <div class="evidence-flow"><span>Training runs</span><b>+</b><span>Agent traces</span><i>→</i><strong>ARIA review</strong></div>
-<div class="review-points"><div><span>01</span><p>Compare candidate losses and training curves.</p></div><div><span>02</span><p>Understand progress, repairs, and agent decisions.</p></div><div><span>03</span><p>Use the evidence to choose what to try next.</p></div></div>
-<p class="scope-note">We asked ARIA to analyze our runs and traces and generate a report.</p>
-</div><div class="report-panel"><img src="ui/assets/wandb.png" alt="Weights & Biases"><p class="section-label">Explore the actual project report</p><h2>From experiments<br>to evidence.</h2><a id="report-link" class="primary" target="_blank" rel="noopener noreferrer">View W&B report ↗</a><a class="text-link" href="https://wandb.ai/stephenslee0127-acme/kernel-evolution/weave/traces" target="_blank" rel="noopener noreferrer">Open Weave traces ↗</a><p class="scope-note">The linked report is separate from this illustrative walkthrough.</p></div></div>
+<div class="review-points"><div><span>01</span><p>Compare candidate losses and training curves.</p></div><div><span>02</span><p>Debug failures using run logs and Weave traces.</p></div><div><span>03</span><p>Turn the findings into a shareable report.</p></div></div>
+<p class="scope-note">We used ARIA to analyze training runs, generate reports, and debug a controlled CUDA OOM failure.</p>
+</div><div class="report-panel"><img src="ui/assets/wandb.png" alt="Weights & Biases"><p class="section-label">Real runs · real failure evidence</p><h2>From experiments<br>to evidence.</h2><a id="report-link" class="primary" target="_blank" rel="noopener noreferrer">View W&B report ↗</a><a class="text-link" href="https://wandb.ai/rianbutala-ucla/kernel-evolution/runs/1795d5a5" target="_blank" rel="noopener noreferrer">Inspect CUDA OOM run ↗</a><a class="text-link" href="https://wandb.ai/rianbutala-ucla/kernel-evolution/r/call/01a09c0a-9a57-7e44-84c4-f25f0a17276a" target="_blank" rel="noopener noreferrer">Follow the failure trace ↗</a><p class="scope-note">Intentional failure demo · run 1795d5a5<br>Separate from the illustrative search above.</p></div></div>
 </section>
 </div>
 <footer class="pitch-footer"><button id="restart" class="text-button">↺ Restart</button><span id="stage-hint">Click any stage above to explore.</span><div><button id="previous" class="secondary" disabled>← Back</button><button id="next" class="primary">Next: Adapter →</button></div></footer>

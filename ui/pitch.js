@@ -9,7 +9,7 @@ const steps=[
   ['agents','Coding agents','Build, check, repair. In parallel.','Each coding agent owns a candidate. Click one to follow its work.'],
   ['evaluate','Evaluation','Measure. Learn. Evolve.','The harness evaluates candidates; the curator carries useful lessons into the next generation.'],
   ['finals','Finals','Give the finalists a longer run.','Retrain the strongest candidates and compare their final validation losses.'],
-  ['aria','ARIA review','Make the experiments understandable.','ARIA helps us compare training runs, understand traces, and review the evidence.']
+  ['aria','ARIA review','Understand results. Debug failures.','ARIA helps us compare training runs, investigate errors, and share the evidence.']
 ];
 let pitchState=PitchDemo.initialState();
 const hashStep=()=>steps.findIndex(step=>step[0]===location.hash.slice(1));
