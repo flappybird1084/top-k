@@ -1,33 +1,33 @@
 # Kernel Evolution
 
-An evolutionary Triton search with a deterministic verifier, SQLite archive,
-Codex OAuth model calls, and optional W&B/Weave observation. The current GPU-tested
-slice runs JEPA-style EMA replacement and fusion across independent EMA call sites
-through all four gates. It is not yet the
-entire Design Spec v3.
+An evolutionary Triton agent platform with repository/prompt intake, an
+agent-generated adapter, compiled-target discovery, parallel kernel-writing
+agents, a deterministic verifier, SQLite archive, and linked Weave traces.
+RUN uses GPT-6 Astra through Codex OAuth for adapter, planner, kernel agents,
+and curator. The platform never supplies handwritten optimization candidates
+to a live search. Supported operation contracts remain narrower than arbitrary
+PyTorch; limitations are listed below.
 
 The first Sol pilot is complete: five evaluated generations, 20 candidates,
 $2.7142 in token-equivalent cost, and no confirmed speedup after a baseline audit.
 See [PILOT_RESULTS.md](PILOT_RESULTS.md) for preserved evidence and the corrections.
-The subsequent handwritten fusion fixture reduced step time by 14.2% against a
-fresh per-region Inductor baseline; see [FUSION_RESULTS.md](FUSION_RESULTS.md).
-A subsequent whole-step compiler baseline was substantially faster, so the
-fixture result is integration evidence, not a confirmed compiler improvement.
+Earlier handwritten experiments are documented separately in
+[FUSION_RESULTS.md](FUSION_RESULTS.md); they are not agent search results.
 
-The first live pilot uses GPT-5.6 Sol, four candidates per generation, at most five
-generations, and a $100 API-equivalent ceiling. The ceiling is a guardrail, not a
+Runs use four candidates per generation, at most five generations, and a
+$100 API-equivalent ceiling. The ceiling is a guardrail, not a
 spending target. Costs are estimates from reported tokens at standard published
 rates, not subscription charges. Unknown usage retains its reservation rather
 than being recorded as free.
 
 ```bash
 # In the Linux CUDA environment, from the repository directory:
-python search.py --profile RUN --adapter adapters.jepa --lineage ema_update \
-  --run-dir runs/new-experiment --prepare-only
-
-# After reviewing preparation results and passing the stub checks:
-python search.py --profile RUN --adapter adapters.jepa --lineage ema_update \
+python search.py --profile RUN --model gpt-6-astra --repo /path/to/repository \
+  --prompt 'Optimize the existing training model while preserving its data and loss semantics' \
   --run-dir runs/new-experiment
+
+# A supplied adapter can be a module or a Python file:
+python search.py --profile RUN --adapter adapters.language --run-dir runs/language
 
 # A standalone fixture search performs real GPU checks with no LLM calls:
 python search.py --profile DEV --llm stub --adapter adapters.jepa \
@@ -41,6 +41,11 @@ reuses its measured calibration and seed sources; completed generations are not
 rerun. CPU execution cannot produce accepted GPU candidates. Model parameters,
 optimizer state, RNG, and the fixed batch are restored for paired step timing.
 Data loading and correctness checks are outside timed regions.
+Repository source and generated adapter hashes are pinned at intake. The adapter
+agent sees model/training source, excluding secrets, datasets, fixtures, and
+candidate kernels. It reuses repository model/data/loss code; failed ingestion
+returns raw feedback for bounded repairs. Finite loss and gradients establish
+executability, not a proof of arbitrary repository semantic equivalence.
 Functional discovery is enabled by default. It recognizes supported LayerNorm
 and Linear→GELU patterns in FX graphs and verifies loss, all parameter gradients,
 tensor state, and scalar module state across three restored RNG states before
@@ -94,6 +99,11 @@ Demo data is publicly available:
 candidate/repair sources, worker outputs, and logs live under the run directory.
 W&B writes happen after archive commits and do not determine acceptance. The
 marimo notebook is a three-cell read-only view of this state.
+Weave export uses a durable SQLite outbox. A live run verifies server read-back
+before making model calls. Explicit spans link run → generation → candidate →
+agent calls/repairs and GPU gates. Prompts, responses, model names, token counts,
+source provenance, gate results, and real trace URLs are recorded. Temporary
+network failures retain unsent spans for replay.
 
 From the local development machine, `scripts/molab.py` executes scratchpad code
 through the installed marimo-pair skill, `scripts/sync_molab.py` uploads source
@@ -107,20 +117,19 @@ Remaining v3 work is explicit:
   functional Linear/GELU patterns, functional LayerNorm with a weight, and explicit
   composite regions. General AOT graph discovery and RMSNorm backward are still
   incomplete; unsupported patterns remain eager and are not proposed for replacement.
-- Isolated Inductor seeds call captured backend entries directly. Gate 4 uses
-  whole-step `torch.compile` for both baseline and candidate integration, checking
-  loss, parameter gradients, model state, and AdamW state before timing. Profiling
-  still ranks regions in eager execution; mapping costs from whole-step compiled
-  regions back to original operations remains incomplete.
+- Compiled target discovery maps observed CUDA kernel names to Inductor source
+  metadata. Associated fused-region cost can be shared and is only partial
+  attribution; unknown/external kernels remain explicitly unmapped. It never
+  treats eager timing as a compiled cost or promised speedup. No target over the
+  configured cutoff yields a clean `no_targets` result, not fabricated jobs.
 - Fusion currently covers independent EMA call sites. Arbitrary cross-operation
   graph fusion and selecting arbitrary subsets of sites are not yet implemented;
   proposals without an executable contract fail closed.
-- The active provider is Codex OAuth. Other provider adapters, retrieved-source
-  candidate ingestion, and native-search result caching still need completion.
-  `providers.py` contains API adapter prototypes that are not connected to the
-  live search.
-- W&B/Weave mirroring exists, but the full requested panel set, complete provider
-  child-span coverage, and all trace URL fields need further integration.
+- The active provider is Codex OAuth. Planner-requested native research is cached
+  by query and may seed retrieved-source jobs through the same gates. Alternative
+  API provider prototypes in `providers.py` are not connected to the live CLI.
+- W&B's full requested panel set is not yet configured. Individual agent and
+  gate traces are explicitly exported to Weave, independent of SDK autopatching.
 
 Sol token rates used by this pilot are $4/M input, $0.40/M cached input, and $20/M
 output, retrieved 2026-09-12. Long-context multipliers are represented in the

@@ -432,6 +432,7 @@ def main():
     p.add_argument('--prompt',help='Optimization task for the adapter agent and planner')
     p.add_argument('--model',help='Model for adapter, planner, kernel agents, and curator')
     p.add_argument('--spend-cap-usd',type=float,help='Per-run remaining API-equivalent budget, at most $100')
+    p.add_argument('--min-target-pct',type=float,help='Minimum associated compiled-region share for target discovery')
     p.add_argument('--profile',choices=['DEV','RUN'],default='DEV')
     p.add_argument('--llm',choices=['stub','codex_oauth'])
     p.add_argument('--lineage')
@@ -448,6 +449,9 @@ def main():
     if args.spend_cap_usd is not None:
         if not 0<args.spend_cap_usd<=100:p.error('--spend-cap-usd must be positive and at most 100')
         cfg['spend_cap_usd']=args.spend_cap_usd
+    if args.min_target_pct is not None:
+        if not 0<args.min_target_pct<=100:p.error('--min-target-pct must be positive and at most 100')
+        cfg['min_pct_step_time']=args.min_target_pct
     cfg['task_prompt']=args.prompt or 'Minimize the complete fixed-batch training step time while preserving numerical correctness.'
     root=Path(args.run_dir).resolve();root.mkdir(parents=True,exist_ok=True);args.run_dir=str(root)
     cfg['run_name']=root.name
