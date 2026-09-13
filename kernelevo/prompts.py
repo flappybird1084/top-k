@@ -152,9 +152,15 @@ Hard requirements:
   the SAME order every time it is called. Constant shapes across steps strongly
   preferred (pad/crop if needed). The harness consumes ~60 consecutive steps per
   measurement — yield at least 100 batches (it cycles the loader if exhausted).
-- Use the repo's real data pipeline if it runs offline with no credentials or
-  large downloads; otherwise generate synthetic data matching the real batch
-  spec (shapes, dtypes, value ranges) with a fixed seed, and say so in a comment.
+- DATA: ALWAYS search the repo for its real data pipeline FIRST — prepare/
+  download scripts, dataset builders, shard loaders, HF dataset references —
+  and USE it. Internet access and the `datasets`/`tiktoken` libraries are
+  available. Fetch a MODEST slice of real data (tens of millions of tokens /
+  a few hundred MB at most) at setup time, cache it under /tmp and reuse the
+  cache if present (the harness rebuilds the adapter many times), fixed seed
+  and order. Reserve a held-out split for get_dataloader("val") and never
+  train on it. Synthetic data is a LAST resort, only when the repo has no
+  usable pipeline — say so in a comment if you must.
 - Pick a batch size that comfortably fits one GPU — but err LARGE: a training
   step should take at least ~20-50ms on a modern GPU, or the harness's timing
   gates have poor signal-to-noise and utilization looks idle. Unless the user's
