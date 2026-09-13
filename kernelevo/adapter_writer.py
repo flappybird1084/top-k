@@ -25,7 +25,7 @@ from kernelevo.obs import weave_op
 SURVEY_MAX_FILES = 25
 SURVEY_MAX_FILE_CHARS = 6000
 SURVEY_MAX_TOTAL_CHARS = 60000
-INGEST_TIMEOUT_S = 900
+INGEST_TIMEOUT_S = 1800  # first ingest may legitimately download a capped data subset
 
 _SCORE_WORDS = ("train", "model", "main", "data", "dataset", "loss", "config", "net")
 
