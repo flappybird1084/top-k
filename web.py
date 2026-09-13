@@ -139,6 +139,8 @@ def _run_job(jid):
                 cmd += ["--adapter", job["adapter"]]
             if job.get("llm"):
                 cmd += ["--llm", job["llm"]]
+            if job.get("spend_cap"):
+                cmd += ["--spend-cap", str(job["spend_cap"])]
             job.update(status="running", stage="starting", run_dir=run_dir)
             save_job(job)
             write_line(f"$ {' '.join(cmd)}")

@@ -36,6 +36,8 @@ def main():
     ap.add_argument("--lineage", default=None, help="restrict the run to one lineage")
     ap.add_argument("--out", default=None, help="output dir (default runs/<name>-<ts>)")
     ap.add_argument("--max-generations", type=int, default=None)
+    ap.add_argument("--spend-cap", type=float, default=None,
+                    help="override spend_cap_usd for this run")
     args = ap.parse_args()
 
     import torch
@@ -50,6 +52,8 @@ def main():
         cfg["planner_llm"] = cfg["subagent_llm"] = cfg["curator_llm"] = None
     if args.max_generations:
         cfg["max_generations"] = args.max_generations
+    if args.spend_cap:
+        cfg["spend_cap_usd"] = args.spend_cap
 
     if args.repo:
         name = os.path.basename(args.repo.rstrip("/")).replace(".git", "") or "repo"

@@ -310,6 +310,8 @@ class MolabTarget:
             args += ["--adapter", job["adapter"]]
         if job.get("llm"):
             args += ["--llm", job["llm"]]
+        if job.get("spend_cap"):
+            args += ["--spend-cap", str(job["spend_cap"])]
 
         env_updates = dict(env_updates,
                            KEVO_RELAY_DIR=work + "/run/search_relay")
