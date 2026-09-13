@@ -56,6 +56,25 @@ def data_url(value):
     if u.scheme!='https' or not u.hostname or u.username or u.password or u.port:raise ValueError('Use an HTTPS dataset link without credentials')
     return value.strip()
 
+def validate_provider(job):
+    import config
+    cfg=config.load(job['profile'])
+    if job.get('llm'):
+        cfg['llm']=job['llm']
+        cfg['planner_llm']=cfg['subagent_llm']=cfg['curator_llm']=None
+    specs=[cfg['llm']]+[cfg.get(role+'_llm') for role in ('planner','subagent','curator','adapter','researcher')]
+    env=web._job_env(job)
+    for spec in specs:
+        for value in (spec if isinstance(spec,list) else [spec]):
+            if not value:continue
+            provider=value.partition(':')[0]
+            if provider=='codex_oauth':
+                from kernelevo.codex_oauth import check_login
+                check_login()
+            keys={'anthropic':('ANTHROPIC_API_KEY',),'openai':('OPENAI_API_KEY',),'wandb':('WANDB_INFERENCE_API_KEY','WANDB_API_KEY')}.get(provider,())
+            if keys and not any(env.get(key) for key in keys):
+                raise ValueError('Training is not configured yet. Set '+ ' or '.join(keys)+' on the server, then retry. Your links are saved.')
+
 def snapshot(jid):
     root=job_path(jid);job=read_json(root/'job.json')
     if not job:raise FileNotFoundError()
@@ -63,7 +82,7 @@ def snapshot(jid):
     result=dict(id=jid,repo=job.get('repo'),data=job.get('data'),status=status,message=job.get('stage',''),candidates=[],traces=[],activity=[],integrations=dict(job.get('integrations',{})))
     result['active_evaluations']=list(job.get('active_evaluations',{}).values()) if status=='running' else []
     log=log_tail(root)
-    result['activity']=[{'message':line,'created_at':job['created_at']} for line in log.splitlines() if line.startswith(('[adapter]','[ingest]','[profile]','[calibrate]','[planner]','[gates]','[gate4]','[loop]'))][-12:]
+    result['activity']=[{'message':line,'created_at':job['created_at']} for line in log.splitlines() if line.startswith(('[agent]','[adapter]','[ingest]','[profile]','[calibrate]','[planner]','[gates]','[gate4]','[loop]'))][-12:]
     db_path=root/'run/archive.sqlite'
     if db_path.exists():
         with closing(sqlite3.connect(db_path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
@@ -132,6 +151,12 @@ def submit_data(jid):
         if job['status']!='awaiting_data':
             if job.get('data')==url:return {'id':jid},202
             return jsonify(error='Run is no longer waiting for data'),409
+        job['data']=url
+        web.save_job(job)
+        if os.getenv('KEVO_UI_LLM'):job['llm']=os.environ['KEVO_UI_LLM']
+        if os.getenv('KEVO_UI_PROFILE'):job['profile']=os.environ['KEVO_UI_PROFILE']
+        if os.getenv('KEVO_UI_MAX_GENERATIONS'):job['max_generations']=int(os.environ['KEVO_UI_MAX_GENERATIONS'])
+        validate_provider(job)
         if job['execution_target']=='molab':
             connection=read_json(os.getenv('KEVO_MOLAB_CONNECTION_FILE',str(Path.home()/'.local/state/kernel-evolution/molab.json')), {})
             if not connection.get('url') or not connection.get('token'):raise ValueError('Configure KEVO_MOLAB_CONNECTION_FILE on the server before launching')

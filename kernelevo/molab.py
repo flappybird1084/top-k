@@ -53,11 +53,8 @@ def parse_connection(details: dict) -> tuple[str, str | None]:
         if tm:
             token = tm.group(1)
             break
-    if token and token.startswith("*"):
-        raise ValueError(
-            "the molab token is masked (starts with ****). The masked form is only "
-            "for display — copy the actual 'Pair with agent' prompt from molab; the "
-            "copied text contains the real token.")
+    # The server validates credentials. A prefix heuristic rejects working
+    # notebook credentials that happen to start with an asterisk.
     return url, token
 
 
@@ -310,6 +307,8 @@ class MolabTarget:
             args += ["--adapter", job["adapter"]]
         if job.get("llm"):
             args += ["--llm", job["llm"]]
+        if job.get("max_generations"):
+            args += ["--max-generations", str(job["max_generations"])]
         if job.get("spend_cap"):
             args += ["--spend-cap", str(job["spend_cap"])]
 
@@ -338,6 +337,8 @@ class MolabTarget:
             return 1
         write_line(f"[molab] {out.strip().splitlines()[0]} — streaming remote log")
 
+        from kernelevo.codex_oauth import Relay
+        oauth_relay = Relay()
         offset, misses = 0, 0
         last_archive_sync = 0.0
         while True:
@@ -370,8 +371,7 @@ class MolabTarget:
                 "            if not os.path.exists(os.path.join(_rd, _rid + '.res.json')):\n"
                 "                try:\n"
                 "                    _r = json.load(open(os.path.join(_rd, _f2)))\n"
-                "                    _relay.append({'id': _rid, 'query': _r.get('query', ''),"
-                " 'n': _r.get('n', 5)})\n"
+                "                    _relay.append(dict(_r, id=_rid))\n"
                 "                except ValueError:\n"
                 "                    pass\n"
                 "print(json.dumps({'off': _off + len(_data), 'exit': _ex, 'relay': _relay}))\n"
@@ -397,7 +397,8 @@ class MolabTarget:
                 write_line(line)
             if status.get("relay"):
                 try:
-                    _service_relay(client, work, status["relay"], write_line)
+                    oauth_relay.service(client, work, [r for r in status["relay"] if r.get("kind")=="codex_oauth"], write_line)
+                    _service_relay(client, work, [r for r in status["relay"] if r.get("kind")!="codex_oauth"], write_line)
                 except Exception as e:  # noqa: BLE001 — relay is best-effort
                     write_line(f"[research-relay] servicing failed: {e}")
             if status["exit"] is not None:

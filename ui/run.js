@@ -81,7 +81,7 @@ async function refreshWandb(){
   const data=await response.json(),box=q('#wandb-empty');
   if(q('#wandb-frame').hidden){
    box.classList.toggle('has-metrics',!!data.metrics?.length);
-   box.innerHTML=data.metrics?.length?`<div class="wandb-summary"><p>${escapeHTML(data.name)} · ${escapeHTML(data.state)}</p>${data.metrics.map(m=>`<div><span>${escapeHTML(m.name)}</span><strong>${escapeHTML(Number.isInteger(m.value)?m.value:m.value.toFixed(4))}</strong></div>`).join('')}</div>`:'W&B is connected. Metrics will appear when the run logs them.';
+   box.innerHTML=data.metrics?.length?`<div class="wandb-summary"><p>${escapeHTML(data.name)} · ${escapeHTML(data.state)}</p>${data.metrics.map(m=>`<div><span>${escapeHTML(m.name)}</span><strong>${escapeHTML(Number.isInteger(m.value)?m.value:m.value.toFixed(4))}</strong></div>`).join('')}</div>`:'Metrics will appear when a W&B run is connected and logs data.';
   }
  }catch{}
  wandbTimer=setTimeout(refreshWandb,30000);

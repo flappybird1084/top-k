@@ -14,9 +14,18 @@ class UI(unittest.TestCase):
    self.assertEqual(r.status_code,202);jid=r.json['id']
    again=self.client.post('/api/runs',json={'repo':'https://github.com/a/b/tree/feature/model'},headers={'Idempotency-Key':'abc'})
    self.assertEqual(r.json,again.json)
-   job=ui.web.load_job(jid);job['execution_target']='local';ui.web.save_job(job)
+   job=ui.web.load_job(jid);job['execution_target']='local';job['llm']='stub';ui.web.save_job(job)
    for _ in range(2):self.assertEqual(self.client.post('/api/runs/'+jid+'/data',json={'url':'https://huggingface.co/datasets/a/b'}).status_code,202)
    put.assert_called_once_with(jid)
+ def test_missing_provider_preserves_draft_without_queueing(self):
+  with patch.dict(ui.os.environ,{},clear=True),patch.object(ui.web._queue,'put') as put:
+   jid=self.client.post('/api/runs',json={'repo':'https://github.com/a/b'},headers={'Idempotency-Key':'missing-key'}).json['id']
+   response=self.client.post('/api/runs/'+jid+'/data',json={'url':'https://huggingface.co/datasets/a/b'})
+   self.assertEqual(response.status_code,400)
+   self.assertIn('ANTHROPIC_API_KEY',response.json['error'])
+   self.assertEqual(ui.web.load_job(jid)['status'],'awaiting_data')
+   self.assertEqual(ui.web.load_job(jid)['data'],'https://huggingface.co/datasets/a/b')
+   put.assert_not_called()
  def test_actual_rian_schema_and_no_secret_leak(self):
   jid='a'*32;root=self.p/jid; (root/'run').mkdir(parents=True)
   ui.web.save_job(dict(id=jid,status='done',created_at=1,repo='https://github.com/a/b',data='https://huggingface.co/datasets/a/b',molab={'connection':'secret'},wandb={'api_key':'secret'}))

@@ -35,3 +35,7 @@ Run cancellation is not exposed because this branch's dispatcher does not yet of
 ```
 
 Tests cover Rian's actual SQLite schema, branch URLs, idempotent submission, data handoff, secret omission, and cross-origin rejection. No GPU or paid model run is launched by these tests.
+
+Codex OAuth: install Codex CLI on the UI server and run `codex login` with ChatGPT. Set `KEVO_UI_LLM=codex_oauth` in the server environment or ignored `.env`. The GPU sends completion requests through the existing authenticated Molab relay; the dispatcher invokes Codex locally. OAuth credentials are never uploaded to Molab. Keep this server running throughout the job. Requests time out after 5 minutes locally and 15 minutes in the relay; failures propagate to the engine. This is a local, single-user connection, not multi-user OAuth login.
+
+Use `KEVO_UI_PROFILE=DEV` and `KEVO_UI_MAX_GENERATIONS=2` for the walkthrough. OAuth consumes the signed-in account’s subscription usage; the engine’s API-dollar estimate is zero for this provider and is not a subscription usage limit. Generation and wall-clock limits still apply. W&B authentication remains separate.
