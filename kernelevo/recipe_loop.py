@@ -90,6 +90,9 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
         if adapter_name.endswith(".py") else adapter_name.split(".")[-1]
     archive = Archive(os.path.join(out_dir, "archive.sqlite"))
     mirror = Mirror(cfg, model_name + "-recipe")
+    trail_path = os.path.join(out_dir, "adapter_attempts.json")
+    if os.path.exists(trail_path):
+        mirror.log_adapter_trail(json.load(open(trail_path)))
     print(f"[ingest] {adapter_name}")
     info = ingest.ingest(adapter, cfg)
     print(f"[ingest] {info['n_params']/1e6:.1f}M params, "

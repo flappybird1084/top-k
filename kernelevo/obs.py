@@ -102,6 +102,36 @@ class Mirror:
         except Exception:  # noqa: BLE001
             pass
 
+    def log_adapter_trail(self, trail: list[dict]):
+        """Adapter-writing self-repair trail. The trail predates wandb.init (the
+        run only exists once the adapter verifies), so replay a recap into
+        stdout — the W&B Logs tab captures console from init onward — and log a
+        structured table + summary counters."""
+        if not trail:
+            return
+        fails = [t for t in trail if not t.get("ok")]
+        last = trail[-1]
+        outcome = ("recovered" if last.get("ok") and fails else
+                   "verified first try" if last.get("ok") else "NOT recovered")
+        print(f"[adapter] self-repair trail: {len(trail)} attempt(s), "
+              f"{len(fails)} failure(s) — {outcome}")
+        for t in trail:
+            status = "VERIFIED" if t.get("ok") else f"FAILED: {t.get('kind')}"
+            print(f"[adapter]   attempt {t['attempt']} ({t.get('elapsed_s')}s) — {status}")
+        if self.run is None:
+            return
+        try:
+            import wandb
+            self.run.log({"adapter_self_repair": wandb.Table(
+                columns=["attempt", "outcome", "error", "elapsed_s", "raw_feedback"],
+                data=[[t["attempt"], "verified" if t.get("ok") else "failed",
+                       t.get("kind") or "", t.get("elapsed_s"),
+                       (t.get("note") or "")[:1500]] for t in trail])})
+            self.run.summary["adapter_attempts"] = len(trail)
+            self.run.summary["adapter_repairs"] = len(fails)
+        except Exception:  # noqa: BLE001
+            pass
+
     def log_startup(self, targets: dict, calib: dict):
         if self.run is None:
             return
