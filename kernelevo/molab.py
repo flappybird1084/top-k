@@ -340,7 +340,9 @@ class MolabTarget:
                 return 1
             sandbox_setup = (
                 "sys.path.insert(0, _w)\n"
-                "from kernelevo.judges_sandbox import user_command as _sandbox_command\n"
+                "_sandbox_ns = {}\n"
+                "exec(compile(open(_w + '/kernelevo/judges_sandbox.py').read(), _w + '/kernelevo/judges_sandbox.py', 'exec'), _sandbox_ns)\n"
+                "_sandbox_command = _sandbox_ns['user_command']\n"
                 f"_cmd = _sandbox_command(_w, _cmd, {int(job.get('judge_uid',0))})\n"
                 f"_cmd = ['/usr/bin/timeout', '--signal=TERM', '--kill-after=10', {str(remaining)!r}] + _cmd\n"
             )
