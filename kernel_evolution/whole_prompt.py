@@ -38,5 +38,7 @@ def source_prompt(job, archive, target):
                         'step_time_ms': row['step_time_ms']})
     return json.dumps(dict(task=CONTRACT, strategy=job['strategy'], parents=parents,
                           target=target, lessons=archive.lessons(),
+                          retrieved_source=[json.loads(r['results_json']) for r in archive.rows(
+                              "SELECT results_json FROM search_cache WHERE query LIKE 'native_search:%'")],
                           references=json.loads((archive.path.parent/'references/manifest.json').read_text())
                           if (archive.path.parent/'references/manifest.json').exists() else []))

@@ -189,9 +189,10 @@ def plan_jobs(archive,cfg,root,prepared,generation,deadline):
         'For the whole_model contract, inspect the entire supplied model and complete GPU profile including external '
         'kernels, choose the valuable computation yourself, and propose complete install(model,optimizer) candidates. '
         'You may optimize any forward, backward, or optimizer region without changing mathematical training semantics, '
+        'dtype, precision flags, architecture, parameters, data, or hyperparameters. '
         'Every whole_model proposal MUST include backward-pass optimization; candidates must actually launch '
         'their own Triton kernel during autograd backward, in addition to any forward or optimizer improvements. '
-        'dtype, precision flags, architecture, parameters, data, or hyperparameters. There is no operator allowlist '
+        'There is no operator allowlist '
         'for whole_model. Whole_model FUSE jobs from generation 2 may combine accepted whole-model parents; each '
         'child must include all desired changes in a self-contained installation. '
         'Use existing lineage IDs and parent IDs. From generation 2, targets with fusion_of support FUSE jobs '
@@ -354,6 +355,8 @@ def run(args,cfg,archive,prepared,mirror=None):
     root=Path(args.run_dir)
     # Preserve selected providers/budget while applying calibrated numerical/performance gates.
     cfg={**cfg,**{k:prepared['config'][k] for k in ['rtol','atol','gate3_margin','gate4_margin']}}
+    for key in ('update_atol','update_rtol'):
+        if key in prepared['config']:cfg[key]=prepared['config'][key]
     archive.put('run_config',created_at=time.time(),config_json=json.dumps(cfg))
     register(prepared,archive)
     owns_mirror=mirror is None
@@ -467,6 +470,8 @@ def main():
         cfg['benchmark_protocol']='whole_model_install_v1'
         cfg['functional_discovery']=False
         cfg['require_backward_kernel']=True
+        cfg['gen_wallclock_s']=max(cfg['gen_wallclock_s'],3600)
+        cfg['run_wallclock_s']=max(cfg['run_wallclock_s'],21600)
     if args.llm:cfg['llm']=args.llm
     if args.candidates:cfg['candidates_per_gen']=args.candidates
     if args.model:

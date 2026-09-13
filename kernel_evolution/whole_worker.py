@@ -21,6 +21,10 @@ def prepare(request):
     root = Path(request['run_dir'])
     harness = Harness(request['adapter'], cfg, root)
     reference = capture_reference(harness, cfg)
+    floor = check_reference(harness, reference, cfg,update_floor=True)
+    cfg['update_atol']=max(1e-7,2*floor['update_max_abs'])
+    if cfg['update_atol']>cfg['atol']:
+        raise RuntimeError('Eager/compiled update floor exceeds absolute state tolerance; refusing to weaken update checks')
     correctness = check_reference(harness, reference, cfg)
     # Capture code on both initial and steady-state optimizer graphs.
     harness.restore()
@@ -62,7 +66,7 @@ def prepare(request):
     return dict(status='ready',profile=profile,targets=[target],config=cfg,
                 model=dict(id=request['adapter'],name=request['adapter'],adapter_path=request['adapter'],
                            n_params=sum(p.numel() for p in harness.model.parameters()),flops_per_sample=harness.flops(),gpu_name=gpu,peak_flops=peak),
-                calibration=dict(samples=samples,noise_spread=spread,full_step_correctness=correctness,cheats=cheats,
+                calibration=dict(samples=samples,noise_spread=spread,full_step_correctness=correctness,update_floor=floor,cheats=cheats,
                                  protocol='Whole-model correctness then paired full-step timing; no isolated-op surrogate'),
                 step_time_ms=statistics.median(times),batch_size=harness.batch_size)
 
