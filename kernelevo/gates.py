@@ -43,7 +43,12 @@ class GateRunner:
         self.gpu_lock = threading.Lock()
         self._cache_path = os.path.join(out_dir, "compile_cache.json")
         try:
-            self._cache = json.load(open(self._cache_path))
+            # only successes are trusted across runs — a cached failure may be
+            # transient (OOM from a since-fixed memory hog, killed worker) and
+            # would poison every later run of identical source (the planted
+            # cheats!). Failures are cached in-memory for this run only.
+            self._cache = {k: v for k, v in json.load(open(self._cache_path)).items()
+                           if v and v[0]}
         except (OSError, ValueError):
             self._cache = {}
         self._env = dict(os.environ)
@@ -89,7 +94,7 @@ class GateRunner:
             result = (False, tail[-4000:])
         self._cache[key] = result
         with open(self._cache_path, "w") as f:
-            json.dump(self._cache, f)
+            json.dump({k: v for k, v in self._cache.items() if v[0]}, f)
         return result
 
     # ------------------------------------------------------------- gates 2-4
