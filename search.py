@@ -431,6 +431,7 @@ def main():
     p.add_argument('--repo',help='Repository directory on the execution host')
     p.add_argument('--prompt',help='Optimization task for the adapter agent and planner')
     p.add_argument('--model',help='Model for adapter, planner, kernel agents, and curator')
+    p.add_argument('--spend-cap-usd',type=float,help='Per-run remaining API-equivalent budget, at most $100')
     p.add_argument('--profile',choices=['DEV','RUN'],default='DEV')
     p.add_argument('--llm',choices=['stub','codex_oauth'])
     p.add_argument('--lineage')
@@ -444,6 +445,9 @@ def main():
     if args.candidates:cfg['candidates_per_gen']=args.candidates
     if args.model:
         for role in ('adapter','planner','subagent','curator'):cfg[role+'_llm']=args.model
+    if args.spend_cap_usd is not None:
+        if not 0<args.spend_cap_usd<=100:p.error('--spend-cap-usd must be positive and at most 100')
+        cfg['spend_cap_usd']=args.spend_cap_usd
     cfg['task_prompt']=args.prompt or 'Minimize the complete fixed-batch training step time while preserving numerical correctness.'
     root=Path(args.run_dir).resolve();root.mkdir(parents=True,exist_ok=True);args.run_dir=str(root)
     cfg['run_name']=root.name
