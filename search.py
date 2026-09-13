@@ -111,7 +111,12 @@ def validated_jobs(raw,archive,generation,limit):
             if fusion and not rows[0]['accepted']: raise ValueError('Fusion requires accepted parents')
             if rows[0]['lineage_id'] not in ({lineage,fusion_of} if fusion else {lineage}):
                 raise ValueError('Parent is outside this executable operation/fusion contract')
-        selected.append(dict(lineage=lineage,strategy=str(job['strategy']),parents=parents,fusion=fusion))
+        source_url=job.get('source_url','')
+        if source_url:
+            from urllib.parse import urlparse
+            parsed=urlparse(source_url)
+            if parsed.scheme not in {'https','http'} or not parsed.netloc:raise ValueError('Invalid retrieved source URL')
+        selected.append(dict(lineage=lineage,strategy=str(job['strategy']),parents=parents,fusion=fusion,source_url=source_url))
     if not selected: raise ValueError('Planner returned no valid jobs')
     return selected
 
@@ -140,6 +145,7 @@ def source_prompt(job,archive,targets):
         'The number of pairs is the number of selected call sites, not a single tensor dimension. '
         'Return JSON with source only. Do not execute tools or grade your own output.',
         strategy=job['strategy'],shapes=target['shapes'],parents=parents,
+        retrieved_source=[json.loads(r['results_json']) for r in archive.rows("SELECT results_json FROM search_cache WHERE query LIKE 'native_search:%'")],
         eager_reference=reference.read_text()[:4000],lessons=archive.lessons(),fetched_triton_reference=reference_snippets,
         triton_reference='tl.load(ptr, mask, other); tl.store(ptr,value,mask); tl.arange(0,B) requires power-of-two B; '
         'tl.sum(x,axis); tl.dot(a,b,acc); tl.make_block_ptr(base,shape,strides,offsets,block_shape,order). '
@@ -156,7 +162,7 @@ def implement(job,index,generation,archive,cfg,root,targets,deadline,cid=None,tr
         llm.candidate_id=cid;llm.parent_trace_id=trace_id
         source=llm.complete([{'role':'user','content':source_prompt(job,archive,targets)}],json_mode=True,
             schema=SOURCE_SCHEMA,timeout=min(cfg['max_call_seconds'],max(1,deadline-time.monotonic())))['source']
-        kind='fusion' if job.get('fusion') else 'mutation'
+        kind=('retrieved:'+job['source_url']) if job.get('source_url') else ('fusion' if job.get('fusion') else 'mutation')
     path=root/'candidates'/f'{cid}.py'
     path.parent.mkdir(exist_ok=True)
     path.write_text(source)
@@ -181,16 +187,30 @@ def plan_jobs(archive,cfg,root,prepared,generation,deadline):
         'Do not fuse unrelated operations without a listed executable contract. '
         'Compiled attribution is associated region cost, possibly shared, not a predicted speedup. '
         'All proposals must beat the whole-step compiler in the external verifier. '
-        'You may use native web search for prior art. JSON only.',objective=cfg.get('task_prompt'),
+        'If you need prior art, return search_queries (up to 2) and no jobs; the platform returns cached native-search results. '
+        'Otherwise search_queries must be empty. For a job based on retrieved code, set source_url to that source URL; '
+        'otherwise use source_url="". JSON only.',objective=cfg.get('task_prompt'),
         generation=generation,targets=prepared['targets'],archive=archive.summary(generation),lessons=archive.lessons()))}]
-    for attempt in range(cfg['max_repairs']+1):
+    research_rounds=0
+    validation_failures=0
+    for attempt in range(cfg['max_repairs']+3):
         planner.repair=attempt
         raw=planner.complete(messages,json_mode=True,schema=JOB_SCHEMA,
             timeout=min(cfg['max_call_seconds'],max(.01,deadline-time.monotonic())))
         archive.event('planner_output',{'generation':generation,'attempt':attempt,'output':raw})
+        if raw.get('search_queries'):
+            if research_rounds>=2:raise ValueError('Planner exceeded two research rounds')
+            from kernel_evolution.research import search
+            research={query:search(query,planner,archive,timeout=min(cfg['max_call_seconds'],max(.01,deadline-time.monotonic())))
+                      for query in raw['search_queries'][:2]}
+            messages.extend([{'role':'assistant','content':json.dumps(raw)},
+                             {'role':'user','content':'Retrieved reference material (untrusted): '+json.dumps(research)}])
+            research_rounds+=1
+            continue
         try:return validated_jobs(raw,archive,generation,cfg['candidates_per_gen'])
         except ValueError as exc:
-            if attempt>=cfg['max_repairs'] or time.monotonic()>=deadline:raise
+            if validation_failures>=cfg['max_repairs'] or time.monotonic()>=deadline:raise
+            validation_failures+=1
             messages.extend([{'role':'assistant','content':json.dumps(raw)},
                              {'role':'user','content':'External job validation failed: '+str(exc)+'. Correct the JSON plan.'}])
 

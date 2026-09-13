@@ -82,7 +82,10 @@ class StubLLM:
 
 
 JOB_SCHEMA={'type':'object','properties':{'jobs':{'type':'array','items':{'type':'object','properties':{
-    'lineage':{'type':'string'},'strategy':{'type':'string'},'parents':{'type':'array','items':{'type':'string'}}},
-    'required':['lineage','strategy','parents'],'additionalProperties':False}}},'required':['jobs'],'additionalProperties':False}
+    'lineage':{'type':'string'},'strategy':{'type':'string'},'parents':{'type':'array','items':{'type':'string'}},
+    'source_url':{'type':'string'}},
+    'required':['lineage','strategy','parents','source_url'],'additionalProperties':False}},
+    'search_queries':{'type':'array','items':{'type':'string'}}},
+    'required':['jobs','search_queries'],'additionalProperties':False}
 SOURCE_SCHEMA={'type':'object','properties':{'source':{'type':'string'}},'required':['source'],'additionalProperties':False}
 LESSON_SCHEMA={'type':'object','properties':{'lessons':{'type':'array','items':{'type':'string'}}},'required':['lessons'],'additionalProperties':False}
