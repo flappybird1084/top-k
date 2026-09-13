@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kernel Evolution — All pages</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#e5e6e1;color:#252a25;font:14px Arial,sans-serif}header{position:sticky;left:0;top:0;width:100vw;z-index:2;background:#f6f5f2;border-bottom:1px solid #c9cdc3;padding:17px 24px;display:flex;gap:24px;align-items:center}h1{font:22px Georgia,serif;margin:0}label{margin-left:auto;display:flex;gap:10px;align-items:center}select,a{font:inherit;color:inherit}select{padding:5px;border:1px solid #bfc5b9;background:white;border-radius:3px}a{text-decoration:none}.canvas{display:flex;align-items:flex-start;gap:28px;padding:26px;width:max-content}.page{flex:none}.caption{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;font-size:13px}.caption span{color:#6c7468;margin-right:8px}.viewport{overflow:hidden;background:#f6f5f2;border:1px solid #c7ccbf;box-shadow:0 3px 14px #23331a0c}iframe{display:block;width:1280px;border:0;transform-origin:top left}a:hover{text-decoration:underline}@media(max-width:650px){header{flex-wrap:wrap;gap:10px}h1{font-size:19px}label{margin-left:0}}
+</style>
+</head>
+<body>
+<header><h1>Kernel Evolution</h1><span>All pages</span><label>Zoom <select id="zoom"><option value="0.35">35%</option><option value="0.5" selected>50%</option><option value="0.75">75%</option><option value="1">100%</option></select></label><a href="index.html">Open app ↗</a></header>
+<main class="canvas" id="canvas"></main>
+<script>
+const pages=[['Front page','front',1000],['Workspace','overview',1540],['Archive','archive',1900],['Lessons','lessons',1080],['New run','setup',1000],['Candidate details','candidate',1000]];
+const canvas=document.querySelector('#canvas');
+for(const [name,view,height] of pages){const section=document.createElement('section');section.className='page';section.innerHTML=`<div class="caption"><div><span>0${pages.findIndex(p=>p[1]===view)+1}</span>${name}</div><a href="${view==='front'?'index.html':'workspace.html?preview='+view}" target="_blank" rel="noopener">Open ↗</a></div><div class="viewport"><iframe title="${name}" src="${view==='front'?'index.html':'workspace.html?preview='+view}" style="height:${height}px" loading="eager"></iframe></div>`;canvas.append(section);}
+function zoom(){const scale=Number(document.querySelector('#zoom').value);document.querySelectorAll('.page').forEach((page,i)=>{page.style.width=1280*scale+'px';const viewport=page.querySelector('.viewport');viewport.style.height=pages[i][2]*scale+'px';page.querySelector('iframe').style.transform=`scale(${scale})`;});}
+document.querySelector('#zoom').addEventListener('change',zoom);zoom();
+</script>
+</body></html>

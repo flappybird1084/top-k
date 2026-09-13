@@ -1,0 +1,4 @@
+fastapi==0.141.1
+uvicorn==0.52.4
+marimo==0.24.2
+httpx==0.28.1
