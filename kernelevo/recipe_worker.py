@@ -125,6 +125,8 @@ def main():
                 for g, b in zip(opt.param_groups, base_lrs):
                     g["lr"] = b * scale
             opt.step()
+            if hasattr(model, "post_optimizer_step"):
+                model.post_optimizer_step()  # e.g. EMA target updates (JEPA)
             step += 1
             if job.get("check_only") and step >= 2:
                 break
