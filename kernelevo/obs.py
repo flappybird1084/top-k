@@ -84,8 +84,12 @@ class Mirror:
             import wandb
             self.run = wandb.init(
                 project=project, entity=entity,
-                name=f"{model_name}-{cfg['profile'].lower()}",
+                name=cfg.get("wandb_run_name") or f"{model_name}-{cfg['profile'].lower()}",
+                group=cfg.get("wandb_group"),
+                tags=cfg.get("wandb_tags"),
                 config={k: v for k, v in cfg.items() if not k.startswith("_")})
+            print(f"[obs] wandb run: {self.run.name} "
+                  f"(group {cfg.get('wandb_group')}) -> {self.run.url}")
         except Exception as e:  # noqa: BLE001
             print(f"[obs] wandb.init failed ({e}); continuing without W&B")
         init_weave()

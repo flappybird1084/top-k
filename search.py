@@ -78,6 +78,14 @@ def main():
     except OSError:
         pass
 
+    # W&B identity: name says what/how, group ties relaunches of one job
+    # together (the work dir, e.g. kevo_<jobid8>), tags make filtering easy.
+    cfg["wandb_run_name"] = (f"{name}-{args.mode}-{cfg['profile'].lower()}-"
+                             f"{datetime.datetime.now().strftime('%H%M%S')}")
+    cfg["wandb_group"] = os.path.basename(
+        os.path.dirname(os.path.abspath(out_dir))) or name
+    cfg["wandb_tags"] = [args.mode, cfg["profile"].lower(), name]
+
     print(f"[search] profile={cfg['profile']} llm={cfg['llm']} out={out_dir}")
     from kernelevo import loop
     try:

@@ -323,7 +323,13 @@ FILES_T = """{% if files %}<table><tr><th>file</th><th>size</th></tr>
 {% else %}<p class=muted>nothing synced yet — files appear as the run produces
  them</p>{% endif %}"""
 
-GENS_T = """{% if evo and evo['generations'] %}
+GENS_T = """{% if tree %}
+<h2>evolution tree</h2>
+<details class=gen id=lintree open><summary>lineage (parent → child, val loss,
+ Δ vs same-budget baseline, ✓ accepted)</summary>
+<pre style="font-size:.75rem">{{ tree }}</pre></details>
+{% endif %}
+{% if evo and evo['generations'] %}
 <h2>generations</h2>
 {% for g in evo['generations'] %}
 <details class=gen id="gen-{{ g['n'] }}" {{ 'open' if loop.last }}>
@@ -594,6 +600,60 @@ def _job_evolution(jid):
                      for g, cs in sorted(gens.items())])
 
 
+def _lineage_tree(jid):
+    """ASCII evolution tree from the archive: baselines header, then candidates
+    hung off their parents with val/delta/verdict per node."""
+    import sqlite3
+    db_path = os.path.join(JOBS_DIR, jid, "run", "archive.sqlite")
+    if not os.path.exists(db_path):
+        return None
+    try:
+        db = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        db.row_factory = sqlite3.Row
+        rows = [dict(r) for r in db.execute(
+            "SELECT c.* FROM candidates c JOIN lineages l ON c.lineage_id=l.id "
+            "WHERE l.model_id=(SELECT MAX(id) FROM models) ORDER BY c.id")]
+        db.close()
+    except sqlite3.Error:
+        return None
+    if not any(r.get("val_loss") is not None or r["generation"] > 0 for r in rows):
+        return None
+    baselines = {r.get("train_secs"): r["val_loss"] for r in rows
+                 if r["generation"] == 0 and r.get("val_loss") is not None}
+    cands = [r for r in rows if r["generation"] > 0]
+    by_id = {r["id"]: r for r in cands}
+    kids = {}
+    roots = []
+    for r in cands:
+        p = r.get("parent_id")
+        (kids.setdefault(p, []) if p in by_id else roots).append(r)
+
+    def label(r):
+        strat = (r.get("strategy") or "?").replace("\n", " ")[:56]
+        v = r.get("val_loss")
+        if v is None:
+            note = (r.get("failure_note") or "failed")[:40]
+            return f"#{r['id']} [{r.get('phase') or '?'} g{r['generation']}] {strat} ··· ✗ {note}"
+        base = baselines.get(r.get("train_secs"))
+        delta = f" ({100*(base-v)/base:+.2f}%)" if base else ""
+        mark = "✓" if r.get("accepted") else "·"
+        return (f"#{r['id']} [{r.get('phase') or '?'} g{r['generation']}] {strat} "
+                f"··· {v:.4f}{delta} {mark}")
+
+    lines = []
+    if baselines:
+        lines.append("BASELINE  " + "   ".join(
+            f"{int(s)}s: {v:.4f}" for s, v in sorted(baselines.items())))
+    def walk(node, prefix, is_last):
+        lines.append(prefix + ("└─ " if is_last else "├─ ") + label(node))
+        ch = kids.get(node["id"], [])
+        for i, c in enumerate(ch):
+            walk(c, prefix + ("   " if is_last else "│  "), i == len(ch) - 1)
+    for i, r in enumerate(roots):
+        walk(r, "", i == len(roots) - 1)
+    return "\n".join(lines)
+
+
 def _job_files(jid):
     base = os.path.join(JOBS_DIR, jid, "run")
     out = []
@@ -618,7 +678,8 @@ def _fragments(jid, job):
         status=job["status"], stage=job.get("stage", ""), log=log,
         headline_html=render_template_string(HEADLINE_T, evo=evo),
         files_html=render_template_string(FILES_T, files=_job_files(jid), jid=jid),
-        gens_html=render_template_string(GENS_T, evo=evo, jid=jid))
+        gens_html=render_template_string(GENS_T, evo=evo, jid=jid,
+                                         tree=_lineage_tree(jid)))
 
 
 @app.get("/jobs/<jid>")

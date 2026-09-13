@@ -110,7 +110,10 @@ def recipe_planner_prompt(phase, base_summary, outcomes, lessons, n_jobs, parent
          f"candidate). Propose at most {n_jobs} jobs — {rules}.\n\n"
          f"## Baseline / target\n{json.dumps(base_summary, indent=1)}\n"
          f"{parent_txt}\n"
-         f"## Previous outcomes this run\n{json.dumps(outcomes, indent=1)}\n\n"
+         f"## Previous outcomes this run\n{json.dumps(outcomes, indent=1)}\n"
+         "(strategies that FAILED TO AUTHOR were never evaluated — their idea "
+         "is untested; re-proposing them in a simpler form is often worth a "
+         "slot)\n\n"
          f"## Lessons\n" + ("\n".join(f"- {t}" for t in lessons) or "(none)") + "\n\n"
          'Respond with JSON: {"jobs": [{"strategy": <specific plain-language '
          'strategy>, "parent": <parent candidate id or null>}]}'},

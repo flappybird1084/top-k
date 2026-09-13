@@ -145,7 +145,7 @@ RECIPE = dict(
     loss_margin_rel=0.003,      # beat baseline val loss by >0.3% to count as accepted
     param_budget_ratio=1.10,    # candidate params <= baseline * ratio
     subagent_parallelism=8,
-    recipe_max_repairs=1,       # repairs for load/sanity failures (inside eval slot)
+    recipe_max_repairs=2,       # authoring repairs (raw feedback) before the slot is lost
     eval_timeout_grace_s=150,   # worker timeout = train_seconds + grace
 )
 
