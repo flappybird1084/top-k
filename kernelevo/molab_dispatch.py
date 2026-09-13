@@ -12,6 +12,7 @@ import os
 import sys
 
 from kernelevo.molab import MolabTarget
+from kernelevo.dispatch_once import run_once
 
 
 def main():
@@ -23,9 +24,9 @@ def main():
         print(line, flush=True)
 
     try:
-        rc = MolabTarget(job.get("molab")).dispatch(
+        rc = run_once(sys.argv[1], lambda: MolabTarget(job.get("molab")).dispatch(
             job, project_root, env_updates, write_line,
-            artifacts_dir=artifacts_dir)
+            artifacts_dir=artifacts_dir))
     except Exception as e:  # noqa: BLE001 — surface, don't traceback-spam the log
         write_line(f"[molab] dispatch error: {type(e).__name__}: {e}")
         rc = 1

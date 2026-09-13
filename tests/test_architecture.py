@@ -8,7 +8,13 @@ import ui_server as ui
 from kernelevo.archive import SCHEMA
 from kernelevo.recipes import is_better_final
 
+
+def finish_discovery(jid):
+ job=ui.web.load_job(jid);job['status']='awaiting_data';ui.web.save_job(job)
+
 class Architecture(TestCase):
+ def setUp(self):
+  mock=patch.object(ui,'start_discovery',side_effect=finish_discovery);mock.start();self.addCleanup(mock.stop)
  def test_separate_recipe_rows_and_budget_baselines(self):
   with tempfile.TemporaryDirectory() as temp,patch.object(ui.web,'JOBS_DIR',temp):
    jid='b'*32;root=Path(temp)/jid/'run';root.mkdir(parents=True)
