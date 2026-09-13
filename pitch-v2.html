@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Top-Kernel · Interactive walkthrough</title>
+<meta name="description" content="Explore how Top-Kernel's agents adapt, research, build, evaluate, and improve training recipes.">
+<link rel="stylesheet" href="ui/run.css">
+<link rel="stylesheet" href="ui/assets/search.css">
+<link rel="stylesheet" href="ui/pitch.css">
+<script defer src="ui/pitch-model.js"></script>
+<script defer src="ui/evolution.js"></script>
+<script defer src="ui/pitch.js"></script>
+</head>
+<body class="walk">
+<main>
+<header class="pitch-header">
+<a class="wordmark" href="#repo" aria-label="Top-Kernel, first step">Top-K<small>ernel</small></a>
+<span class="track">CoreWeave Hacks · Best Use of ARIA</span>
+<span class="demo-badge">Interactive demo · illustrative data</span>
+</header>
+<nav class="flow-nav" aria-label="System walkthrough">
+<button data-step="0" aria-current="step"><span>1</span>Repository</button>
+<button data-step="1"><span>2</span>Adapter</button>
+<button data-step="2"><span>3</span>Research & plan</button>
+<button data-step="3"><span>4</span>Coding agents</button>
+<button data-step="4"><span>5</span>Evaluation</button>
+<button data-step="5"><span>6</span>Finals</button>
+<button data-step="6"><span>7</span>ARIA review</button>
+</nav>
+<div class="stage-heading"><div><h1 id="stage-title" tabindex="-1">Bring a repo. Find a better recipe.</h1><p id="stage-description">Agents adapt your training code, then explore better model designs and training strategies.</p></div><span id="step-count" aria-live="polite">1 / 7</span></div>
+<div class="stage-area">
+<section data-panel="0" aria-labelledby="stage-title">
+<div class="intake-grid">
+<div class="intake">
+<div class="sprites" aria-label="Project integrations"><img src="ui/assets/coreweave-sprite.png" alt="CoreWeave"><img src="ui/assets/marimo-sprite.png" alt="marimo"><img src="ui/assets/wandb-sprite.png" alt="Weights & Biases"></div>
+<label for="example-repo">Example repository</label>
+<div class="repo-field"><span aria-hidden="true">↳</span><input id="example-repo" value="github.com/karpathy/nanoGPT" readonly aria-describedby="example-note"></div>
+<label for="example-data">Example dataset</label>
+<div class="repo-field"><span aria-hidden="true">↳</span><input id="example-data" value="huggingface.co/datasets/roneneldan/TinyStories" readonly></div>
+<p id="example-note" class="quiet">A simulated recipe search. Nothing is submitted or trained.</p>
+<button class="primary" data-go="1">Explore example <span aria-hidden="true">→</span></button>
+</div>
+<div class="intro-map">
+<p class="section-label">From code to evidence</p>
+<div class="mini-flow"><div><span>01</span><strong>Adapt</strong><p>Connect model, data & loss.</p></div><i aria-hidden="true">↓</i><div><span>02</span><strong>Evolve</strong><p>Research, build, test, repeat.</p></div><i aria-hidden="true">↓</i><div><span>03</span><strong>Understand</strong><p>Review the evidence with ARIA.</p></div></div>
+<p class="scope-note">This walkthrough follows architecture and training-recipe search.</p>
+</div>
+</div>
+</section>
+<section data-panel="1" hidden aria-labelledby="stage-title">
+<div class="two-up">
+<div>
+<div class="interface-strip"><span>Repository</span><i>→</i><strong>Adapter agent</strong><i>→</i><span>Training interface</span></div>
+<h2 class="panel-title">Adapter self-repair</h2>
+<details class="trace repair"><summary><span><b class="status fail">Attempt 1</b> Shape mismatch</span><span>Inspect error + repair</span></summary><pre>RuntimeError: logits and targets have incompatible shapes</pre><p>The raw error returns to the writing agent, which revises the adapter.</p></details>
+<details class="trace repair"><summary><span><b class="status kept">Attempt 2</b> Verified</span><span>Inspect checks</span></summary><p>Model builds, a data batch loads, and the loss is finite, scalar, and supports gradients.</p></details>
+<div class="feedback-note"><span aria-hidden="true">↶</span><span>Fail → raw feedback → revise → verify</span></div>
+</div>
+<div class="contract"><p class="section-label">One shared interface</p><dl><div><dt>build_model()</dt><dd>The model to train</dd></div><div><dt>get_dataloader()</dt><dd>Training and validation batches</dd></div><div><dt>loss_fn()</dt><dd>The objective used to evaluate candidates</dd></div></dl><p class="scope-note">Every recipe is evaluated through the same adapter interface.</p></div>
+</div>
+</section>
+<section data-panel="2" hidden aria-labelledby="stage-title">
+<div class="planning-grid">
+<div class="planner-card"><img src="ui/assets/agent-claude.png" alt="" class="planner-sprite"><p class="section-label">Planner</p><h2>What should we try?</h2><p>Baseline + past results<br>+ parent recipes + lessons</p><div class="model-caption">Model artwork is illustrative</div></div>
+<div class="planning-actions">
+<details class="trace research" open><summary><span>Research subagent <b class="optional">Optional</b></span><span>↗</span></summary><p>Investigates prior art and returns a brief before the planner assigns experiments.</p><div class="research-chain"><span>Question</span><i>→</i><span>Web research</span><i>→</i><span>Brief to planner</span></div></details>
+<div class="assignment"><p class="section-label">Example assignments</p><div><b>A</b><span>Try RMSNorm before attention.</span></div><div><b>B</b><span>Tie input and output embeddings.</span></div><div><b>C</b><span>Explore SwiGLU expansion.</span></div></div>
+<p class="scope-note">Research runs when available and requested by the planner.</p>
+</div>
+</div>
+</section>
+<section data-panel="3" hidden aria-labelledby="stage-title">
+<div class="explore-toolbar"><div class="phase-buttons" aria-label="Coding phase"><button data-phase="architecture">Architecture</button><button data-phase="hyperparam">Hyperparameters</button></div><div id="generation-buttons" class="generation-buttons" aria-label="Generation"><button data-generation="1">Gen 1</button><button data-generation="2">Gen 2</button></div><span class="quiet">8 parallel slots · configurable</span></div>
+<div class="candidate-workspace"><div id="agent-cards" class="agent-grid" aria-label="Select a candidate"></div><aside id="candidate-detail" class="candidate-detail" aria-live="polite"></aside></div>
+<p class="scope-note">Agents author in parallel. Full training evaluations run serially on the shared GPU.</p>
+</section>
+<section data-panel="4" hidden aria-labelledby="stage-title">
+<div class="explore-toolbar"><div class="phase-buttons" aria-label="Search phase"><button data-phase="architecture">Architecture</button><button data-phase="mixed">Mixed</button><button data-phase="hyperparam">Hyperparameters</button></div><span class="quiet">Example configuration · all counts and budgets are configurable</span></div>
+<div id="mixed-empty" class="skipped-phase" hidden><span>Ⅱ</span><h2>Mixed phase is skipped in this example.</h2><p>Enable it and set its generation count in the search configuration.</p><button class="secondary" data-phase="hyperparam">Explore hyperparameters →</button></div>
+<div id="evaluation-content">
+<div class="evaluation-grid"><div id="architecture-view">
+<div class="section-heading"><h2 id="phase-caption">2 generations × 8 candidates · 1 minute each</h2><label class="quiet">Training budget <select id="architecture-budget" aria-label="Training budget"></select></label></div>
+<div id="architecture-metrics" class="architecture-metrics"></div>
+<p id="architecture-empty" hidden>No evaluations in this phase.</p>
+<div id="architecture-plot"><svg id="architecture-chart" viewBox="0 0 1000 210" role="img" aria-label="Illustrative validation losses compared with baseline"></svg><div class="chart-key"><span>Validation loss ↓</span><span>Dashed line: baseline</span></div></div>
+<div id="architecture-changes" hidden><span id="architecture-count"></span><table><tbody id="architecture-candidates"></tbody></table></div>
+</div>
+<aside class="curator"><p class="section-label">Curator → next generation</p><h2>Keep the lessons,<br>not just the winner.</h2><p id="curator-lesson"></p><div id="lineage" class="lineage"></div><p class="scope-note">Click a recipe to inspect its parent and result.</p></aside></div>
+<details class="trace results-disclosure"><summary><span>Candidate results</span><span id="table-count"></span></summary><div class="table-scroll"><table><thead><tr><th>Recipe</th><th>Parent</th><th>Loss</th><th>Result</th></tr></thead><tbody id="phase-results"></tbody></table></div></details>
+</div>
+</section>
+<section data-panel="5" hidden aria-labelledby="stage-title">
+<div class="finals-intro"><p>Top 2 candidates → fresh 5-minute training runs</p><span class="quiet">Example configuration</span></div>
+<div id="finalist-cards" class="finalist-grid"></div>
+<div class="winner-banner"><span>Winner</span><strong>Lowest final validation loss</strong><span>Compared with baseline</span></div>
+</section>
+<section data-panel="6" hidden aria-labelledby="stage-title">
+<div class="aria-grid"><div>
+<div class="evidence-flow"><span>Training runs</span><b>+</b><span>Agent traces</span><i>→</i><strong>ARIA review</strong></div>
+<div class="review-points"><div><span>01</span><p>Compare candidate losses and training curves.</p></div><div><span>02</span><p>Understand progress, repairs, and agent decisions.</p></div><div><span>03</span><p>Use the evidence to choose what to try next.</p></div></div>
+<p class="scope-note">We asked ARIA to analyze our runs and traces and generate a report.</p>
+</div><div class="report-panel"><img src="ui/assets/wandb.png" alt="Weights & Biases"><p class="section-label">Explore the actual project report</p><h2>From experiments<br>to evidence.</h2><a id="report-link" class="primary" target="_blank" rel="noopener noreferrer">View W&B report ↗</a><a class="text-link" href="https://wandb.ai/stephenslee0127-acme/kernel-evolution/weave/traces" target="_blank" rel="noopener noreferrer">Open Weave traces ↗</a><p class="scope-note">The linked report is separate from this illustrative walkthrough.</p></div></div>
+</section>
+</div>
+<footer class="pitch-footer"><button id="restart" class="text-button">↺ Restart</button><span id="stage-hint">Click any stage above to explore.</span><div><button id="previous" class="secondary" disabled>← Back</button><button id="next" class="primary">Next: Adapter →</button></div></footer>
+<noscript><p>This walkthrough needs JavaScript. <a href="https://api.wandb.ai/links/rianbutala-ucla/dpd0tfqg">Open the W&B report directly.</a></p></noscript>
+</main>
+</body>
+</html>

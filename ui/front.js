@@ -89,6 +89,7 @@ async function poll(){
 }
 form.addEventListener('submit',async e=>{
   e.preventDefault();if(posting)return;
+  if(new URLSearchParams(location.search).get('demo')==='1'){replayIntake();return;}
   if(lastState&&['failed','cancelled'].includes(lastState.status)){requestKey=crypto.randomUUID();runId=null;lastState=null}
   if(runId&&lastState?.status==='awaiting_data'){dataDialog.showModal();return}
   posting=true;submit.disabled=true;message('');
@@ -99,6 +100,7 @@ form.addEventListener('submit',async e=>{
 });
 dataForm.addEventListener('submit',async e=>{
   e.preventDefault();const button=dataForm.querySelector('button');button.disabled=true;dataError.textContent='';
+  if(new URLSearchParams(location.search).get('demo')==='1'){finishReplayData(button);return;}
   try{
     await api('/api/runs/'+runId+'/data',{method:'POST',body:JSON.stringify({url:dataInput.value.trim(),dataset_choice:selectedDataset})});
     dataForm.hidden=true;dataCheck.hidden=false;dataCheckText.textContent='Checking data access and the training sample…';poll();
@@ -109,3 +111,35 @@ stop.addEventListener('click',async()=>{try{await api('/api/runs/'+runId+'/cance
 const resume=new URLSearchParams(location.search).get('intake');
 if(resume&&/^[a-f0-9]{32}$/.test(resume)){runId=resume;submit.disabled=true;poll()}
 window.addEventListener('pagehide',()=>clearTimeout(timer));
+
+function replayIntake(){
+ try{const u=new URL(input.value.trim());if(u.protocol!=='https:'||u.hostname!=='github.com'||u.pathname.split('/').filter(Boolean).length<2)throw Error();}catch{message('Paste a GitHub repository URL.');return;}
+ posting=true;submit.disabled=true;input.readOnly=true;stop.hidden=true;
+ const steps=['Explore repository structure and training entry points.','Review data preparation scripts and training configurations.','Choose a dataset for this training run.'];
+ let step=0;
+ function advance(){
+  renderActivity({status:step===2?'awaiting_data':'exploring',activity:steps.slice(0,step+1).map(message=>({message}))});
+  note.textContent='Recorded demo';note.classList.remove('error');stop.hidden=true;
+  if(++step<steps.length)timer=setTimeout(advance,1500);else showReplayData();
+ }
+ advance();
+}
+function showReplayData(){
+ document.querySelector('#data-caption').textContent='Which dataset would you like to use?';
+ document.querySelector('#discovery-summary').textContent='Choose a dataset to preview the flow. Results use the recorded benchmark runs.';
+ const choices=document.querySelector('#dataset-options');choices.replaceChildren();
+ for(const option of [{name:'Tiny Shakespeare',url:'https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt',reason:'Small text corpus for a quick nanoGPT run.'},{name:'TinyStories',url:'https://huggingface.co/datasets/roneneldan/TinyStories',reason:'Short stories for language-model training.'}]){
+  const button=document.createElement('button');button.type='button';button.className='dataset-option';
+  const title=document.createElement('strong');title.textContent=option.name;const reason=document.createElement('span');reason.textContent=option.reason;
+  button.append(title,reason);button.onclick=()=>{dataInput.value=option.url;selectedDataset=option.name;dataInput.focus()};choices.append(button);
+ }
+ dataForm.hidden=false;dataCheck.hidden=true;dataInput.value='';dataForm.querySelector('button').disabled=false;
+ dataDialog.showModal();posting=false;submit.disabled=false;submit.onclick=e=>{e.preventDefault();dataDialog.showModal()};
+}
+function finishReplayData(button){
+ try{const u=new URL(dataInput.value.trim());if(u.protocol!=='https:')throw Error();}catch{dataError.textContent='Enter an HTTPS dataset link.';button.disabled=false;return;}
+ dataForm.hidden=true;dataCheck.hidden=false;dataCheckText.textContent='Restoring the recorded evaluations…';
+ const p=new URLSearchParams({demo:'1',flow:'1',requested_repo:input.value.trim(),requested_data:dataInput.value.trim()});
+ timer=setTimeout(()=>{location.href='assets/search.html?'+p},1800);
+}
+if(new URLSearchParams(location.search).get('demo')==='1')note.textContent='Recorded demo';

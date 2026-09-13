@@ -29,9 +29,9 @@ function renderKernel(snapshot){
  q('#empty-performance>span').textContent=snapshot.status==='complete'&&!timed.length?'This run finished before a kernel reached full training-step measurement.':snapshot.stop_reason==='no_targets'?'Profiling completed. No operations met the criteria for kernel replacement.':'Training-step performance will appear as kernels are verified.';
  q('#generation').textContent=Number.isInteger(snapshot.generation)?'Generation '+snapshot.generation:'';
  q('#kernels').hidden=!rows.length;q('#candidate-count').textContent=rows.length+' evaluated';
- q('#candidates').innerHTML=rows.slice(-12).reverse().map(r=>`<tr><td>${escapeHTML(r.lineage_id)}<small>${escapeHTML(r.id)}</small></td><td><details><summary>${escapeHTML((r.strategy||"Candidate").split(". ")[0])}</summary><p>${escapeHTML(r.strategy)}</p></details></td><td class="${r.accepted?'accepted':'rejected'}">${r.generation===0?'Baseline':r.accepted?'✓ Verified':'Passed '+escapeHTML(r.gate_reached)+' / 4 · rejected'}</td><td>${Number.isFinite(r.step_time_ms)?r.step_time_ms.toFixed(2)+' ms':'—'}</td></tr>`).join('');
+ q('#candidates').innerHTML=(demo?rows:rows.slice(-12)).slice().reverse().map(r=>`<tr><td>${escapeHTML(r.lineage_id)}<small>${escapeHTML(r.id)}</small></td><td><details><summary>${escapeHTML((r.strategy||"Candidate").split(". ")[0])}</summary><p>${escapeHTML(r.strategy)}</p></details></td><td class="${r.accepted?'accepted':'rejected'}">${r.generation===0?'Baseline':r.accepted?'✓ Verified':'Passed '+escapeHTML(r.gate_reached)+' / 4 · rejected'}</td><td>${Number.isFinite(r.step_time_ms)?r.step_time_ms.toFixed(2)+' ms':'—'}</td></tr>`).join('');
  const integration=snapshot.integrations||{};
- const notebook=safeURL(integration.marimo_url?.startsWith('/notebook/')?new URL(integration.marimo_url,location.href).href:integration.marimo_url);
+ const notebook=safeURL(/^\/(notebook|assets\/recorded)\//.test(integration.marimo_url||'')?new URL(integration.marimo_url,location.href).href:integration.marimo_url);
  q('#marimo-panel').hidden=!notebook;
  const notebookMeasured=rows.filter(r=>Number.isFinite(r.step_time_ms)&&r.step_time_ms>0);
  const recipeRows=snapshot.architecture?.candidates||[];
@@ -39,7 +39,7 @@ function renderKernel(snapshot){
 
  if(snapshot.mode==='recipe')q('#notebook-stats').innerHTML=`<div><span>Recipes</span><strong>${recipeRows.filter(r=>r.phase!=='baseline').length}</strong></div><div><span>Held-out evaluations</span><strong>${recipeRows.filter(r=>r.phase!=='baseline'&&Number.isFinite(r.val_loss)).length}</strong></div><div><span>Improved</span><strong>${recipeRows.filter(r=>r.phase!=='baseline'&&r.accepted).length}</strong></div>`;
  if(notebook)q('#marimo-link').href=notebook;
- const notebookEmbed=safeURL(integration.marimo_embed_url?.startsWith('/notebook/')?new URL(integration.marimo_embed_url,location.href).href:integration.marimo_embed_url);
+ const notebookEmbed=safeURL(/^\/(notebook|assets\/recorded)\//.test(integration.marimo_embed_url||'')?new URL(integration.marimo_embed_url,location.href).href:integration.marimo_embed_url);
  q('#marimo-frame').hidden=!notebookEmbed;q('#marimo-note').hidden=!!notebookEmbed;
  if(notebookEmbed){if(q('#marimo-frame').getAttribute('src')!==notebookEmbed)q('#marimo-frame').src=notebookEmbed}else q('#marimo-frame').removeAttribute('src');
  const wandbRun=safeURL(integration.wandb_url,true);
@@ -62,7 +62,7 @@ function render(snapshot){
  q('#view-status').textContent=snapshot.message||'';
  q('#runtime-panel').hidden=demo||!runId;
  q('#demo-label').hidden=!demo;q('#replay-demo').hidden=!demo;
- if(demo){const rows=evolution.view==='architecture'?snapshot.architecture.candidates.filter(r=>r.train_secs===evolution.budget):snapshot.candidates,last=rows.at(-1);q('#wandb-empty').classList.add('has-metrics');q('#wandb-empty').innerHTML=`<div class="wandb-summary"><p>Demo metric preview</p><div><span>${evolution.view==='architecture'?(last.phase==='baseline'?'recipe/baseline_val_loss':'recipe/val_loss'):'kernel/step_time_ms'}</span><strong>${evolution.view==='architecture'?last.val_loss.toFixed(4):last.step_time_ms.toFixed(2)}</strong></div><div><span>Evaluations</span><strong>${rows.filter(r=>r.generation!==0).length}</strong></div></div>`}
+ if(demo)renderRecorded(snapshot);
 }
 async function refresh(){
  clearTimeout(retryTimer);
@@ -87,10 +87,10 @@ async function refresh(){
  retryTimer=setTimeout(refresh,3000);
 }
 setupEvolution(()=>{q('#wandb-empty').classList.remove('has-metrics');q('#wandb-empty').textContent='Waiting for metrics from this view.';refresh();clearTimeout(wandbTimer);setTimeout(refreshWandb,250)});
-q('#replay-demo').addEventListener('click',()=>{demoTick=0;evolution.budgetPinned=false;refresh()});
+q('#replay-demo').addEventListener('click',()=>{location.href='assets/search.html?demo=1'});
 render(demo?demoSnapshot(evolution.view,0):{status:'waiting',candidates:[],traces:[]});
 refresh();
-const demoTimer=demo?setInterval(()=>{if(!document.hidden&&demoTick<6){demoTick++;refresh()}},4500):null;
+const demoTimer=null;
 window.addEventListener('pagehide',()=>{clearTimeout(retryTimer);clearInterval(demoTimer)});
 
 let runtimeTimer;
@@ -133,3 +133,22 @@ async function refreshWandb(){
 }
 if(runId&&['http:','https:'].includes(location.protocol))refreshWandb();
 window.addEventListener('pagehide',()=>clearTimeout(wandbTimer));
+
+function renderRecorded(s){
+ document.body.classList.add('recorded-demo');q('.observability').insertBefore(q('#marimo-panel'),q('#weave-panel'));
+ q('#final-summary-link').hidden=false;q('#final-summary-link').href='assets/final.html?'+params;
+ q('#recorded-logs').hidden=false;q('#recorded-terminal').textContent=s.terminal;
+ q('#notebook-stats').hidden=true;
+ if(!s.verification){q('#repo-row').hidden=!s.repo;q('#dataset').hidden=!s.data;}
+ q('#download-recorded').href='assets/recorded/'+evolution.view+'.json';
+ if(s.integrations.report_pending){q('#wandb-empty').classList.add('has-metrics');q('#wandb-empty').innerHTML='<div class=wandb-summary><p>Native report awaiting sharing</p><div><span>Recorded result</span><strong>'+(s.verification?'3.30% lower step time':'7.21% lower validation loss')+'</strong></div><a target=_blank rel=noopener href="'+escapeHTML(s.integrations.wandb_report_url)+'">Review report ↗</a></div>';}
+ q('#aria-panel').hidden=false;q('#aria-link').href='https://wandb.ai/rianbutala-ucla/kernel-evolution';
+ q('#copy-aria-prompt').onclick=async()=>{await navigator.clipboard.writeText(evolution.view==='architecture'?'Analyze recipe run pwn5or77 (75890bd0). Compare validation loss at matching 60s, 120s and 300s budgets, explain the winning lineage and failed candidates, and create a report. Do not launch new experiments.':'Review the Astra verification at commit 660b6d9: paired baseline/candidate times in ms are 34.224897/33.087744, 33.020802/31.938479, 32.978930/31.951952, 34.324049/31.969071. Explain the median paired reduction of 3.3001%, minimum 3.1140%, and eight correctness checks. Do not substitute the ratio of separate medians or launch experiments.');q('#aria-copy-status').textContent='Copied';};
+ const box=q('#recorded-evidence');box.hidden=!s.verification;
+ if(!s.verification)return;
+ const v=s.verification;q('#kernel-view .performance').append(q('#recorded-evidence'));
+ q('#performance-title').textContent='Search measurements';
+ q('#best').textContent=v.result.step_time_ms.toFixed(2)+' ms';q('#speedup').parentElement.querySelector('span').textContent='Paired time reduction';q('#speedup').textContent=(v.summary.paired_median_time_reduction*100).toFixed(2)+'%';q('#accepted').textContent='2';q('#accepted').parentElement.querySelector('span').textContent='Accepted candidates';q('#candidate-count').textContent='37 candidates + baseline';
+ q('#profiling-data').hidden=false;q('#profiling-data .metrics').hidden=true;
+ box.innerHTML='<div class="section-heading"><h2>Original PyTorch vs Astra kernels</h2><span class="quiet">Final paired verification · 660b6d9</span></div><div class="paired-grid">'+v.blocks.map((b,i)=>`<div><span>Pair ${i+1}</span><div class="pair-bar baseline" style="--bar:100%">${b.baseline.toFixed(2)} ms</div><div class="pair-bar evolved" style="--bar:${b.candidate/b.baseline*100}%">${b.candidate.toFixed(2)} ms</div><small>${(b.gain*100).toFixed(2)}% lower</small></div>`).join('')+'</div><p class="quiet">Gray: compiled PyTorch · Green: Astra · 8 full-state checks passed · 5 generations</p>';
+}

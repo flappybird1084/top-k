@@ -9,3 +9,5 @@ wandb/
 *.sqlite
 .DS_Store
 .inductor-cache/
+
+ui/__marimo__/
