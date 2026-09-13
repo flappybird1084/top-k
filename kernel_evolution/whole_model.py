@@ -38,6 +38,26 @@ def _precision():
             torch.is_grad_enabled())
 
 
+def _global_callables():
+    import torch
+    import torch.nn.functional as functional
+    return {(module, name): value for module in (torch, functional)
+            for name, value in vars(module).items() if callable(value)}
+
+
+def _assert_invariants(harness):
+    guard = getattr(harness, '_whole_model_guard', None)
+    if guard is None:
+        return
+    classes, functions, precision = guard
+    if _precision() != precision:
+        raise AssertionError('Candidate changed global precision or gradient settings during execution')
+    if any(vars(cls).get(name) is not value for (cls, name), value in classes.items()):
+        raise AssertionError('Candidate patched shared classes during execution')
+    if any(vars(module).get(name) is not value for (module, name), value in functions.items()):
+        raise AssertionError('Candidate patched global torch functions')
+
+
 def _groups(optimizer):
     return [{k: copy.deepcopy(v) for k, v in g.items() if k != 'params'}
             for g in optimizer.param_groups]
@@ -55,6 +75,7 @@ def install_candidate(harness, path):
     group_params = [[id(p) for p in g['params']] for g in optimizer.param_groups]
     state = clone((model.state_dict(), optimizer.state_dict()))
     classes, precision = _classes(model), _precision()
+    functions = _global_callables()
     for cls in type(optimizer).__mro__:
         classes.update({(cls, name): value for name, value in vars(cls).items() if callable(value)})
     # Snapshot before importing as candidate top-level code also executes.
@@ -74,6 +95,8 @@ def install_candidate(harness, path):
     if any(vars(cls).get(name) is not value for (cls, name), value in classes.items()):
         raise AssertionError('Candidate patched shared model classes')
     compare((model.state_dict(), optimizer.state_dict()), state, 0., 0.)
+    harness._whole_model_guard = (classes, functions, precision)
+    _assert_invariants(harness)
     harness.compiled_step = None
     return {'parameter_count': len(named), 'buffer_count': len(buffers), 'contract': 'instance_install_v1'}
 
@@ -89,8 +112,10 @@ def make_harness(adapter, config, run_dir, path=None):
 def _capture(harness, fn):
     from kernel_evolution.runtime import clone
     import torch
-    loss = fn()
+    _assert_invariants(harness)
+    loss = getattr(harness, 'capture_step', lambda call: call())(fn)
     torch.cuda.synchronize()
+    _assert_invariants(harness)
     gradients = {name: p.grad for name, p in harness.model.named_parameters() if p.requires_grad}
     return clone((loss, harness.model.state_dict(), harness.optimizer.state_dict(), gradients))
 
@@ -154,7 +179,9 @@ def check_reference(harness, records, config, *, eager=False):
             actual_previous = clone(harness.model.state_dict())
             expected_previous = record['initial']
             for expected in record['states']:
+                batch_before = clone(harness.batch)
                 actual = _capture(harness, fn)
+                compare(harness.batch, batch_before, 0., 0.)
                 errors.append(compare_step_state(actual, expected, config['rtol'], config['atol']))
                 # Absolute parameter tolerance can exceed an AdamW update. Compare
                 # updates separately so doing no optimizer work cannot pass.
@@ -173,3 +200,51 @@ def compare_training_paths(baseline, candidate, config, *, baseline_eager=True,
                            candidate_eager=False, draws=3, steps=2):
     records = capture_reference(baseline, config, eager=baseline_eager, draws=draws, steps=steps)
     return check_reference(candidate, records, config, eager=candidate_eager)
+
+
+def selftest(harness, records, config):
+    """Reject stateful, shape-hardcoded and forward-only planted cheats.
+
+    These deliberately broken step wrappers exercise the external verifier;
+    they are never search candidates or optimization implementations.
+    """
+    import torch
+    from torch.utils._pytree import tree_flatten
+    if len(records) < 2 or min(len(r['states']) for r in records) < 2:
+        raise ValueError('Verifier self-test requires multiple shapes and sequential updates')
+    def shape(batch):
+        return tuple(tuple(x.shape) for x in tree_flatten(batch)[0] if isinstance(x, torch.Tensor))
+    modal = shape(records[0]['batch'])
+    if not any(shape(r['batch']) != modal for r in records):
+        raise ValueError('Verifier self-test requires an unseen batch shape')
+    original_step = harness.step
+    # Establish that the legitimate oracle path passes before testing cheats.
+    check_reference(harness, records, config, eager=True)
+    cached = []
+    def caching():
+        if not cached:
+            cached.append(original_step())
+        return cached[0]
+    def hardcoded():
+        if shape(harness.batch) == modal:
+            return original_step()
+        return torch.zeros_like(records[0]['states'][0][0])
+    def forward_only():
+        harness.optimizer.zero_grad(set_to_none=True)
+        return harness.adapter.loss_fn(harness.model, harness.batch).detach()
+    rejected = []
+    try:
+        for name, cheat in [('cached_output', caching), ('hardcoded_shape', hardcoded), ('missing_backward', forward_only)]:
+            harness.step = cheat
+            harness.compiled_step = None
+            try:
+                check_reference(harness, records, config, eager=True)
+            except (AssertionError, RuntimeError) as exc:
+                rejected.append({'name': name, 'gate': 2, 'error': str(exc)[:2000]})
+            else:
+                raise RuntimeError(f'Verifier self-test FAILED: {name} survived correctness')
+    finally:
+        harness.step = original_step
+        harness.compiled_step = None
+        harness.restore()
+    return rejected

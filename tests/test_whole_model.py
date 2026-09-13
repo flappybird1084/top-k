@@ -76,3 +76,35 @@ class WholeModelTests(unittest.TestCase):
             candidate.optimizer.step = skip_update
             with self.assertRaises(AssertionError):
                 check_reference(candidate, records, config)
+
+    def test_planted_step_cheats_rejected_and_harness_restored(self):
+        from kernel_evolution.whole_model import capture_reference, check_reference, selftest
+        from kernel_evolution.runtime import clone
+        h = self.harness()
+        h.batch = torch.ones(4, 3)
+        h.adapter = SimpleNamespace(loss_fn=lambda model, batch: model(batch).square().mean())
+        initial = clone(h.model.state_dict())
+        initial_optimizer = copy.deepcopy(h.optimizer.state_dict())
+        def restore():
+            h.model.load_state_dict(initial)
+            h.optimizer.load_state_dict(copy.deepcopy(initial_optimizer))
+            h.optimizer.zero_grad(set_to_none=True)
+        h.restore = restore
+        def step():
+            h.optimizer.zero_grad(set_to_none=True)
+            loss = h.adapter.loss_fn(h.model, h.batch)
+            loss.backward()
+            h.optimizer.step()
+            return loss.detach()
+        h.step = step
+        h.step_callable = lambda replacements, eager=False: h.step
+        cfg = {'seed': 1729, 'rtol': 1e-4, 'atol': 1e-5}
+        with patch('kernel_evolution.whole_model.correctness_cases', return_value=[torch.ones(4, 3), torch.ones(3, 3)]), patch('torch.cuda.synchronize'):
+            records = capture_reference(h, cfg)
+            result = selftest(h, records, cfg)
+            self.assertEqual({r['name'] for r in result}, {'cached_output', 'hardcoded_shape', 'missing_backward'})
+            self.assertTrue(all(r['gate'] == 2 for r in result))
+            self.assertIs(h.step, step)
+            self.assertEqual(check_reference(h, records, cfg)['checks'], 4)
+            with self.assertRaisesRegex(ValueError, 'multiple shapes'):
+                selftest(h, records[:1], cfg)
