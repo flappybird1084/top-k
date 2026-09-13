@@ -1,0 +1,65 @@
+# Verified results and measurements
+
+All numbers measured on molab, NVIDIA RTX PRO 6000 Blackwell Server Edition
+(97.9GB), CUDA 13.2 driver, torch 2.x/py3.13 in the notebook venv. Incumbents
+are per-op `torch.compile(dynamic=False)` re-measured in-session; acceptance
+margins calibrated per run from measured noise (typically 3% in-model).
+
+## The accepted kernel (nanochat)
+
+- Target: karpathy/nanochat via agent-written adapter (11.5M params, batch 4).
+- Lineages found: `relu2_mlp` (2.9–3.0%), `rms_norm` (2.3–2.4%).
+- **Generation 1: `rms_norm` ACCEPTED** — "row-parallel Triton RMSNorm
+  autograd.Function" (Kimi-K2.7-Code). Training step **8.95ms → 8.58ms**
+  (−4.1% vs torch.compile incumbents; eager reference 8.73ms → −1.7% vs eager),
+  MFU 0.037. Source: `kernels/accepted_rms_norm_nanochat.py`.
+- Win mechanism: fused forward+backward pair beating inductor's autograd-
+  generated backward; the −4.1% step win exceeds the op's ~2.3% GPU-time share
+  because the 8ms toy step is kernel-launch-bound, so replacing several
+  launches with one saves wall time beyond pure GPU time.
+- **Generation 2: correct rejection** — a multi-row-packed RMSNorm passed
+  gate 3 (faster in isolation than the accepted kernel) but measured 8.66ms
+  in-model vs re-measured incumbent 8.89ms: a 2.6% delta *inside* the 3%
+  calibrated noise margin → rejected. The verifier declining a flattering
+  number is the system's core trust property working.
+
+## Correct-but-slower kernels (the honest negatives)
+
+- `cross_entropy` (modern-lm, 481M): Kimi's kernel passed full correctness
+  (outputs + gradients) — the first CE candidate to do so — then failed gate 3:
+  **21,483µs vs inductor's 7,781µs** (2.8× slower). Source:
+  `kernels/correct_but_slow_cross_entropy.py`.
+- `rms_norm` forward+backward (modern-lm): correct, **608µs vs 336µs** — 1.8×
+  slower than inductor in isolation.
+- Interpretation: correctness is reachable; beating an autotuned compiler on
+  memory-bound ops requires tuning quality that one-shot + one repair rarely
+  produces.
+
+## Baselines and profiles
+
+| model | params | batch | step (eager impls) | addressable lineages |
+|---|---|---|---|---|
+| nanochat (agent adapter) | 11.5M | 4 | 8.24–8.87ms | relu2 3.0% + rms 2.3% ≈ 5% |
+| modern-lm (batch 12) | 480.9M | 12 | 457.2–457.8ms | swiglu 19.6% + rms 1.8% + CE 1.6% ≈ 23% |
+| modern-lm (batch 16) | 480.9M | 16 | 583.5–617.0ms | swiglu 21.7–22.9% + linear_CE 5.4% ≈ 28% |
+
+- Reproducibility: repeated profiles of the same config agree to <0.1%
+  (457.79 / 457.51 / 457.19ms across three runs).
+- Toy-scale inversion: on nanochat, per-op torch.compile incumbents (8.95ms)
+  measured *no better than eager* (8.73–8.87ms) — per-op compiled-callable
+  guard overhead × 73 norm calls cancels the kernel wins on an 8ms step. At
+  481M/600ms scale this inversion disappears.
+- `linear_cross_entropy` routing (RUN job, stopped early): adapter successfully
+  rewired head+loss through the fused boundary; the lineage profiled at
+  **5.38%** of step vs 1.56% for bare CE — 3.5× the attack surface, plus the
+  un-materialized-logits saving (~3.2GB bf16 per step at 32k tokens × 50304
+  vocab) that torch.compile structurally never captures.
+
+## Verifier integrity (every run)
+
+- Both planted cheats (output-caching, shape-hardcoded) rejected at gate 2 at
+  every calibration — the run aborts if they ever pass. One real incident:
+  a *transient OOM* cached as the cheat's compile result made the self-test
+  fail closed (abort), never open.
+- Fresh-input trials caught the caching cheat on trial 2 each time; the unseen
+  shape caught the hardcoded cheat each time.
