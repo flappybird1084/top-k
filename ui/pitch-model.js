@@ -6,7 +6,7 @@
 })(typeof window==='object'?window:globalThis, function() {
   'use strict';
   const phases=['architecture','mixed','hyperparam','finals'];
-  const reportURL='https://api.wandb.ai/links/rianbutala-ucla/dpd0tfqg';
+  const reportURL='https://wandb.ai/rianbutala-ucla/kernel-evolution/reports/Evolution-of-b3c7b7aa--VmlldzoxNzkyNTIyMw==';
   const strategies=[
     'Replace dense MLP with SwiGLU','Tie input and output embeddings','Use RMSNorm before attention','Reduce depth, widen hidden layers',
     'Increase attention head count','Reduce feed-forward expansion','Change residual projection','Use grouped-query attention',
