@@ -250,21 +250,7 @@ FORM = """
  <td class=muted>{{ j.get('stage','') }}</td></tr>{% endfor %}</table>
 {% else %}<p class=muted>no jobs yet</p>{% endif %}"""
 
-JOB = """
-{% if job['status'] in ('queued','running') %}<meta http-equiv=refresh content=3>{% endif %}
-<p><a href="{{ url_for('index') }}">&larr; jobs</a></p>
-<h2>job {{ job['id'][:8] }}
- <span class="st {{ job['status'] }}">{{ job['status'] }}</span></h2>
-<p class=muted>{{ job.get('stage','') }}</p>
-<table>
- <tr><td>target</td><td>{{ job.get('repo') or job.get('adapter') }}</td></tr>
- <tr><td>profile / llm</td><td>{{ job['profile'] }} / {{ job.get('llm') or '(profile default)' }}</td></tr>
- <tr><td>max debug turns</td><td>{{ job['max_debug_turns'] }}</td></tr>
- <tr><td>execution</td><td>{{ job['execution_target'] }}</td></tr>
- <tr><td>comments</td><td>{{ job.get('comments') or '—' }}</td></tr>
- <tr><td>run dir</td><td>{{ job.get('run_dir') or '—' }}</td></tr>
-</table>
-{% if evo and evo['baseline_ms'] %}
+HEADLINE_T = """{% if evo and evo['baseline_ms'] %}
 <div class=head>
  <div>baseline step<br><b>{{ '%.2f'|format(evo['baseline_ms']) }}ms</b></div>
  <div>best evolved step<br><b>{{ '%.2f'|format(evo['best_ms']) if evo['best_ms']
@@ -274,24 +260,23 @@ JOB = """
      else 'none yet' }}</b></div>
  <div>accepted kernels<br><b>{{ evo['n_accepted'] }}</b></div>
 </div>
-{% endif %}
-<h2>generated code &amp; artifacts</h2>
-{% if files %}<table><tr><th>file</th><th>size</th></tr>
+{% endif %}"""
+
+FILES_T = """{% if files %}<table><tr><th>file</th><th>size</th></tr>
 {% for f in files %}<tr>
- <td><a href="{{ url_for('job_file', jid=job['id'], path=f[0]) }}">{{ f[0] }}</a></td>
+ <td><a href="{{ url_for('job_file', jid=jid, path=f[0]) }}">{{ f[0] }}</a></td>
  <td class=muted>{{ f[1] }}</td></tr>{% endfor %}</table>
-{% else %}<p class=muted>nothing synced yet — files appear when the run finishes
- (molab) or as they are produced (local)</p>{% endif %}
-<h2>log</h2>
-<pre>{{ log }}</pre>
-{% if evo and evo['generations'] %}
+{% else %}<p class=muted>nothing synced yet — files appear as the run produces
+ them</p>{% endif %}"""
+
+GENS_T = """{% if evo and evo['generations'] %}
 <h2>generations</h2>
 {% for g in evo['generations'] %}
-<details class=gen {{ 'open' if loop.last }}>
+<details class=gen id="gen-{{ g['n'] }}" {{ 'open' if loop.last }}>
  <summary>generation {{ g['n'] }} — {{ g['cands']|length }} candidate(s),
   {{ g['n_acc'] }} accepted</summary>
  {% for c in g['cands'] %}
- <details class=cand>
+ <details class=cand id="cand-{{ c['id'] }}">
   <summary><span class="pill {{ c['pill'] }}">{{ c['op_name'] }}</span>
    {{ c['headline'] }}</summary>
   <table>
@@ -312,8 +297,8 @@ JOB = """
    {% if c['model_name'] %}<tr><td>written by</td><td>{{ c['model_name'] }}</td></tr>{% endif %}
   </table>
   {% if c['code'] %}
-  <details class=code><summary>kernel source
-    {% if c['code_rel'] %}(<a href="{{ url_for('job_file', jid=job['id'],
+  <details class=code id="code-{{ c['id'] }}"><summary>kernel source
+    {% if c['code_rel'] %}(<a href="{{ url_for('job_file', jid=jid,
       path=c['code_rel']) }}">raw</a>){% endif %}</summary>
    <pre>{{ c['code'] }}</pre>
   </details>
@@ -323,6 +308,61 @@ JOB = """
 </details>
 {% endfor %}
 {% endif %}"""
+
+JOB = """
+<p><a href="{{ url_for('index') }}">&larr; jobs</a></p>
+<h2>job {{ job['id'][:8] }}
+ <span class="st {{ job['status'] }}" id=statuspill>{{ job['status'] }}</span></h2>
+<p class=muted id=stageline>{{ job.get('stage','') }}</p>
+<table>
+ <tr><td>target</td><td>{{ job.get('repo') or job.get('adapter') }}</td></tr>
+ <tr><td>profile / llm</td><td>{{ job['profile'] }} / {{ job.get('llm') or '(profile default)' }}</td></tr>
+ <tr><td>max debug turns</td><td>{{ job['max_debug_turns'] }}</td></tr>
+ <tr><td>execution</td><td>{{ job['execution_target'] }}</td></tr>
+ <tr><td>comments</td><td>{{ job.get('comments') or '—' }}</td></tr>
+ <tr><td>run dir</td><td>{{ job.get('run_dir') or '—' }}</td></tr>
+</table>
+<div id=headline>{{ headline_html|safe }}</div>
+<h2>generated code &amp; artifacts</h2>
+<div id=filesbox>{{ files_html|safe }}</div>
+<h2>log</h2>
+<pre id=log>{{ log }}</pre>
+<div id=gensbox>{{ gens_html|safe }}</div>
+<script>
+const POLLING = {{ 'true' if job['status'] in ('queued', 'running') else 'false' }};
+function morph(id, html) {
+  const el = document.getElementById(id);
+  const open = new Set(), closed = new Set();
+  el.querySelectorAll('details[id]').forEach(x => (x.open ? open : closed).add(x.id));
+  if (el.innerHTML === html) return;
+  el.innerHTML = html;
+  el.querySelectorAll('details[id]').forEach(x => {
+    if (open.has(x.id)) x.open = true;
+    else if (closed.has(x.id)) x.open = false;
+  });
+}
+async function tick() {
+  try {
+    const r = await fetch(location.pathname + '/partial');
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    const pre = document.getElementById('log');
+    const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 12;
+    if (pre.textContent !== d.log) {
+      pre.textContent = d.log;
+      if (atBottom) pre.scrollTop = pre.scrollHeight;
+    }
+    morph('headline', d.headline_html);
+    morph('filesbox', d.files_html);
+    morph('gensbox', d.gens_html);
+    const sp = document.getElementById('statuspill');
+    sp.textContent = d.status; sp.className = 'st ' + d.status;
+    document.getElementById('stageline').textContent = d.stage || '';
+    if (d.status === 'queued' || d.status === 'running') setTimeout(tick, 3000);
+  } catch (e) { setTimeout(tick, 6000); }
+}
+if (POLLING) setTimeout(tick, 3000);
+</script>"""
 
 
 def _env_warnings() -> str:
@@ -460,18 +500,31 @@ def _job_files(jid):
     return sorted(out)
 
 
+def _fragments(jid, job):
+    try:
+        lines = open(os.path.join(JOBS_DIR, jid, "log.txt"),
+                     errors="replace").read().splitlines()
+        log = "\n".join(lines[-300:])
+    except OSError:
+        log = "(no log yet)"
+    evo = _job_evolution(jid)
+    return dict(
+        status=job["status"], stage=job.get("stage", ""), log=log,
+        headline_html=render_template_string(HEADLINE_T, evo=evo),
+        files_html=render_template_string(FILES_T, files=_job_files(jid), jid=jid),
+        gens_html=render_template_string(GENS_T, evo=evo, jid=jid))
+
+
 @app.get("/jobs/<jid>")
 def job_page(jid):
     job = load_job(jid)
-    log_path = os.path.join(JOBS_DIR, jid, "log.txt")
-    try:
-        lines = open(log_path, errors="replace").read().splitlines()
-        log = "\n".join(lines[-200:])
-    except OSError:
-        log = "(no log yet)"
-    body = render_template_string(JOB, job=masked(job), log=log,
-                                  files=_job_files(jid), evo=_job_evolution(jid))
+    body = render_template_string(JOB, job=masked(job), **_fragments(jid, job))
     return render_template_string(PAGE, body=body, warn=_env_warnings())
+
+
+@app.get("/jobs/<jid>/partial")
+def job_partial(jid):
+    return _fragments(jid, load_job(jid))
 
 
 @app.get("/jobs/<jid>/file")
