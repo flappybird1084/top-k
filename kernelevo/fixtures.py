@@ -80,6 +80,13 @@ import torch.nn.functional as F
 def kernel(x, w, b):
     return F.relu(F.linear(x, w, b)).square()
 ''',
+    "swiglu_mlp": '''\
+import torch.nn.functional as F
+
+
+def kernel(x, w1, w2):
+    return F.silu(F.linear(x, w1)) * F.linear(x, w2)
+''',
 }
 
 

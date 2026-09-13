@@ -37,7 +37,7 @@ _COMMON = dict(
     device="cuda",
     # lineage set = profiler output ∩ allowed_ops (spec §3.3)
     allowed_ops=["ema_update", "masked_gather_add", "layer_norm", "gelu_mlp",
-                 "rms_norm", "relu2_mlp"],
+                 "rms_norm", "relu2_mlp", "swiglu_mlp"],
     min_pct_step_time=5.0,
     profile_warmup=20,
     profile_steps=10,

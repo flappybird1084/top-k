@@ -161,9 +161,14 @@ Hard requirements:
   are intercepted automatically — do not rewrite norms.
 - IMPORTANT: to give the optimizer targets, route the model's MLP epilogues
   through the op registry where a matching op exists: `from kernelevo import ops`
-  then ops.gelu_mlp(x, w, b) for gelu(linear(x)) or ops.relu2_mlp(x, w, b) for
-  relu(linear(x))**2 (nanochat-style). Patch the model's block forward (e.g.
-  monkeypatch the MLP module class) rather than copying the whole model.
+  then ops.gelu_mlp(x, w, b) for gelu(linear(x)), ops.relu2_mlp(x, w, b) for
+  relu(linear(x))**2 (nanochat-style), or ops.swiglu_mlp(x, w1, w2) for
+  silu(x@w1.T)*(x@w2.T) (Llama/SwiGLU-style; the down-projection stays
+  separate). Patch the model's block forward (e.g. monkeypatch the MLP module
+  class) rather than copying the whole model. Hand-rolled norm modules (a
+  custom RMSNorm class) are NOT intercepted automatically — route them through
+  ops.rms_norm(x, weight, eps) when the weight is a flat [D] tensor; leave
+  norms with oddly-shaped weights native.
 - DTYPES: op call sites require x, w, b in the SAME dtype. Repos that cast
   activations to bf16 mid-forward (nanochat does) while keeping fp32 weights
   will crash with "expected mat1 and mat2 to have the same dtype". Fix it

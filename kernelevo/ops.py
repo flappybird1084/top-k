@@ -314,6 +314,23 @@ _register(OpDef(
 ))
 
 
+# 7. SwiGLU epilogue: dual GEMM + silu-gate fused (modern-lm / Llama-style MLPs).
+def _sw_eager(x: torch.Tensor, w1: torch.Tensor, w2: torch.Tensor):
+    return F.silu(F.linear(x, w1)) * F.linear(x, w2)
+
+
+_register(OpDef(
+    name="swiglu_mlp",
+    eager=_sw_eager,
+    signature="kernel(x: Tensor[..., K], w1: Tensor[F, K], w2: Tensor[F, K]) -> Tensor[..., F]  "
+              "# silu(x @ w1.T) * (x @ w2.T) — nn.Linear weight layout, no biases. "
+              "Two GEMMs sharing x plus the gate, a classic single-kernel fusion. "
+              "Must support autograd wrt x, w1, w2.",
+    differentiable=True,
+    perturb=_gm_perturb,
+))
+
+
 # ---------------------------------------------------------------- adapter-facing API
 
 def ema_update(target, online, momentum):
@@ -338,3 +355,7 @@ def rms_norm(x, weight=None, eps=None):
 
 def relu2_mlp(x, w, b):
     return _dispatch("relu2_mlp", x, w, b)
+
+
+def swiglu_mlp(x, w1, w2):
+    return _dispatch("swiglu_mlp", x, w1, w2)
