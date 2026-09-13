@@ -9,6 +9,8 @@
 [![Dataset: FineWeb-Edu](https://img.shields.io/badge/Data-FineWeb--Edu-003366?style=flat-square)](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu)
 [![GPU](https://img.shields.io/badge/GPU-single--node%20CUDA-black?style=flat-square&logo=nvidia)](https://molab.marimo.run)
 
+![Per-candidate training-loss curves and trial table in W&B](docs/loss-curves.png)
+
 Point it at any PyTorch repo on GitHub. An adapter agent figures out how to run
 one training step of the repo's model — real data pipeline included — then an
 evolutionary loop takes over: a planner proposes strategies, parallel coding
@@ -36,11 +38,8 @@ objective.
 | Verifier self-test | Both | Two planted cheating kernels (output-caching, shape-hardcoded) rejected at gate 2 in **every** calibration; the run aborts if either slips through | all archives |
 
 Per-candidate training curves stream to W&B — every candidate is its own run,
-grouped by job, so the whole generation is inspectable live:
-
-![Per-candidate training-loss curves and trial table in W&B](docs/loss-curves.png)
-
-Selection compounds across generations. The −7.21% winner's lineage: baseline
+grouped by job, so the whole generation is inspectable live (see the chart
+above). Selection compounds across generations. The −7.21% winner's lineage: baseline
 → parallel attention∥MLP block (+11.1% proxy) → reduced KV projections
 (+11.4%) → cyclic learning rate → re-verified at the full finals budget:
 
