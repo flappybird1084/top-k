@@ -51,3 +51,5 @@ form{position:relative}#agent-flow{position:absolute;top:100%;left:0;width:100%;
 #agent-events .failed .event-marker{color:#b34660}#agent-events .failed p{color:#8b6770;border-left-color:#dec5cb}
 
 #stop-flow{display:none}
+
+.mode-choice{display:flex;justify-content:center;gap:8px;color:#808777;font-size:12px;margin-top:16px}.mode-choice select{font:inherit;color:inherit;border:0;background:transparent}

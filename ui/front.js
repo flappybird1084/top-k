@@ -22,6 +22,7 @@ const dataInput=document.querySelector('#data-link'), dataError=document.querySe
 const dataCheck=document.querySelector('#data-check'), dataCheckText=document.querySelector('#data-check-text');
 const stop=document.querySelector('#stop-flow');
 let runId=null,timer=null,posting=false,lastState=null,requestKey=crypto.randomUUID();
+document.querySelector('#search-mode').addEventListener('change',()=>{requestKey=crypto.randomUUID()});
 input.addEventListener('input',()=>{if(!runId)requestKey=crypto.randomUUID()});
 async function api(path,options={}) {
   const response=await fetch(path,{...options,headers:{'Content-Type':'application/json',...options.headers},signal:AbortSignal.timeout(15000)});
@@ -76,7 +77,7 @@ form.addEventListener('submit',async e=>{
   if(runId&&lastState?.status==='awaiting_data'){dataDialog.showModal();return}
   posting=true;submit.disabled=true;message('');
   try{
-    const result=await api('/api/runs',{method:'POST',headers:{'Idempotency-Key':requestKey},body:JSON.stringify({repo:input.value.trim()})});
+    const result=await api('/api/runs',{method:'POST',headers:{'Idempotency-Key':requestKey},body:JSON.stringify({repo:input.value.trim(),mode:document.querySelector('#search-mode').value})});
     runId=result.id;history.replaceState(null,'','?intake='+runId);submit.textContent='···';poll();
   }catch(err){message(err.message);submit.disabled=false}finally{posting=false}
 });

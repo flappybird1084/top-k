@@ -79,19 +79,22 @@ def snapshot(jid):
     root=job_path(jid);job=read_json(root/'job.json')
     if not job:raise FileNotFoundError()
     status={'done':'complete','interrupted':'failed'}.get(job['status'],job['status'])
-    result=dict(id=jid,repo=job.get('repo'),data=job.get('data'),status=status,message=job.get('stage',''),candidates=[],traces=[],activity=[],integrations=dict(job.get('integrations',{})))
+    result=dict(id=jid,repo=job.get('repo'),data=job.get('data'),status=status,mode=job.get('mode','kernel'),message=job.get('stage',''),candidates=[],traces=[],activity=[],integrations=dict(job.get('integrations',{})))
     result['active_evaluations']=list(job.get('active_evaluations',{}).values()) if status=='running' else []
     log=log_tail(root)
-    result['activity']=[{'message':line,'created_at':job['created_at']} for line in log.splitlines() if line.startswith(('[agent]','[adapter]','[ingest]','[profile]','[calibrate]','[planner]','[gates]','[gate4]','[loop]'))][-12:]
+    result['activity']=[{'message':line,'created_at':job['created_at']} for line in log.splitlines() if line.startswith(('[recipe]','[baseline]','[finals]','[agent]','[adapter]','[ingest]','[profile]','[calibrate]','[planner]','[gates]','[gate4]','[loop]'))][-12:]
     db_path=root/'run/archive.sqlite'
     if db_path.exists():
         with closing(sqlite3.connect(db_path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
             db.row_factory=sqlite3.Row
             rows=[dict(r) for r in db.execute('SELECT c.*,l.op_name FROM candidates c JOIN lineages l ON c.lineage_id=l.id WHERE l.model_id=(SELECT MAX(id) FROM models) ORDER BY c.generation,c.id')]
             for row in rows:
-                candidate={k:row.get(k) for k in ('id','generation','strategy','accepted','gate_reached','step_time_ms','incumbent_step_time_ms','created_at')}
+                candidate={k:row.get(k) for k in ('id','generation','strategy','accepted','gate_reached','step_time_ms','incumbent_step_time_ms','created_at','val_loss','phase','train_secs','model_params','parent_id','failure_note','correct_ok')}
                 candidate['lineage_id']=row['op_name'];result['candidates'].append(candidate)
                 if row.get('weave_trace_url'):result['traces'].append(dict(id=str(row['id']),name=row['op_name'],url=row['weave_trace_url'],ended_at=0,error=None))
+            result['architecture']={'candidates':[r for r in result['candidates'] if r.get('phase')]}
+            result['candidates']=[r for r in result['candidates'] if not r.get('phase')]
+            if result['architecture']['candidates']:result['mode']='recipe'
             baseline=next((r['incumbent_step_time_ms'] for r in rows if r.get('incumbent_step_time_ms')),None)
             if baseline:result['baseline_ms']=baseline
             gens=db.execute('SELECT id,stop_reason FROM generations WHERE model_id=(SELECT MAX(id) FROM models) ORDER BY id DESC LIMIT 1').fetchone()
@@ -120,7 +123,7 @@ def invalid(error):return jsonify(error=str(error)),400
 app.view_functions['index']=lambda:send_from_directory(UI,'index.html')
 @app.get('/<name>')
 def static_ui(name):
-    if name not in {'index.html','front.js','front.css','workspace.html','run.js','run.css','results.html','results.js'}:return jsonify(error='Not found'),404
+    if name not in {'evolution.js','demo.js','index.html','front.js','front.css','workspace.html','run.js','run.css','results.html','results.js'}:return jsonify(error='Not found'),404
     response=send_from_directory(UI,name);response.headers['Cache-Control']='no-store';return response
 @app.get('/assets/<path:name>')
 def assets(name):return send_from_directory(UI/'assets',name)
@@ -129,15 +132,18 @@ def run_api(jid):return snapshot(jid)
 
 @app.post('/api/runs')
 def create():
-    repo=repo_url((request.get_json() or {}).get('repo',''))
+    payload=request.get_json() or {}
+    repo=repo_url(payload.get('repo',''))
+    mode=payload.get('mode','recipe')
+    if mode not in ('recipe','kernel'):raise ValueError('Choose architecture or kernel search')
     key=request.headers.get('Idempotency-Key','')
     if not key:raise ValueError('Missing request identifier')
     jid=hashlib.sha256(key.encode()).hexdigest()[:32]
     with lock:
         old=read_json(job_path(jid)/'job.json')
-        if old and old.get('repo')!=repo:raise ValueError('Request identifier already used')
+        if old and (old.get('repo')!=repo or old.get('mode','kernel')!=mode):raise ValueError('Request identifier already used')
         if not old:
-            job=dict(id=jid,created_at=time.time(),status='awaiting_data',stage='Add a data link for the adapter agent.',repo=repo,adapter=None,comments='',max_debug_turns=5,profile=os.getenv('KEVO_UI_PROFILE','RUN'),llm=os.getenv('KEVO_UI_LLM') or None,execution_target=os.getenv('KEVO_UI_TARGET','molab'),molab={},wandb={})
+            job=dict(id=jid,created_at=time.time(),status='awaiting_data',mode=mode,stage='Add a data link for the adapter agent.',repo=repo,adapter=None,comments='',max_debug_turns=5,profile=os.getenv('KEVO_UI_PROFILE','RUN'),llm=os.getenv('KEVO_UI_LLM') or None,execution_target=os.getenv('KEVO_UI_TARGET','molab'),molab={},wandb={})
             web.save_job(job)
     return {'id':jid},202
 
@@ -195,6 +201,8 @@ def wandb_metrics(jid):
         import wandb
         parts=urlsplit(url).path.strip('/').split('/');run=wandb.Api(timeout=10).run('/'.join([parts[0],parts[1],parts[3]]))
         metrics=[dict(name=k,value=v) for k,v in dict(run.summary).items() if not k.startswith('_') and isinstance(v,(int,float)) and not isinstance(v,bool) and math.isfinite(v)]
+        prefix='recipe/' if state.get('mode')=='recipe' else None
+        if prefix:metrics=[m for m in metrics if m['name'].startswith(prefix)]
         result=dict(name=run.name,state=run.state,metrics=metrics[:6],sampled_at=time.time());cache[key]=result;return result
     except Exception:return {'metrics':[]},503
 

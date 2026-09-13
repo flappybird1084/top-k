@@ -18,10 +18,10 @@ from kernelevo import ingest, recipes
 from kernelevo.archive import Archive
 from kernelevo.gates import REPO_ROOT
 from kernelevo.llm import LLMPool
-from kernelevo.obs import Mirror
+from kernelevo.obs import Mirror, weave_op, current_trace_url
 
 
-def _run_worker(job: dict, path_hint: str, timeout: int):
+def _execute_worker(job: dict, path_hint: str, timeout: int):
     job_path = path_hint + ".rjob.json"
     with open(job_path, "w") as f:
         json.dump(job, f)
@@ -37,6 +37,22 @@ def _run_worker(job: dict, path_hint: str, timeout: int):
             return json.loads(line[len("KEVO_RESULT "):])
     return dict(ok=False, gate="crash",
                 note="[infra] worker crashed:\n" + (proc.stderr or "")[-1500:])
+
+
+@weave_op
+def _run_worker(job: dict, path_hint: str, timeout: int):
+    import uuid
+    eid=uuid.uuid4().hex
+    event=dict(id=eid,kind='architecture',kernel=os.path.basename(job['candidate_path']),
+               stage='Checking recipe' if job.get('check_only') else 'Training and evaluating held-out data',
+               strategy=str(job['train_seconds'])+'s training budget',started_at=time.time())
+    print('[evaluation] '+json.dumps(event),flush=True)
+    try:
+        result=_execute_worker(job,path_hint,timeout)
+        result['weave_trace_url']=current_trace_url()
+        return result
+    finally:
+        print('[evaluation] '+json.dumps(dict(id=eid,finished=True)),flush=True)
 
 
 def _base_source(adapter_spec: str, adapter_mod) -> str:
@@ -106,6 +122,7 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
             raise SystemExit(f"[recipe] baseline evaluation failed at {secs}s: "
                              f"{r.get('note')}")
         baseline[secs] = r["val_loss"]
+        mirror._log({"recipe/phase":"baseline","recipe/train_secs":secs,"recipe/baseline_val_loss":r["val_loss"],"recipe/model_params":r["n_params"]})
         print(f"[baseline] {secs}s train -> val loss {r['val_loss']:.4f} "
               f"({r['steps']} steps)")
         archive.add_candidate(
@@ -113,7 +130,7 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
             strategy=f"baseline (base adapter + harness AdamW) @{secs}s",
             source_kind="baseline", gate_reached=4, compile_ok=1, correct_ok=1,
             repairs_used=0, accepted=1, val_loss=r["val_loss"], phase="baseline",
-            train_secs=secs, model_params=r["n_params"], arch_fp=r["arch_fp"])
+            train_secs=secs, model_params=r["n_params"], arch_fp=r["arch_fp"],weave_trace_url=r.get("weave_trace_url"))
 
     results_all = []   # dicts with id, val_loss, phase, code_path, strategy
     gen_index = 0
@@ -187,6 +204,7 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                     device=cfg["device"], param_cap=param_cap,
                     expected_arch_fp=expected_fp), a["code_path"],
                     phase["train_seconds"] + rc["eval_timeout_grace_s"])
+                row["weave_trace_url"]=r.get("weave_trace_url")
                 if r.get("ok"):
                     accepted = r["val_loss"] < baseline[phase["train_seconds"]] * \
                         (1 - rc["loss_margin_rel"])
@@ -212,7 +230,7 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
             row["id"] = cid
             outs.append(row)
             try:
-                mirror._log({f"recipe/{phase['kind']}/val_loss": row.get("val_loss")})
+                mirror._log({f"recipe/{phase['kind']}/val_loss": row.get("val_loss"),"recipe/val_loss":row.get("val_loss"),"recipe/baseline_val_loss":baseline[phase["train_seconds"]],"recipe/phase":phase["kind"],"recipe/train_secs":phase["train_seconds"],"recipe/candidate_id":cid,"recipe/accepted":row["accepted"],"recipe/model_params":row.get("model_params")})
             except Exception:  # noqa: BLE001
                 pass
         archive.finish_generation(gen_id, len(outs), n_acc, pool.total_usd())
@@ -293,12 +311,13 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
             parent_id=fr["id"], phase="finals", train_secs=fsecs,
             compile_ok=1, correct_ok=1, gate_reached=4 if accepted else 3,
             accepted=int(accepted), val_loss=r["val_loss"],
-            model_params=r["n_params"], arch_fp=r["arch_fp"], repairs_used=0)
+            model_params=r["n_params"], arch_fp=r["arch_fp"], repairs_used=0,weave_trace_url=r.get("weave_trace_url"))
+        mirror._log({"recipe/phase":"finals","recipe/train_secs":fsecs,"recipe/val_loss":r["val_loss"],"recipe/baseline_val_loss":baseline[fsecs],"recipe/accepted":int(accepted),"recipe/candidate_id":cid,"recipe/model_params":r["n_params"]})
         delta = 100 * (baseline[fsecs] - r["val_loss"]) / baseline[fsecs]
         print(f"[finals] val {r['val_loss']:.4f} vs baseline "
               f"{baseline[fsecs]:.4f} ({delta:+.2f}%)"
               f"{' ACCEPTED' if accepted else ''} — {fr['strategy'][:70]}")
-        if r.get("ok") and (winner is None or r["val_loss"] < winner["val_loss"]):
+        if recipes.is_better_final(r["val_loss"], accepted, winner):
             winner = dict(fr, final_val_loss=r["val_loss"], final_id=cid)
 
     print("\n[result] ================= final performance =================")
