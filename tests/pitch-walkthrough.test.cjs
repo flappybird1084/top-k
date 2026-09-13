@@ -7,8 +7,8 @@ test('navigation is bounded, direct selection works, and restart clears explorat
   state = demo.transition(state, {type:'back'});
   assert.equal(state.step, 0);
   for (let i=0;i<10;i++) state=demo.transition(state,{type:'next'});
-  assert.equal(state.step, 6);
-  state=demo.transition(state,{type:'step',value:3});
+  assert.equal(state.step, 3);
+  state=demo.transition(state,{type:'step',value:2});
   state=demo.transition(state,{type:'generation',value:2});
   state=demo.transition(state,{type:'select',value:10});
   assert.equal(state.selectedId,10);
@@ -59,6 +59,6 @@ test('invalid selections do not corrupt the walkthrough and snapshots cannot mut
 });
 
 test('report link uses supplied HTTPS URL and rejects unsafe destinations', () => {
-  assert.equal(demo.safeReportURL(demo.reportURL),'https://api.wandb.ai/links/rianbutala-ucla/dpd0tfqg');
+  assert.equal(demo.safeReportURL(demo.reportURL),'https://wandb.ai/rianbutala-ucla/kernel-evolution/reports/Evolution-of-b3c7b7aa--VmlldzoxNzkyNTIyMw==');
   for(const url of ['', 'javascript:alert(1)','http://example.com','https://user:secret@example.com']) assert.equal(demo.safeReportURL(url),null);
 });

@@ -32,9 +32,9 @@
   function transition(state,action){
     let next={...state};
     if(action.type==='restart')return initialState();
-    if(action.type==='next')next.step=Math.min(6,state.step+1);
+    if(action.type==='next')next.step=Math.min(3,state.step+1);
     if(action.type==='back')next.step=Math.max(0,state.step-1);
-    if(action.type==='step' && Number.isInteger(action.value))next.step=Math.max(0,Math.min(6,action.value));
+    if(action.type==='step' && Number.isInteger(action.value))next.step=Math.max(0,Math.min(3,action.value));
     if(action.type==='phase' && phases.includes(action.value)){
       next.phase=action.value;next.generation=1;next.budget=action.value==='finals'?300:action.value==='hyperparam'?120:60;
       next.selectedId=visibleCandidates(next)[0]?.id??null;
