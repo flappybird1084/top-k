@@ -255,6 +255,8 @@ FORM = """
  </select>
  <label>profile</label>
  <select name=profile><option>DEV</option><option>RUN</option></select>
+ <label>spend cap USD (blank = profile default: DEV $10, RUN $100)</label>
+ <input type=number name=spend_cap step=0.5 min=1 placeholder="e.g. 20">
  <label>llm override (blank = from profile)</label>
  <select name=llm><option value="">(from profile)</option><option>stub</option>
   <option>anthropic</option><option>openai</option><option>wandb</option></select>
@@ -282,12 +284,13 @@ FORM = """
  <div style="display:flex;gap:.5rem">
   <input type=number name=finals_k value=2 min=1>
   <input type=number name=finals_secs value=300 min=30></div>
- <label>param budget ratio · loss margin (rel) · eval batches · parallel agents</label>
+ <label>param budget ratio · loss margin (rel) · eval batches · parallel agents · parent pool</label>
  <div style="display:flex;gap:.5rem">
   <input type=number name=param_ratio value=1.10 step=0.01>
   <input type=number name=loss_margin value=0.003 step=0.001>
   <input type=number name=eval_batches value=8 min=1>
-  <input type=number name=parallelism value=8 min=1></div>
+  <input type=number name=parallelism value=8 min=1>
+  <input type=number name=parent_pool value=4 min=1></div>
 </fieldset>
 <fieldset><legend>molab connection (per-notebook)</legend>
  <label>paste the whole "Pair with agent" prompt from molab here — it contains the
@@ -346,7 +349,27 @@ FILES_T = """{% if files %}<table><tr><th>file</th><th>size</th></tr>
 {% else %}<p class=muted>nothing synced yet — files appear as the run produces
  them</p>{% endif %}"""
 
-GENS_T = """{% if tree %}
+GENS_T = """{% if trail %}
+<h2>adapter self-repair</h2>
+<details class=gen id=repairtrail open><summary>
+ {{ trail|length }} attempt(s), {{ trail|rejectattr('ok')|list|length }} failure(s) —
+ {{ 'recovered: verified adapter produced' if trail[-1]['ok'] and trail|length > 1
+    else 'verified first try' if trail[-1]['ok'] else 'not yet recovered' }}</summary>
+{% for t in trail %}
+<details class=cand id="repair-{{ t['attempt'] }}">
+ <summary><span class="pill {{ 'p-acc' if t['ok'] else 'p-rej' }}">attempt
+  {{ t['attempt'] }}</span>
+  {{ 'VERIFIED — data flowing' if t['ok'] else t['kind'] }}
+  <span class=muted>({{ t['elapsed_s'] }}s)</span></summary>
+ {% if t['note'] %}<pre style="font-size:.72rem;white-space:pre-wrap">{{ t['note'] }}</pre>
+ <p class=muted>this raw error was fed back verbatim to the writing agent —
+  no diagnosis, per the repair-loop contract</p>
+ {% else %}<p class=muted>adapter passed the ingest check — model built, real
+  batches flowed, loss and gradients verified</p>{% endif %}
+</details>
+{% endfor %}</details>
+{% endif %}
+{% if tree %}
 <h2>evolution tree</h2>
 <details class=gen id=lintree open><summary>lineage (parent → child, val loss,
  Δ vs same-budget baseline, ✓ accepted)</summary>
@@ -507,8 +530,10 @@ def create_job():
             loss_margin_rel=float(f.get("loss_margin") or 0.003),
             eval_batches=int(f.get("eval_batches") or 8),
             subagent_parallelism=int(f.get("parallelism") or 8),
+            parent_pool=int(f.get("parent_pool") or 4),
         ) if f.get("mode") == "recipe" else None,
         llm=f.get("llm", "").strip() or None,
+        spend_cap=float(f["spend_cap"]) if f.get("spend_cap") else None,
         execution_target=f.get("execution_target", "local"),
         molab=dict(notebook_url=f.get("molab_url", "").strip(),
                    connection=f.get("molab_connection", "").strip()),
@@ -523,6 +548,17 @@ def create_job():
 
 def _pct(new, old):
     return None if not new or not old else 100.0 * (old - new) / old
+
+
+def _adapter_trail(jid):
+    """Adapter-writing self-repair trail (fail -> raw feedback -> recovery),
+    synced from the run as adapter_attempts.json."""
+    p = os.path.join(JOBS_DIR, jid, "run", "adapter_attempts.json")
+    try:
+        trail = json.load(open(p))
+        return trail if isinstance(trail, list) and trail else None
+    except (OSError, ValueError):
+        return None
 
 
 def _job_evolution(jid):
@@ -702,7 +738,8 @@ def _fragments(jid, job):
         headline_html=render_template_string(HEADLINE_T, evo=evo),
         files_html=render_template_string(FILES_T, files=_job_files(jid), jid=jid),
         gens_html=render_template_string(GENS_T, evo=evo, jid=jid,
-                                         tree=_lineage_tree(jid)))
+                                         tree=_lineage_tree(jid),
+                                         trail=_adapter_trail(jid)))
 
 
 @app.get("/jobs/<jid>")

@@ -139,6 +139,7 @@ RECIPE = dict(
         dict(kind="mixed", generations=0, candidates=8, train_seconds=180),  # skipped for now
         dict(kind="hyperparam", generations=1, candidates=8, train_seconds=120),
     ],
+    parent_pool=4,             # top-N (cumulative) candidates offered as parents
     finals_top_k=2,
     finals_train_seconds=300,
     eval_batches=8,             # held-out val batches averaged for the signal

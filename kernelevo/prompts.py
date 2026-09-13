@@ -155,12 +155,19 @@ Hard requirements:
 - DATA: ALWAYS search the repo for its real data pipeline FIRST — prepare/
   download scripts, dataset builders, shard loaders, HF dataset references —
   and USE it. Internet access and the `datasets`/`tiktoken` libraries are
-  available. Fetch a MODEST slice of real data (tens of millions of tokens /
-  a few hundred MB at most) at setup time, cache it under /tmp and reuse the
-  cache if present (the harness rebuilds the adapter many times), fixed seed
-  and order. Reserve a held-out split for get_dataloader("val") and never
-  train on it. Synthetic data is a LAST resort, only when the repo has no
-  usable pipeline — say so in a comment if you must.
+  available. Fetch ONLY A SMALL SUBSET: hard cap ~25M tokens / ~50MB. NEVER
+  download or iterate the full dataset — stream and stop at the cap
+  (e.g. `load_dataset(..., streaming=True)` with an explicit break), or fetch
+  a fixed small number of shard files. Cache it under a STABLE /tmp path
+  derived from the repo name, and check that path FIRST — an earlier attempt
+  of this same adapter may already have downloaded it; reuse anything there
+  (the harness rebuilds the adapter many times). Fixed seed and order.
+  Reserve a held-out split for get_dataloader("val") and never train on it.
+  Only read data from paths you have VERIFIED exist on THIS machine
+  (os.path.isdir) — never assume cluster mount points from the repo's docs
+  or configs are present here. Synthetic data is a LAST resort, allowed only
+  after an actual download attempt in this environment has failed — put the
+  caught error verbatim in a comment next to the fallback.
 - Pick a batch size that comfortably fits one GPU — but err LARGE: a training
   step should take at least ~20-50ms on a modern GPU, or the harness's timing
   gates have poor signal-to-noise and utilization looks idle. Unless the user's

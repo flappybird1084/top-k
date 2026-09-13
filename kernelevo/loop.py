@@ -111,6 +111,9 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, only_lineage: str | None = N
         model_name = adapter_name.split(".")[-1]
     archive = Archive(os.path.join(out_dir, "archive.sqlite"))
     mirror = Mirror(cfg, model_name)
+    trail_path = os.path.join(out_dir, "adapter_attempts.json")
+    if os.path.exists(trail_path):
+        mirror.log_adapter_trail(json.load(open(trail_path)))
 
     print(f"[ingest] {adapter_name}")
     info = ingest.ingest(adapter, cfg)

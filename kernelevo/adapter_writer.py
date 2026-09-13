@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 
 from kernelevo import prompts
 from kernelevo.gates import REPO_ROOT
@@ -25,7 +26,7 @@ from kernelevo.obs import weave_op
 SURVEY_MAX_FILES = 25
 SURVEY_MAX_FILE_CHARS = 6000
 SURVEY_MAX_TOTAL_CHARS = 60000
-INGEST_TIMEOUT_S = 900
+INGEST_TIMEOUT_S = 1800  # first ingest may legitimately download a capped data subset
 
 _SCORE_WORDS = ("train", "model", "main", "data", "dataset", "loss", "config", "net")
 
@@ -101,6 +102,18 @@ def _run_ingest(adapter_path: str, device: str, seed: int) -> tuple[dict | None,
     return None, ((proc.stderr or proc.stdout or "no output").strip())[-4000:]
 
 
+def _classify(err: str) -> str:
+    """Short human label for a failed ingest attempt (self-repair trail)."""
+    if "exceeded" in err and "killed" in err:
+        return "ingest timeout"
+    for line in reversed(err.strip().splitlines()):
+        line = line.strip()
+        if re.match(r"^[\w.]+(Error|Exception|Interrupt)\b", line):
+            return line[:120]
+    lines = err.strip().splitlines()
+    return (lines[-1].strip() if lines else "unknown")[:120]
+
+
 @weave_op
 def prepare(repo: str, comments: str, max_debug_turns: int, out_dir: str,
             llm, device: str, seed: int = 1234, log=print) -> tuple[str, dict]:
@@ -126,8 +139,18 @@ def prepare(repo: str, comments: str, max_debug_turns: int, out_dir: str,
               f"sys.path.insert(0, {os.path.join(repo_dir, 'src')!r})\n\n")
     messages = prompts.adapter_writer_prompt(survey, comments, device)
     last_err = "no attempts made"
+    # self-repair trail: every attempt's outcome, written incrementally so the
+    # mid-run artifact sync (and the web UI / W&B mirror) can show fail->recovery
+    trail: list[dict] = []
+    trail_path = os.path.join(out_dir, "adapter_attempts.json")
+
+    def _save_trail():
+        with open(trail_path, "w") as f:
+            json.dump(trail, f, indent=1)
+
     for attempt in range(max_debug_turns):
         log(f"[adapter] attempt {attempt + 1}/{max_debug_turns}")
+        t0 = time.time()
         resp = llm.complete(messages, meta={"role": "adapter", "attempt": attempt,
                                             "repo_dir": repo_dir})
         src = extract_code(resp.text)
@@ -139,13 +162,25 @@ def prepare(repo: str, comments: str, max_debug_turns: int, out_dir: str,
             f.write("".join(f + "\n" for f in futures) + header + src)
         info, err = _run_ingest(adapter_path, device, seed)
         if info is not None:
+            trail.append(dict(attempt=attempt + 1, ok=True, kind=None, note=None,
+                              elapsed_s=round(time.time() - t0, 1)))
+            _save_trail()
             log(f"[adapter] ingest OK: {info['n_params']/1e6:.1f}M params, "
                 f"{info['samples_per_batch']} samples/batch, loss0={info['loss0']:.4f} "
                 f"— data is flowing")
+            if len(trail) > 1:
+                fails = "; ".join(f"{t['attempt']}) {t['kind']}" for t in trail[:-1])
+                log(f"[adapter] VERIFIED on attempt {attempt + 1} — recovered from "
+                    f"{len(trail) - 1} failed attempt(s): {fails}")
             shutil.copyfile(adapter_path, verified_path)
             return adapter_path, info
         last_err = err
-        log(f"[adapter] ingest failed:\n{err[-600:]}")
+        kind = _classify(err)
+        trail.append(dict(attempt=attempt + 1, ok=False, kind=kind,
+                          note=err[-2000:], elapsed_s=round(time.time() - t0, 1)))
+        _save_trail()
+        log(f"[adapter] attempt {attempt + 1} FAILED ({kind}) — raw feedback goes "
+            f"back for repair:\n{err[-600:]}")
         messages = messages + [
             {"role": "assistant", "content": resp.text},
             {"role": "user", "content":

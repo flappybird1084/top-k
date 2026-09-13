@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Top-Kernel — evolve the training recipe, not the kernels</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="Point it at a PyTorch repo. Agents evolve the model architecture, optimizer and schedule against held-out loss on a fixed wall-clock budget, behind a harness that owns everything they could cheat." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#fafafa; --surface:#fff;
+  --ink:#101214; --ink-2:#3c414a; --muted:#787e88;
+  --border:#e2e4e8;
+  --accent:#0f6b5c;      /* Top-Kernel teal */
+  --ok:#1f7a4d;
+  --no:#b1402c;
+  --warn:#8a6d2f;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:'Inter',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;}
+a{color:var(--ink);text-decoration:underline;text-decoration-color:var(--border);text-underline-offset:3px}
+a:hover{text-decoration-color:var(--ink)}
+code,.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+code{font-size:.92em;color:var(--ink-2)}
+h1{margin:0;font-size:38px;font-weight:600;letter-spacing:-0.025em;line-height:1.15;}
+h2{margin:0 0 12px;font-size:22px;font-weight:600;letter-spacing:-0.015em;}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.app{max-width:1100px;margin:0 auto;padding:64px 28px 96px;}
+
+/* HERO */
+header.hero{margin-bottom:26px;}
+header.hero .eyebrow{color:var(--accent);font-size:11px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;margin-bottom:14px;}
+header.hero h1 em{font-style:normal;color:var(--accent)}
+header.hero .lede{color:var(--ink-2);font-size:18px;margin-top:16px;max-width:780px;line-height:1.55;}
+
+/* HERO STEP BAND */
+.band{margin:24px 0 14px;background:var(--surface);border:1px solid var(--border);overflow:hidden;}
+.band-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid var(--border);font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);}
+.band-head .left b{color:var(--accent);font-weight:500}
+.switcher{display:flex;gap:6px;flex-wrap:wrap}
+.switcher button{padding:3px 9px;border:1px solid var(--border);background:#fff;color:var(--ink-2);font:inherit;font-size:11px;cursor:pointer;font-family:'JetBrains Mono',monospace;}
+.switcher button.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+.switcher button:hover:not(.active){background:#f4f4f6;}
+.stepbar{display:flex;height:56px;margin:20px 18px 8px;border:1px solid var(--border);}
+.stepbar div{display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:11px;color:#fff;overflow:hidden;white-space:nowrap;transition:width .45s ease;}
+.seg-gemm{background:#20242a}
+.seg-glue{background:var(--accent)}
+.seg-rest{background:#b9bec6;color:var(--ink)!important}
+.stepkey{display:grid;gap:7px;padding:2px 18px 18px;font-size:12.5px;color:var(--ink-2);}
+.stepkey span b{font-weight:600;color:var(--ink)}
+.stepkey .sw{display:inline-block;width:9px;height:9px;margin-right:7px;vertical-align:baseline}
+.band-foot{padding:12px 18px;border-top:1px solid var(--border);font-size:13px;color:var(--ink-2);line-height:1.5}
+
+/* SECTIONS */
+section.s{margin-bottom:48px;}
+section.s .header{margin-bottom:20px;}
+section.s h2{display:flex;align-items:baseline;gap:14px;}
+section.s h2 .num{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--accent);font-weight:500;}
+section.s .sub{color:var(--muted);font-size:14px;margin-bottom:24px;max-width:760px;}
+section.s .sub b{color:var(--ink-2);font-weight:600}
+
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px;}
+.stat{background:var(--surface);border:1px solid var(--border);padding:18px 20px;}
+.stat .k{font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;}
+.stat .v{font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:500;letter-spacing:-0.015em;line-height:1;margin-bottom:8px;}
+.stat .v .small{font-size:18px;color:var(--accent);}
+.stat .desc{font-size:12.5px;color:var(--ink-2);line-height:1.45;}
+
+.panel{background:var(--surface);border:1px solid var(--border);}
+.panel .cap{padding:12px 18px;border-top:1px solid var(--border);font-size:13px;color:var(--ink-2);line-height:1.5;}
+.panel .cap b{color:var(--ink);}
+
+table.data{width:100%;border-collapse:collapse;font-size:13px;}
+table.data th,table.data td{text-align:left;padding:11px 18px;border-bottom:1px solid var(--border);}
+table.data th{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600;}
+table.data td.n{font-family:'JetBrains Mono',monospace;text-align:right;}
+table.data tr:last-child td{border-bottom:none}
+
+/* PIPELINE */
+.pipe{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border:1px solid var(--border);}
+.pipe .ph{background:var(--surface);padding:18px 20px;}
+.pipe .ph .t{font-size:14px;font-weight:600;margin-bottom:4px}
+.pipe .ph .budget{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent);margin-bottom:10px}
+.pipe .ph .d{font-size:12.5px;color:var(--ink-2);line-height:1.45}
+
+/* EXPLOIT PANEL */
+.exp{display:grid;grid-template-columns:300px 1fr;gap:1px;background:var(--border);border:1px solid var(--border);}
+.exp .list{background:var(--surface);padding:10px;display:flex;flex-direction:column;gap:2px;}
+.exp .list button{text-align:left;padding:11px 13px;border:none;background:none;font:inherit;font-size:13px;color:var(--ink-2);cursor:pointer;border-left:3px solid transparent;line-height:1.35}
+.exp .list button:hover{background:#f5f6f7}
+.exp .list button.active{background:#f2f6f5;color:var(--ink);border-left-color:var(--accent);font-weight:500}
+.exp .detail{background:var(--surface);padding:24px 26px;min-height:230px}
+.exp .detail .verdict{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ok);margin-bottom:12px}
+.exp .detail h3{margin:0 0 10px;font-size:17px;font-weight:600;letter-spacing:-0.01em}
+.exp .detail p{margin:0 0 14px;font-size:14px;color:var(--ink-2);line-height:1.55;max-width:62ch}
+.exp .detail .where{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--muted);border-top:1px solid var(--border);padding-top:12px}
+
+/* GATE LADDER */
+.ladder{display:grid;grid-template-columns:290px 1fr;gap:1px;background:var(--border);border:1px solid var(--border);}
+.ladder .picks{background:var(--surface);padding:10px;display:flex;flex-direction:column;gap:2px;}
+.ladder .picks button{text-align:left;padding:10px 13px;border:none;background:none;font:inherit;cursor:pointer;border-left:3px solid transparent;}
+.ladder .picks button .nm{display:block;font-size:13px;color:var(--ink-2);line-height:1.3}
+.ladder .picks button .mt{display:block;font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted);margin-top:3px}
+.ladder .picks button:hover{background:#f5f6f7}
+.ladder .picks button.active{background:#f2f6f5;border-left-color:var(--accent)}
+.ladder .picks button.active .nm{color:var(--ink);font-weight:500}
+.ladder .run{background:var(--surface);padding:22px 26px;}
+.ladder .runhead{display:flex;justify-content:space-between;align-items:baseline;gap:14px;margin-bottom:16px;flex-wrap:wrap}
+.ladder .runhead .title{font-size:15px;font-weight:600}
+.ladder .runhead .meta{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)}
+.gate{display:grid;grid-template-columns:26px 1fr;gap:14px;padding:12px 0;border-top:1px solid var(--border);opacity:.25;transition:opacity .3s ease;}
+.gate.shown{opacity:1}
+.gate .mark{font-family:'JetBrains Mono',monospace;font-size:14px;line-height:1.4;color:var(--muted)}
+.gate.pass .mark{color:var(--ok)}
+.gate.fail .mark{color:var(--no)}
+.gate .gname{font-size:13.5px;font-weight:500;margin-bottom:3px}
+.gate.fail .gname{color:var(--no)}
+.gate .gnote{font-size:12.5px;color:var(--ink-2);line-height:1.5;max-width:64ch}
+.gate .gnote em{font-style:normal;font-family:'JetBrains Mono',monospace;color:var(--ink)}
+.gate.skipped .gname{color:var(--muted)}
+.outcome{margin-top:16px;padding:13px 15px;background:#fafafa;border:1px solid var(--border);font-size:13px;color:var(--ink-2);line-height:1.55;}
+.outcome.accepted{border-left:3px solid var(--ok)}
+.outcome.rejected{border-left:3px solid var(--no)}
+.outcome.blocked{border-left:3px solid var(--warn)}
+.outcome b{color:var(--ink)}
+
+/* EMPTY STATE */
+.empty{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--warn);padding:22px 26px;font-size:14px;color:var(--ink-2);line-height:1.6;max-width:78ch}
+.empty b{color:var(--ink)}
+
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.note{background:var(--surface);border:1px solid var(--border);padding:20px 22px;font-size:13.5px;color:var(--ink-2);line-height:1.55}
+.note h3{margin:0 0 8px;font-size:14px;font-weight:600;color:var(--ink)}
+.note ul{margin:8px 0 0;padding-left:18px}
+.note li{margin-bottom:7px}
+
+.links{display:flex;gap:12px;flex-wrap:wrap;padding:24px;background:var(--surface);border:1px solid var(--border);align-items:center;justify-content:space-between}
+.links .text{font-size:14px;color:var(--ink-2);max-width:52ch}
+.links .text b{color:var(--ink)}
+.links .btns{display:flex;gap:10px;flex-wrap:wrap}
+.links a.btn{padding:9px 16px;border:1px solid var(--border);font-size:13px;font-weight:500;text-decoration:none;color:var(--ink)}
+.links a.btn:hover{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+footer{margin-top:48px;padding-top:24px;border-top:1px solid var(--border);color:var(--muted);font-size:12px;font-family:'JetBrains Mono',monospace;line-height:1.7}
+
+@media (max-width:900px){
+  .exp,.ladder{grid-template-columns:1fr}
+  .pipe{grid-template-columns:1fr 1fr}
+}
+@media (max-width:820px){
+  .app{padding:40px 18px 64px}
+  h1{font-size:30px}
+  header.hero .lede{font-size:16px}
+  .stats,.cols{grid-template-columns:1fr}
+  .band-head{flex-direction:column;align-items:flex-start;gap:8px}
+  .links{flex-direction:column;align-items:flex-start}
+}
+@media (max-width:520px){
+  h1{font-size:25px}
+  .pipe{grid-template-columns:1fr}
+  .stepbar div{font-size:10px}
+  section.s h2{font-size:18px;flex-wrap:wrap}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important;animation:none!important}
+  .gate{opacity:1!important}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="hero">
+    <div class="eyebrow">Top-Kernel · CoreWeave Hacks</div>
+    <h1>Point it at a repo.<br>It evolves the <em>model</em>, not the kernels.</h1>
+    <div class="lede">
+      An agent writes an adapter for your PyTorch training script, then a staged
+      evolutionary search proposes architecture and optimizer changes, trains each
+      one for the same wall-clock budget on one GPU, and ranks them by held-out
+      validation loss. Everything an agent could cheat — data, loss, validation
+      batches, eval code, seeds, the budget, the parameter cap — is owned by the
+      harness. No model ever grades its own output.
+      We started this as a Triton kernel optimizer; the profile numbers below are
+      why the architecture became the main mode and kernels became the second one.
+    </div>
+  </header>
+
+  <div class="band" aria-label="Measured composition of one training step">
+    <div class="band-head">
+      <div class="left">one training step, measured · <b id="band-model">…</b></div>
+      <div class="switcher" id="band-switch" role="group" aria-label="Choose a profiled model"></div>
+    </div>
+    <div class="stepbar" id="stepbar" role="img" aria-label="Stacked bar of training step composition"></div>
+    <div class="stepkey">
+      <span><i class="sw" style="background:#20242a"></i><b>GEMMs + attention</b> — cuBLAS and flash-attention, already at hardware peak in eager</span>
+      <span><i class="sw" style="background:var(--accent)"></i><b>Fusable glue</b> — norms, activations, loss: everything a kernel optimizer can touch</span>
+      <span><i class="sw" style="background:#b9bec6"></i><b>Optimizer, data, overhead</b></span>
+    </div>
+    <div class="band-foot" id="band-foot">…</div>
+  </div>
+
+  <!-- 01 -->
+  <section class="s">
+    <div class="header">
+      <h2><span class="num">01</span>The measurement that redirected the project</h2>
+      <div class="sub">
+        We built the kernel optimizer first, ran it, and profiled honestly. Two
+        results together cap the whole category: the addressable share of a
+        training step is small, and the thing occupying it is already a
+        Triton-writing compiler running near the bandwidth ceiling. The
+        architecture has no such cap.
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="k">Addressable share of a step</div>
+        <div class="v">5 – 28<span class="small"> %</span></div>
+        <div class="desc">Measured across both target repos. Per-op work outside GEMMs and attention is all any kernel optimizer can reach, so whole-step wins from like-for-like ops are structurally single-digit.</div>
+      </div>
+      <div class="stat">
+        <div class="k">Inductor on memory-bound ops</div>
+        <div class="v">85 – 95<span class="small"> %</span></div>
+        <div class="desc">of DRAM bandwidth. <code>torch.compile</code> emits shape-specialised Triton and autotunes block sizes and warps. On norms and softmax the remaining headroom is physics, not code quality.</div>
+      </div>
+      <div class="stat">
+        <div class="k">Profile reproducibility</div>
+        <div class="v">&lt;0.1<span class="small"> %</span></div>
+        <div class="desc">457.79 / 457.51 / 457.19 ms across three repeats of the same config. The measurements the pivot rests on are stable, not eyeballed.</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <table class="data">
+        <thead><tr><th>Profiled model</th><th class="n">Params</th><th class="n">Batch</th><th class="n">Step (eager)</th><th>Reachable by a kernel optimizer</th></tr></thead>
+        <tbody>
+          <tr><td>karpathy/nanochat, via agent-written adapter</td><td class="n">11.5 M</td><td class="n">4</td><td class="n">8.24 – 8.87 ms</td><td>relu² MLP 3.0% + RMSNorm 2.3% <b>≈ 5%</b></td></tr>
+          <tr><td>xerneas3318/modern-lm</td><td class="n">480.9 M</td><td class="n">12</td><td class="n">457.2 – 457.8 ms</td><td>SwiGLU 19.6% + RMSNorm 1.8% + CE 1.6% <b>≈ 23%</b></td></tr>
+          <tr><td>xerneas3318/modern-lm</td><td class="n">480.9 M</td><td class="n">16</td><td class="n">583.5 – 617.0 ms</td><td>SwiGLU 21.7 – 22.9% + fused linear-CE 5.4% <b>≈ 28%</b></td></tr>
+        </tbody>
+      </table>
+      <div class="cap">
+        <b>Why this reframed the product.</b> A perfect kernel optimizer on the
+        second row buys you a fraction of 23%. Changing what the model computes —
+        the norm placement, the MLP shape, the optimizer, the schedule — moves
+        loss-per-second with no equivalent ceiling. So the search moved up a level,
+        and the objective changed from step time to held-out loss under a fixed budget.
+      </div>
+    </div>
+  </section>
+
+  <!-- 02 -->
+  <section class="s">
+    <div class="header">
+      <h2><span class="num">02</span>What the search actually evolves</h2>
+      <div class="sub">
+        A candidate is one self-contained Python file exposing <code>build_model()</code>,
+        <code>make_optimizer(model)</code>, and optionally <code>lr_schedule(step)</code>
+        and <code>TRAIN_HINTS</code>. That is the entire surface. Candidates are told to
+        subclass or patch the repo's own model classes rather than rebuild them — a
+        rebuild silently drops positional encodings, norm placement and init, and
+        reliably scores worse.
+      </div>
+    </div>
+
+    <div class="pipe">
+      <div class="ph">
+        <div class="t">Architecture</div>
+        <div class="budget">2 generations × 8 candidates · 60 s each</div>
+        <div class="d">Redesign the model and optimizer freely, inside the parameter cap and call-compatible with the repo's loss.</div>
+      </div>
+      <div class="ph">
+        <div class="t">Hyperparameters</div>
+        <div class="budget">1 generation × 8 candidates · 120 s each</div>
+        <div class="d">Architecture frozen to the parent and verified by parameter-shape fingerprint. Only the optimizer, schedule and clipping may move.</div>
+      </div>
+      <div class="ph">
+        <div class="t">Finals</div>
+        <div class="budget">top 2 · 300 s each</div>
+        <div class="d">The survivors get a longer budget against a baseline retrained at that same budget.</div>
+      </div>
+      <div class="ph">
+        <div class="t">Signal</div>
+        <div class="budget">8 held-out val batches</div>
+        <div class="d">Accepted only if val loss beats the budget-matched baseline by more than 0.3% — enough to clear the ±1-step noise a wall-clock budget introduces.</div>
+      </div>
+    </div>
+    <div class="panel" style="border-top:none">
+      <div class="cap" style="border-top:none">
+        <b>The baseline is trained, not remembered.</b> The harness trains the
+        unmodified repo model at every budget the schedule uses, so a 60-second
+        candidate is only ever compared against a 60-second baseline. That is the
+        whole reason a wall-clock objective is safe to optimize against: a candidate
+        that is fast but converges badly, or elegant but slow, is scored by the same
+        number either way. The DEV schedule above is about 42 minutes of GPU time end to end.
+      </div>
+    </div>
+
+    <h3 style="font-size:15px;font-weight:600;margin:34px 0 10px">If you were the agent, how would you cheat?</h3>
+    <p style="font-size:14px;color:var(--ink-2);max-width:70ch;margin:0 0 16px;line-height:1.55">
+      Pick an exploit. Every one of these is closed by a mechanism in the harness,
+      not by a prompt asking the model not to do it.
+    </p>
+
+    <div class="exp">
+      <div class="list" id="exploit-list" role="tablist" aria-label="Exploits"></div>
+      <div class="detail" id="exploit-detail" role="tabpanel" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <!-- 03 -->
+  <section class="s">
+    <div class="header">
+      <h2><span class="num">03</span>The loop, and what it costs to run</h2>
+      <div class="sub">
+        A planner names specific strategies in plain language; parallel subagents
+        implement exactly what they were named; the harness evaluates; a curator
+        distils each generation into lessons injected into the next generation's
+        prompts. Failed-to-author strategies are marked untested, so the planner
+        can re-propose the idea in a simpler form instead of learning the wrong lesson from it.
+      </div>
+    </div>
+    <div class="cols">
+      <div class="note">
+        <h3>State and observability</h3>
+        <ul>
+          <li><code>archive.sqlite</code> is the only state the loop reads. W&amp;B and Weave are a one-way mirror, written after the archive commits, and never read back.</li>
+          <li>Every LLM call, repair and candidate lifecycle is traced in Weave; per-candidate W&amp;B runs carry per-step train loss, the matched baseline, parameter count, phase and acceptance.</li>
+          <li>Harness failures are tagged <code>[infra]</code> so the curator can't diagnose a SQLite threading bug as a bad architecture idea. It did exactly that before the tag existed.</li>
+          <li>A sandbox that dies mid-run can't take accepted code with it — candidate and recipe sources sync back on every mid-run checkpoint.</li>
+        </ul>
+      </div>
+      <div class="note">
+        <h3>Measured cost and latency</h3>
+        <ul>
+          <li>Whole DEV run: <b>$2.50 – $4.20</b>. One generation ≈ $2 – $2.50. A planner call is $0.15 – $0.40; a candidate including repairs is $0.70 – $1.50.</li>
+          <li>Session total across 5 jobs, 2 target repos and ~9 remote GPU runs: <b>~$28 of the $100 credit</b>.</li>
+          <li>Completions run 60 – 120 s for a full file at 3 – 6k output tokens, so generations are LLM-bound. The GPU is the stopwatch, not the load — which is exactly why candidates are evaluated the moment their authoring finishes rather than in lockstep at the end of a generation.</li>
+          <li>Runs locally or dispatched to a molab notebook's GPU: paste the notebook's pairing prompt into the web form and jobs are uploaded, streamed and synced back.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 -->
+  <section class="s">
+    <div class="header">
+      <h2><span class="num">04</span>Kernel mode, kept as the second option</h2>
+      <div class="sub">
+        The original mode still ships, and it is where the verified end-to-end
+        result lives. Same evolutionary loop, different objective: agents write
+        Triton kernels for the hot ops, and the objective is training step time
+        instead of loss. Correctness is a constraint enforced by four deterministic
+        gates, cheapest first. Pick a real candidate from our runs and watch where it dies.
+      </div>
+    </div>
+
+    <div class="ladder">
+      <div class="picks" id="cand-list" role="tablist" aria-label="Recorded candidates"></div>
+      <div class="run" id="cand-run" role="tabpanel" aria-live="polite"></div>
+    </div>
+
+    <div class="cols" style="margin-top:14px">
+      <div class="note">
+        <h3>The one that got through</h3>
+        <p style="margin:0 0 10px">A row-parallel Triton RMSNorm on nanochat: <b>8.95 ms → 8.58 ms</b>, −4.1% against per-op <code>torch.compile</code> incumbents and −1.7% against eager, with gradients verified.</p>
+        <p style="margin:0">It won on the compiler's weak flank, not by out-tuning it. A hand-fused forward+backward pair replaced inductor's autograd-generated backward. The −4.1% step win exceeds the op's 2.3% GPU-time share because an 8 ms step is launch-bound, so deleting launches saves more wall time than it saves GPU time.</p>
+      </div>
+      <div class="note">
+        <h3>Where kernel wins actually live</h3>
+        <ul>
+          <li><b>Boundary-moving fusions the compiler never performs.</b> Fusing the head matmul into the loss avoids materialising ~3.2 GB of bf16 logits per step at 32k tokens × 50,304 vocab. Our adapter agent routed modern-lm through that boundary — 5.38% of step versus 1.56% for bare cross-entropy — but the funded search on it was stopped at calibration.</li>
+          <li><b>Backward passes.</b> Every SwiGLU failure we logged was a gradient bug, and every accepted win was a backward.</li>
+          <li><b>Launch-overhead regimes.</b> On the 8 ms step, per-op compile wrappers' guard overhead across 73 norm calls made the compiled incumbent no faster than eager.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 -->
+  <section class="s">
+    <div class="header">
+      <h2><span class="num">05</span>What's verified, and what isn't</h2>
+      <div class="sub">
+        You are judging this with the same instincts we used to reject our own
+        gen-2 kernel, so here is the honest split.
+      </div>
+    </div>
+    <div class="cols">
+      <div class="note" style="border-left:3px solid var(--ok)">
+        <h3>Verified end to end</h3>
+        <ul>
+          <li>One agent-written kernel accepted through all four gates on a stranger repo, outputs and gradients checked, step time improved against a re-measured compiled incumbent.</li>
+          <li>Two correct rejections: a flattering microbenchmark win refused because its in-model delta sat inside the calibrated noise margin, and both planted cheating kernels rejected at every single startup.</li>
+          <li>Adapter self-assembly on a 481M-param repo we hadn't seen: op routing matched 73 norms and 24 SwiGLUs behaviourally, never by class name.</li>
+        </ul>
+      </div>
+      <div class="note" style="border-left:3px solid var(--warn)">
+        <h3>Not yet, and known limits</h3>
+        <ul>
+          <li>No accepted kernel on the 481M repo at DEV search scale; the funded RUN search was stopped by us at calibration.</li>
+          <li>Finalist and parent selection still ranks raw losses across phases with different budgets without normalising them. The UI deliberately groups plotted comparisons by equal budget; the engine ranking is the thing to fix next.</li>
+          <li>The hyperparameter-phase guard checks parameter names and shapes, not full semantic equivalence. A candidate could in principle change behaviour while keeping the fingerprint.</li>
+          <li>Wall-clock budgets introduce ±1-step noise in val loss. The 0.3% margin absorbs it; it does not eliminate it.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div id="recipe-results" style="margin-top:14px"></div>
+  </section>
+
+  <div class="links">
+    <div class="text">
+      The <b>architecture and kernel workspace UI</b> lives on the <code>codex/rian-ui</code>
+      branch, not <code>main</code>. Findings, the two most important agent-written
+      kernels and the full run ledger are committed under <code>findings/</code>.
+    </div>
+    <div class="btns">
+      <a class="btn" href="https://github.com/flappybird1084/top-k">Repository</a>
+      <a class="btn" href="https://github.com/flappybird1084/top-k/tree/codex/rian-ui/ui">UI branch</a>
+      <a class="btn" href="https://github.com/flappybird1084/top-k/tree/main/findings">Findings</a>
+      <a class="btn" href="https://wandb.ai/rianbutala-ucla/kernel-evolution">W&amp;B runs</a>
+    </div>
+  </div>
+
+  <footer>
+    All timings on an NVIDIA RTX PRO 6000 Blackwell Server Edition via molab · CUDA 13.2 · agents on W&amp;B Inference<br>
+    Targets: karpathy/nanochat and xerneas3318/modern-lm, both ingested through an agent-written adapter, neither modified by hand<br>
+    Built with CoreWeave, marimo and Weights &amp; Biases · sources: <code>findings/01-results.md</code>, <code>findings/03-performance-analysis.md</code>, <code>findings/04-agent-behavior.md</code>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ------------------------------------------------------------------ *
+   * 1. Hero band — measured composition of one training step.
+   *    Glue share is the profiled addressable total; GEMM+attention is
+   *    the measured 65–75% range; remainder is optimizer/data/overhead.
+   * ------------------------------------------------------------------ */
+  const PROFILES = [
+    {
+      key: "nanochat",
+      label: "nanochat · 11.5M · batch 4",
+      gemm: 75, glue: 5, rest: 20,
+      foot: "Step 8.24–8.87 ms eager. Reachable ops: relu\u00b2 MLP 3.0% and RMSNorm 2.3%. " +
+            "At this scale per-op <code>torch.compile</code> measured no faster than eager (8.95 vs 8.73–8.87 ms) — " +
+            "guard overhead across 73 norm calls cancels the kernel wins on an 8 ms step."
+    },
+    {
+      key: "modernlm12",
+      label: "modern-lm · 481M · batch 12",
+      gemm: 68, glue: 23, rest: 9,
+      foot: "Step 457.2–457.8 ms eager, reproducible to &lt;0.1% across three repeats. " +
+            "Reachable ops: SwiGLU 19.6%, RMSNorm 1.8%, cross-entropy 1.6%."
+    },
+    {
+      key: "modernlm16",
+      label: "modern-lm · 481M · batch 16",
+      gemm: 65, glue: 28, rest: 7,
+      foot: "Step 583.5–617.0 ms eager. SwiGLU 21.7–22.9% plus the fused linear-cross-entropy boundary at 5.4% — " +
+            "3.5\u00d7 the attack surface of bare cross-entropy, and the one place a kernel can delete memory traffic the compiler structurally never crosses."
+    }
+  ];
+
+  const bar = document.getElementById("stepbar");
+  const bandModel = document.getElementById("band-model");
+  const bandFoot = document.getElementById("band-foot");
+  const bandSwitch = document.getElementById("band-switch");
+
+  function drawProfile(p) {
+    bar.innerHTML =
+      '<div class="seg-gemm" style="width:' + p.gemm + '%">' + p.gemm + '% GEMMs + attention</div>' +
+      '<div class="seg-glue" style="width:' + p.glue + '%">' + p.glue + '%</div>' +
+      '<div class="seg-rest" style="width:' + p.rest + '%">' + p.rest + '%</div>';
+    bandModel.textContent = p.label;
+    bandFoot.innerHTML = p.foot;
+    Array.prototype.forEach.call(bandSwitch.children, function (b) {
+      const on = b.dataset.key === p.key;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-pressed", String(on));
+    });
+  }
+
+  PROFILES.forEach(function (p) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.key = p.key;
+    b.textContent = p.label.split(" · ")[0] + " " + p.label.split(" · ")[2];
+    b.addEventListener("click", function () { drawProfile(p); });
+    bandSwitch.appendChild(b);
+  });
+  drawProfile(PROFILES[1]);
+
+  /* ------------------------------------------------------------------ *
+   * 2. Exploit panel — every mechanism here is in the harness, not a prompt.
+   * ------------------------------------------------------------------ */
+  const EXPLOITS = [
+    {
+      attack: "Train on the validation set",
+      title: "The candidate never sees the data",
+      body: "A recipe file exposes build_model, make_optimizer, an optional lr_schedule and TRAIN_HINTS. " +
+            "It has no handle on the dataloader, the validation batches or the evaluation code — the harness " +
+            "constructs all three, in a fixed order, with harness-owned seeds, identically for every candidate " +
+            "and for the baseline.",
+      where: "kernelevo/recipes.py — RECIPE_CONTRACT · kernelevo/recipe_worker.py"
+    },
+    {
+      attack: "Swap in an easier loss",
+      title: "The loss belongs to the repo, not the candidate",
+      body: "Scoring uses the base adapter's loss function, taken from the repo being optimized. The only " +
+            "constraint passed to the agent is that the model stays call-compatible with it. A candidate that " +
+            "changes what loss means doesn't produce a better number; it produces a crash.",
+      where: "adapter contract: build_model / get_dataloader / loss_fn"
+    },
+    {
+      attack: "Shrink the model so it trains faster",
+      title: "Parameter cap, checked before training starts",
+      body: "Total parameters must stay within 1.10\u00d7 the baseline. This is counted from the constructed " +
+            "model, not from anything the candidate claims, and it fails at the param_cap gate before a single " +
+            "step runs. Wall-clock budgets do reward smaller models, which is precisely why the cap exists.",
+      where: "gate param_cap · RECIPE.param_budget_ratio = 1.10"
+    },
+    {
+      attack: "Keep tuning the architecture during the hyperparameter phase",
+      title: "Architecture lock by parameter-shape fingerprint",
+      body: "Entering the hyperparameter phase, the parent's architecture is hashed as a sorted list of " +
+            "(parameter name, shape). A candidate whose fingerprint doesn't match is rejected mechanically. " +
+            "The honest limit: this checks names and shapes, not full semantic equivalence.",
+      where: "kernelevo/recipes.py — arch_fingerprint() · gate arch_lock"
+    },
+    {
+      attack: "Quietly take more training time",
+      title: "The harness owns the stopwatch",
+      body: "Training runs in a subprocess the harness starts and stops. The budget is passed in, the worker " +
+            "is killed at budget plus a fixed grace period, and the candidate has no way to extend it. Every " +
+            "candidate in a phase gets the same seconds on the same GPU.",
+      where: "kernelevo/recipe_worker.py · eval_timeout_grace_s = 150"
+    },
+    {
+      attack: "Return something degenerate and hope it scores",
+      title: "Finiteness checks at both ends",
+      body: "The initial loss is checked for finiteness before training, and the held-out loss is checked after. " +
+            "Either failing is a sanity-gate rejection rather than a number that enters the ranking.",
+      where: "gate sanity"
+    },
+    {
+      attack: "Win by noise",
+      title: "Budget-matched baseline plus a margin",
+      body: "Acceptance requires beating the baseline trained at the same wall-clock budget by more than 0.3%. " +
+            "On the kernel side the equivalent margin is calibrated from measured noise per run, and it has " +
+            "already refused a candidate of ours whose 2.6% win sat inside a 3% margin.",
+      where: "loss_margin_rel = 0.003 · per-budget baselines"
+    },
+    {
+      attack: "Let the model mark its own homework",
+      title: "No LLM anywhere in the acceptance path",
+      body: "Planner, subagents and curator propose and write. Nothing they produce influences whether a " +
+            "candidate is accepted — that decision is made by code comparing two measured numbers. Correctness " +
+            "and legality are constraints; the objective is the only thing the search can move.",
+      where: "kernelevo/recipe_loop.py · kernelevo/gates.py"
+    }
+  ];
+
+  const expList = document.getElementById("exploit-list");
+  const expDetail = document.getElementById("exploit-detail");
+
+  function showExploit(i) {
+    const e = EXPLOITS[i];
+    expDetail.innerHTML =
+      '<div class="verdict">closed by construction</div>' +
+      "<h3>" + e.title + "</h3>" +
+      "<p>" + e.body + "</p>" +
+      '<div class="where">' + e.where + "</div>";
+    Array.prototype.forEach.call(expList.children, function (b, j) {
+      b.classList.toggle("active", i === j);
+      b.setAttribute("aria-selected", String(i === j));
+    });
+  }
+
+  EXPLOITS.forEach(function (e, i) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("role", "tab");
+    b.textContent = e.attack;
+    b.addEventListener("click", function () { showExploit(i); });
+    expList.appendChild(b);
+  });
+  showExploit(0);
+
+  /* ------------------------------------------------------------------ *
+   * 3. Gate ladder — every candidate below is a real recorded outcome
+   *    from the session, taken from findings/01-results.md.
+   * ------------------------------------------------------------------ */
+  const PASS = "pass", FAIL = "fail";
+  const GATE_NAMES = [
+    "Compiles",
+    "Matches eager — outputs and gradients",
+    "Faster in isolation than the incumbent",
+    "Faster on the real training step"
+  ];
+
+  const CANDIDATES = [
+    {
+      name: "RMSNorm, row-parallel autograd.Function",
+      meta: "nanochat · gen 1 · Kimi-K2.7-Code",
+      outcome: "accepted",
+      gates: [
+        { r: PASS, note: "Compiled in a CPU process pool, off the GPU critical path, artifact cached by source hash." },
+        { r: PASS, note: "Matched eager on the top-3 observed shapes plus one unseen shape, forward <em>and</em> backward, with fresh seeded inputs on every trial." },
+        { r: PASS, note: "Beat the per-op <em>torch.compile</em> incumbent, re-measured in this session rather than compared to a stored number." },
+        { r: PASS, note: "Training step <em>8.95 ms \u2192 8.58 ms</em> over 10 warmup and 30 timed steps. \u22124.1% against the compiled incumbent, \u22121.7% against the 8.73 ms eager reference. MFU 0.037." }
+      ],
+      close: "<b>Accepted.</b> It won by replacing inductor's autograd-generated backward with a fused forward+backward pair — the compiler's weakest output, not its strongest."
+    },
+    {
+      name: "RMSNorm, multi-row packed",
+      meta: "nanochat · gen 2 · follow-up to the accepted kernel",
+      outcome: "rejected",
+      gates: [
+        { r: PASS, note: "Compiled cleanly." },
+        { r: PASS, note: "Numerically correct, gradients included." },
+        { r: PASS, note: "Faster in isolation than the <em>accepted</em> gen-1 kernel — a genuinely better microbenchmark." },
+        { r: FAIL, note: "In-model <em>8.66 ms</em> against a re-measured incumbent of <em>8.89 ms</em>: a 2.6% delta, inside the 3% margin calibrated from this run's measured noise." }
+      ],
+      close: "<b>Rejected, and this is the one to look at.</b> Run-to-run incumbent re-measurements moved by up to \u00b12.5%, so 2.6% is not a result. The verifier declining a number that flattered us is the property the whole system exists to have."
+    },
+    {
+      name: "Cross-entropy, fused",
+      meta: "modern-lm 481M · first CE candidate to pass correctness",
+      outcome: "rejected",
+      gates: [
+        { r: PASS, note: "Compiled." },
+        { r: PASS, note: "Full correctness including gradients — the first cross-entropy candidate in the session to get here." },
+        { r: FAIL, note: "<em>21,483 \u00b5s</em> against inductor's <em>7,781 \u00b5s</em>. 2.8\u00d7 slower." },
+        { r: null, note: "" }
+      ],
+      close: "<b>Rejected on speed, archived anyway.</b> A correct-but-slow kernel gets zero repair retries; it goes into the archive with its strategy so the curator can turn it into a lesson. Correctness is reachable; out-tuning an autotuning compiler on a memory-bound op is what one-shot plus one repair rarely produces."
+    },
+    {
+      name: "RMSNorm forward+backward",
+      meta: "modern-lm 481M",
+      outcome: "rejected",
+      gates: [
+        { r: PASS, note: "Compiled." },
+        { r: PASS, note: "Correct, gradients included." },
+        { r: FAIL, note: "<em>608 \u00b5s</em> against inductor's <em>336 \u00b5s</em>. 1.8\u00d7 slower — the untuned-but-correct ratio we saw repeatedly." },
+        { r: null, note: "" }
+      ],
+      close: "<b>Rejected on speed.</b> Same shape of result as the cross-entropy attempt, at a different op and a different scale."
+    },
+    {
+      name: "relu\u00b2 MLP",
+      meta: "nanochat · 4 attempts across differently-worded strategies",
+      outcome: "rejected",
+      gates: [
+        { r: PASS, note: "Compiled every time." },
+        { r: FAIL, note: "Byte-identical numeric mismatch across all four attempts — <em>max_abs 3.2e+01</em> at the same failing index. About 1.4\u00d7 over the calibrated bf16 bound, an fp32-accumulation fix away from passing." },
+        { r: null, note: "" },
+        { r: null, note: "" }
+      ],
+      close: "<b>Rejected, and the most interesting agent-behaviour finding in the session.</b> Strategy text did not change behaviour: the model re-emitted its attractor implementation regardless of the plan it was given. One repair round doesn't break that. This is the argument for more repairs, curated lessons and a stronger model — not for loosening a tolerance."
+    },
+    {
+      name: "Planted cheat: cached output",
+      meta: "runs at every calibration, before any real search",
+      outcome: "blocked",
+      gates: [
+        { r: PASS, note: "Compiles — it is designed to." },
+        { r: FAIL, note: "Caught on trial 2. Gate 2 draws fresh seeded inputs on every call, so a kernel returning a memoised result matches once and then doesn't." },
+        { r: null, note: "" },
+        { r: null, note: "" }
+      ],
+      close: "<b>Caught, every startup.</b> If either planted cheat ever passes gate 2, calibration aborts the run rather than continuing. It is a regression test for the verifier that runs before every search."
+    },
+    {
+      name: "Planted cheat: hardcoded shape",
+      meta: "runs at every calibration, before any real search",
+      outcome: "blocked",
+      gates: [
+        { r: PASS, note: "Compiles." },
+        { r: FAIL, note: "Caught by the unseen shape. Gate 2 deliberately includes one shape the kernel was never profiled on." },
+        { r: null, note: "" },
+        { r: null, note: "" }
+      ],
+      close: "<b>Caught, every startup.</b> One real incident is worth knowing: a transient OOM got cached as this cheat's compile result, the self-test couldn't run, and the harness aborted. It failed closed, not open."
+    }
+  ];
+
+  const candList = document.getElementById("cand-list");
+  const candRun = document.getElementById("cand-run");
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let timers = [];
+
+  function clearTimers() {
+    timers.forEach(clearTimeout);
+    timers = [];
+  }
+
+  function showCandidate(i) {
+    clearTimers();
+    const c = CANDIDATES[i];
+    let html =
+      '<div class="runhead"><div class="title">' + c.name + "</div>" +
+      '<div class="meta">' + c.meta + "</div></div>";
+
+    c.gates.forEach(function (g, j) {
+      const state = g.r === PASS ? "pass" : g.r === FAIL ? "fail" : "skipped";
+      const mark = g.r === PASS ? "\u2713" : g.r === FAIL ? "\u2717" : "\u00b7";
+      const note = g.r ? g.note : "Not reached.";
+      html +=
+        '<div class="gate ' + state + '" data-i="' + j + '">' +
+        '<div class="mark">' + mark + "</div><div>" +
+        '<div class="gname">Gate ' + (j + 1) + " \u2014 " + GATE_NAMES[j] + "</div>" +
+        '<div class="gnote">' + note + "</div></div></div>";
+    });
+
+    html += '<div class="outcome ' + c.outcome + '" hidden>' + c.close + "</div>";
+    candRun.innerHTML = html;
+
+    const gateEls = candRun.querySelectorAll(".gate");
+    const outcomeEl = candRun.querySelector(".outcome");
+
+    if (reduceMotion) {
+      gateEls.forEach(function (el) { el.classList.add("shown"); });
+      outcomeEl.hidden = false;
+    } else {
+      gateEls.forEach(function (el, j) {
+        timers.push(setTimeout(function () { el.classList.add("shown"); }, 90 + j * 260));
+      });
+      timers.push(setTimeout(function () { outcomeEl.hidden = false; }, 90 + gateEls.length * 260));
+    }
+
+    Array.prototype.forEach.call(candList.children, function (b, j) {
+      b.classList.toggle("active", i === j);
+      b.setAttribute("aria-selected", String(i === j));
+    });
+  }
+
+  CANDIDATES.forEach(function (c, i) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("role", "tab");
+    b.innerHTML = '<span class="nm">' + c.name + '</span><span class="mt">' + c.meta + "</span>";
+    b.addEventListener("click", function () { showCandidate(i); });
+    candList.appendChild(b);
+  });
+  showCandidate(0);
+
+  /* ------------------------------------------------------------------ *
+   * 4. Architecture run results.
+   *
+   *    Nothing is invented here. Fill RECIPE_RUN from a completed recipe
+   *    job and this panel plots it; leave it empty and the page says so.
+   *
+   *    baseline: { "60": 4.12, "120": 3.85, "300": 3.66 }   val loss by budget (s)
+   *    candidates: [{ phase, strategy, train_secs, val_loss, params, accepted }]
+   * ------------------------------------------------------------------ */
+  const RECIPE_RUN = {
+    repo: "",
+    baseline: {},
+    candidates: []
+  };
+
+  const results = document.getElementById("recipe-results");
+
+  function renderRecipeRun() {
+    if (!RECIPE_RUN.candidates.length) {
+      results.innerHTML =
+        '<div class="empty"><b>No completed architecture run is committed to the repository yet.</b> ' +
+        "The mode is implemented end to end — staged phases, budget-matched baselines, the four rejection " +
+        "gates above — and the DEV schedule is about 42 minutes of GPU time, but we are not going to put a " +
+        "number on this page that we can't point at a W&amp;B run for. Fill <code>RECIPE_RUN</code> in this " +
+        "page's script from a finished job and the table renders here, grouped by training budget so that " +
+        "candidates are only ever compared against a baseline trained for the same wall-clock seconds.</div>";
+      return;
+    }
+
+    const rows = RECIPE_RUN.candidates.slice().sort(function (a, b) {
+      return a.train_secs - b.train_secs || a.val_loss - b.val_loss;
+    });
+
+    let html =
+      '<div class="panel"><table class="data"><thead><tr>' +
+      "<th>Phase</th><th>Strategy</th><th class='n'>Budget</th><th class='n'>Params</th>" +
+      "<th class='n'>Val loss</th><th class='n'>vs baseline</th><th>Outcome</th>" +
+      "</tr></thead><tbody>";
+
+    rows.forEach(function (r) {
+      const base = RECIPE_RUN.baseline[String(r.train_secs)];
+      const delta = base ? (100 * (base - r.val_loss)) / base : null;
+      const deltaTxt = delta === null ? "\u2014" : (delta >= 0 ? "+" : "") + delta.toFixed(2) + "%";
+      const params = r.params ? (r.params / 1e6).toFixed(1) + " M" : "\u2014";
+      html +=
+        "<tr><td>" + r.phase + "</td><td>" + r.strategy + "</td>" +
+        "<td class='n'>" + r.train_secs + " s</td><td class='n'>" + params + "</td>" +
+        "<td class='n'>" + r.val_loss.toFixed(4) + "</td>" +
+        "<td class='n' style='color:" + (delta > 0 ? "var(--ok)" : "var(--no)") + "'>" + deltaTxt + "</td>" +
+        "<td>" + (r.accepted ? "accepted" : "rejected") + "</td></tr>";
+    });
+
+    html +=
+      "</tbody></table><div class='cap'><b>Read this by budget, not across it.</b> Each row's " +
+      "comparison is against a baseline the harness trained for the same number of seconds. Rows at " +
+      "different budgets are not comparable to each other.</div></div>";
+
+    results.innerHTML = html;
+  }
+
+  renderRecipeRun();
+})();
+</script>
+</body>
+</html>
