@@ -10,7 +10,6 @@ import inspect
 import json
 import os
 import re
-import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -22,22 +21,25 @@ from kernelevo.llm import LLMPool
 from kernelevo.obs import Mirror, weave_op, current_trace_url
 
 
+RECIPE_IDLE_TIMEOUT_S = 90   # kill an eval silent this long; worker heartbeats every ~8s
+
+
 def _execute_worker(job: dict, path_hint: str, timeout: int):
+    from kernelevo.procstream import run_result_worker
     job_path = path_hint + ".rjob.json"
     with open(job_path, "w") as f:
         json.dump(job, f)
-    try:
-        proc = subprocess.run(
-            [sys.executable, "-m", "kernelevo.recipe_worker", job_path],
-            cwd=REPO_ROOT, timeout=timeout, capture_output=True, text=True)
-    except subprocess.TimeoutExpired:
-        return dict(ok=False, gate="hang",
-                    note=f"[infra] evaluation exceeded {timeout}s; killed")
-    for line in reversed((proc.stdout or "").splitlines()):
-        if line.startswith("KEVO_RESULT "):
-            return json.loads(line[len("KEVO_RESULT "):])
+    r = run_result_worker(
+        [sys.executable, "-m", "kernelevo.recipe_worker", job_path],
+        cwd=REPO_ROOT, total_timeout=timeout, idle_timeout=RECIPE_IDLE_TIMEOUT_S)
+    if r.result is not None:
+        return r.result
+    if r.timed_out:
+        why = (f"went silent for >{RECIPE_IDLE_TIMEOUT_S}s"
+               if r.status == "idle_timeout" else f"exceeded {timeout}s")
+        return dict(ok=False, gate="hang", note=f"[infra] evaluation {why}; killed")
     return dict(ok=False, gate="crash",
-                note="[infra] worker crashed:\n" + (proc.stderr or "")[-1500:])
+                note="[infra] worker crashed:\n" + (r.stderr or "")[-1500:])
 
 
 @weave_op

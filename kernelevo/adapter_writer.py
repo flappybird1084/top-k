@@ -26,7 +26,8 @@ from kernelevo.obs import weave_op
 SURVEY_MAX_FILES = 25
 SURVEY_MAX_FILE_CHARS = 6000
 SURVEY_MAX_TOTAL_CHARS = 60000
-INGEST_TIMEOUT_S = 1800  # first ingest may legitimately download a capped data subset
+INGEST_TIMEOUT_S = 1800       # hard ceiling: first ingest may download a data subset
+INGEST_IDLE_TIMEOUT_S = 600   # kill if silent this long (worker heartbeats keep it alive)
 
 _SCORE_WORDS = ("train", "model", "main", "data", "dataset", "loss", "config", "net")
 
@@ -86,20 +87,29 @@ def survey_repo(repo_dir: str) -> str:
     return "".join(chunks)
 
 
-def _run_ingest(adapter_path: str, device: str, seed: int) -> tuple[dict | None, str]:
+def _run_ingest(adapter_path: str, device: str, seed: int,
+                log=None) -> tuple[dict | None, str]:
+    from kernelevo.procstream import HEARTBEAT_PREFIX, run_result_worker
     job_path = adapter_path + ".ingest.json"
     with open(job_path, "w") as f:
         json.dump(dict(adapter=adapter_path, device=device, seed=seed), f)
-    try:
-        proc = subprocess.run([sys.executable, "-m", "kernelevo.ingest_worker", job_path],
-                              cwd=REPO_ROOT, timeout=INGEST_TIMEOUT_S,
-                              capture_output=True, text=True)
-    except subprocess.TimeoutExpired:
-        return None, f"ingest exceeded {INGEST_TIMEOUT_S}s (hung dataloader or download?); killed"
-    for line in reversed((proc.stdout or "").splitlines()):
-        if line.startswith("KEVO_RESULT "):
-            return json.loads(line[len("KEVO_RESULT "):]), ""
-    return None, ((proc.stderr or proc.stdout or "no output").strip())[-4000:]
+
+    def on_line(line):
+        if log and line.startswith(HEARTBEAT_PREFIX):
+            log("[adapter]   " + line[len(HEARTBEAT_PREFIX):].strip())
+
+    r = run_result_worker(
+        [sys.executable, "-m", "kernelevo.ingest_worker", job_path],
+        cwd=REPO_ROOT, total_timeout=INGEST_TIMEOUT_S,
+        idle_timeout=INGEST_IDLE_TIMEOUT_S, on_line=on_line)
+    if r.result is not None:
+        return r.result, ""
+    if r.timed_out:
+        return None, (f"ingest went silent for >{INGEST_IDLE_TIMEOUT_S}s"
+                      if r.status == "idle_timeout"
+                      else f"ingest exceeded {INGEST_TIMEOUT_S}s") + \
+            " (hung dataloader or download?); killed"
+    return None, ((r.stderr or r.stdout or "no output").strip())[-4000:]
 
 
 def _classify(err: str) -> str:
@@ -160,7 +170,7 @@ def prepare(repo: str, comments: str, max_debug_turns: int, out_dir: str,
         src = re.sub(r"^from __future__ import .*$\n?", "", src, flags=re.MULTILINE)
         with open(adapter_path, "w") as f:
             f.write("".join(f + "\n" for f in futures) + header + src)
-        info, err = _run_ingest(adapter_path, device, seed)
+        info, err = _run_ingest(adapter_path, device, seed, log=log)
         if info is not None:
             trail.append(dict(attempt=attempt + 1, ok=True, kind=None, note=None,
                               elapsed_s=round(time.time() - t0, 1)))

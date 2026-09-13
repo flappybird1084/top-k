@@ -14,12 +14,14 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import time
 
 import torch
 
 from kernelevo.ingest import load_adapter
+from kernelevo.procstream import HEARTBEAT_PREFIX as HEARTBEAT
 from kernelevo.recipes import arch_fingerprint
 
 
@@ -60,7 +62,6 @@ def _holdout_loss(adapter, model, n_batches):
 def _wandb_run(job):
     """Per-candidate W&B run (own charts), named <run-id>-g<gen>-s<idx>.
     Entirely optional/fire-and-forget."""
-    import os
     wcfg = job.get("wandb")
     if not wcfg or not os.environ.get("WANDB_API_KEY") or job.get("check_only"):
         return None
@@ -136,10 +137,16 @@ def main():
                         f"{job['expected_arch_fp']})")
         return out()
 
+    # heartbeat: the orchestrator's idle-timeout kills a worker that goes
+    # silent; a quiet 60-300s train loop would trip it, so pulse liveness.
+    print(f"{HEARTBEAT} built n_params={res['n_params']} — training", flush=True)
+
     clip = hints.get("grad_clip")
     base_lrs = [g["lr"] for g in opt.param_groups]
     batches = _cycled(adapter)
-    deadline = time.time() + job["train_seconds"]
+    t_start = time.time()
+    deadline = t_start + job["train_seconds"]
+    last_hb = t_start
     step = 0
     try:
         first_loss = None
@@ -171,6 +178,11 @@ def main():
                 except Exception:  # noqa: BLE001
                     pass
             step += 1
+            now = time.time()
+            if now - last_hb > 8:
+                print(f"{HEARTBEAT} step={step} elapsed={now - t_start:.0f}s "
+                      f"loss={float(loss):.4f}", flush=True)
+                last_hb = now
             if job.get("check_only") and step >= 2:
                 break
         if device.startswith("cuda"):

@@ -63,16 +63,22 @@ class GateRunner:
         raise KeyError(op)
 
     def _run_worker(self, module: str, job: dict, timeout: int, name: str):
+        from collections import namedtuple
+        from kernelevo.procstream import run_result_worker
         job_path = job["candidate_path"] + f".{name}.json"
         with open(job_path, "w") as f:
             json.dump(job, f)
-        try:
-            return subprocess.run(
-                [sys.executable, "-m", module, job_path],
-                cwd=REPO_ROOT, env=self._env, timeout=timeout,
-                capture_output=True, text=True)
-        except subprocess.TimeoutExpired:
+        # No idle_timeout: compile/verify workers don't heartbeat, so only the
+        # hard ceiling applies. The win here is the result-line reap — a worker
+        # that printed KEVO_RESULT but wedges at exit is killed immediately
+        # rather than blocking the GPU lock until `timeout`.
+        r = run_result_worker(
+            [sys.executable, "-m", module, job_path],
+            cwd=REPO_ROOT, env=self._env, total_timeout=timeout)
+        if r.timed_out:
             return None
+        Completed = namedtuple("Completed", "returncode stdout stderr")
+        return Completed(r.returncode, r.stdout, r.stderr)
 
     # ---------------------------------------------------------------- gate 1
     def compile(self, cand_path: str, op: str) -> tuple[bool, str]:
