@@ -94,6 +94,12 @@ def main():
             except Exception:  # noqa: BLE001
                 pass
         print("KEVO_RESULT " + json.dumps(res))
+        # Hard-exit: adapter/recipe code may leave non-daemon threads behind
+        # (e.g. a `datasets` streaming pool) and interpreter shutdown would
+        # join them forever. The result is printed; flush and leave.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(0)
 
     adapter, _ = load_adapter(job["base_adapter"])
     torch.manual_seed(seed)
