@@ -134,3 +134,18 @@ Remaining v3 work is explicit:
 Sol token rates used by this pilot are $4/M input, $0.40/M cached input, and $20/M
 output, retrieved 2026-09-12. Long-context multipliers are represented in the
 accounting module. [Official pricing](https://developers.openai.com/api/docs/models/gpt-5.6-sol)
+
+Whole-model agent search is available with `--search-scope whole_model`. Candidates expose
+`install(model, optimizer)` and may replace instance-local computation throughout the model;
+the harness retains the adapter, loss, data, training order, and full-step compilation.
+This scope exposes the complete GPU profile, including external GEMMs, without the operator
+allowlist. Each candidate must launch its own Triton kernel during backward. It is checked
+against original eager on three real batches plus an unseen batch size, including two
+sequential optimizer updates and separate parameter-update comparisons. Since the candidate
+unit is the whole model, it proceeds from correctness directly to paired whole-step timing;
+there is no isolated-op timing surrogate. Whole-model installations are complete programs,
+so accepted parents can be extended or combined in later generations.
+
+`--no-spend-cap` disables the dollar stop while preserving token/cost accounting. RUN still
+has a hard maximum of five generations. Candidate optimization code is produced by the
+configured platform model, not by the platform implementation.

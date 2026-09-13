@@ -38,6 +38,9 @@ def ingest(request):
 
 
 def prepare(request):
+    if request['config'].get('search_scope')=='whole_model':
+        from kernel_evolution.whole_worker import prepare as whole_prepare
+        return whole_prepare(request)
     cfg=request['config']
     root=Path(request['run_dir'])
     harness=Harness(request['adapter'],cfg,root)
@@ -121,6 +124,9 @@ def prepare(request):
 
 
 def evaluate(request):
+    if request['config'].get('search_scope')=='whole_model':
+        from kernel_evolution.whole_worker import evaluate as whole_evaluate
+        return whole_evaluate(request)
     cfg=request['config']
     root=Path(request['run_dir'])
     op=request['op']

@@ -103,7 +103,8 @@ def validated_jobs(raw,archive,generation,limit):
             default_parent=archive.rows('SELECT incumbent_id FROM lineages WHERE id=?',(fusion_of,))[0]['incumbent_id']
         parents=job.get('parents') or [default_parent]
         if fusion and generation<2:raise ValueError('Fusion requires generation >=2')
-        if fusion and (not fusion_of or (active[lineage].get('call_sites') or 0)<2):
+        whole=active[lineage]['op_name']=='whole_model'
+        if fusion and not whole and (not fusion_of or (active[lineage].get('call_sites') or 0)<2):
             raise ValueError('Fusion requires a discovered executable contract with at least two call sites')
         for parent in parents:
             rows=archive.rows('SELECT * FROM candidates WHERE id=?',(parent,))
@@ -123,6 +124,9 @@ def validated_jobs(raw,archive,generation,limit):
 
 def source_prompt(job,archive,targets):
     target=next(t for t in targets if t['id']==job['lineage'])
+    if target.get('contract')=='whole_model':
+        from kernel_evolution.whole_prompt import source_prompt as whole_prompt
+        return whole_prompt(job,archive,target)
     parents=[]
     for cid in job['parents']:
         p=archive.rows('SELECT * FROM candidates WHERE id=?',(cid,))[0]
@@ -182,6 +186,14 @@ def plan_jobs(archive,cfg,root,prepared,generation,deadline):
     planner.parent_trace_id=getattr(archive,'generation_trace_id',None)
     messages=[{'role':'user','content':json.dumps(dict(
         task=f'Propose {cfg["candidates_per_gen"]} distinct specific Triton optimization strategies. '
+        'For the whole_model contract, inspect the entire supplied model and complete GPU profile including external '
+        'kernels, choose the valuable computation yourself, and propose complete install(model,optimizer) candidates. '
+        'You may optimize any forward, backward, or optimizer region without changing mathematical training semantics, '
+        'Every whole_model proposal MUST include backward-pass optimization; candidates must actually launch '
+        'their own Triton kernel during autograd backward, in addition to any forward or optimizer improvements. '
+        'dtype, precision flags, architecture, parameters, data, or hyperparameters. There is no operator allowlist '
+        'for whole_model. Whole_model FUSE jobs from generation 2 may combine accepted whole-model parents; each '
+        'child must include all desired changes in a self-contained installation. '
         'Use existing lineage IDs and parent IDs. From generation 2, targets with fusion_of support FUSE jobs '
         'across the listed call sites; one accepted parent may seed multiple call sites. '
         'Do not fuse unrelated operations without a listed executable contract. '
@@ -228,6 +240,12 @@ def save_result(candidate,result,repairs,archive):
 
 
 def compile_offline(candidate,cfg,root,prepared,deadline,compile_lock):
+    if cfg.get('search_scope')=='whole_model':
+        # Installation needs real module instances; modal JIT compilation is gate 1 on GPU.
+        try:ast.parse(Path(candidate['code_path']).read_text())
+        except SyntaxError:
+            return dict(status='compile_error',failure_note=traceback.format_exc())
+        return dict(status='deferred',reason='Whole-model installation requires real model tensors; GPU gate 1 compiles actual launches')
     target=next(t for t in prepared['targets'] if t['id']==candidate['lineage_id'])
     gpu_target=prepared['config'].get('gpu_target')
     if not gpu_target:return dict(status='deferred',reason='No recorded GPU compilation target')
@@ -432,7 +450,9 @@ def main():
     p.add_argument('--prompt',help='Optimization task for the adapter agent and planner')
     p.add_argument('--model',help='Model for adapter, planner, kernel agents, and curator')
     p.add_argument('--spend-cap-usd',type=float,help='Per-run remaining API-equivalent budget, at most $100')
+    p.add_argument('--no-spend-cap',action='store_true',help='Disable dollar stop; token usage is still recorded')
     p.add_argument('--min-target-pct',type=float,help='Minimum associated compiled-region share for target discovery')
+    p.add_argument('--search-scope',choices=['operators','whole_model'],default='operators')
     p.add_argument('--profile',choices=['DEV','RUN'],default='DEV')
     p.add_argument('--llm',choices=['stub','codex_oauth'])
     p.add_argument('--lineage')
@@ -442,6 +462,11 @@ def main():
     args=p.parse_args()
     os.environ['KERNEL_EVOLUTION_PROFILE']=args.profile
     cfg=active_config()
+    cfg['search_scope']=args.search_scope
+    if args.search_scope=='whole_model':
+        cfg['benchmark_protocol']='whole_model_install_v1'
+        cfg['functional_discovery']=False
+        cfg['require_backward_kernel']=True
     if args.llm:cfg['llm']=args.llm
     if args.candidates:cfg['candidates_per_gen']=args.candidates
     if args.model:
@@ -449,6 +474,9 @@ def main():
     if args.spend_cap_usd is not None:
         if not 0<args.spend_cap_usd<=100:p.error('--spend-cap-usd must be positive and at most 100')
         cfg['spend_cap_usd']=args.spend_cap_usd
+    if args.no_spend_cap:
+        if args.spend_cap_usd is not None:p.error('Choose --no-spend-cap or --spend-cap-usd')
+        cfg['spend_cap_usd']=None
     if args.min_target_pct is not None:
         if not 0<args.min_target_pct<=100:p.error('--min-target-pct must be positive and at most 100')
         cfg['min_pct_step_time']=args.min_target_pct

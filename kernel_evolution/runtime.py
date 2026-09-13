@@ -71,9 +71,10 @@ class Harness:
         if self.loss.ndim != 0 or not self.loss.requires_grad or not torch.isfinite(self.loss):
             raise ValueError('Adapter loss must be scalar, finite, and require grad')
         self.loss=self.loss.detach()
-        self.model = instrument(self.model)
+        if config.get('search_scope') != 'whole_model':
+            self.model = instrument(self.model)
         self.discovery={'backend':'modules','regions':[],'fallback_reason':None}
-        if config.get('functional_discovery',False):
+        if config.get('functional_discovery',False) and config.get('search_scope') != 'whole_model':
             from kernel_evolution.graph import discover_functional,validate_rewrite
             original_forward=self.model.forward
             self.discovery,rollback=discover_functional(self.model)

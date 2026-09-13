@@ -22,7 +22,7 @@ def cost(model, input_tokens, cached_input_tokens, output_tokens):
 
 class Budget:
     def __init__(self, archive, limit):
-        self.archive, self.limit = archive, limit
+        self.archive, self.limit = archive, float('inf') if limit is None else limit
 
     @property
     def spent(self):
