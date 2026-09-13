@@ -46,6 +46,10 @@ ARCH_RULES = """\
 This is an ARCHITECTURE phase: you may redesign the model architecture and the
 optimizer freely (within the parameter cap and call-compatibility), and set
 any hyperparameters. Implement exactly the strategy you were given.
+STRONGLY prefer importing the repo's model classes and modifying only what the
+strategy names (subclass, patch modules, adjust config) over reimplementing
+the model from scratch — a rebuild silently loses unstated details (positional
+encodings, norm placement, init, auxiliary pathways) and reliably scores worse.
 """
 
 HP_RULES = """\
