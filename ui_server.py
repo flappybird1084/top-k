@@ -129,6 +129,7 @@ def snapshot(jid):
     if not job:raise FileNotFoundError()
     status={'done':'complete','interrupted':'failed'}.get(job['status'],job['status'])
     result=dict(id=jid,repo=job.get('repo'),data=job.get('data'),status=status,mode=job.get('mode','kernel'),message=job.get('stage',''),candidates=[],traces=[],activity=[],integrations=dict(job.get('integrations',{})))
+    result['integrations'].update(read_json(root/'observability.json',{}))
     result['related_runs']=job.get('related_runs',{})
     result['dataset_options']=job.get('dataset_options',[])
     result['discovery_summary']=job.get('discovery_summary','')
@@ -155,7 +156,12 @@ def snapshot(jid):
     if urls:result['integrations']['wandb_url']=urls[-1]
     weave=re.findall(r'https://wandb.ai/[\w.-]+/[\w.-]+/weave',log)
     if weave:result['integrations']['weave_url']=weave[-1]
-    result['integrations'].update(marimo_url='/notebook/?run='+jid,marimo_embed_url='/notebook/?run='+jid)
+    if job.get('judge_expires_at'):
+        # Notebook authentication stays with the notebook owner, never in a public iframe.
+        result['integrations']['marimo_url']=job.get('molab',{}).get('notebook_url','')
+        result['integrations'].pop('marimo_embed_url',None)
+    else:
+        result['integrations'].update(marimo_url='/notebook/?run='+jid,marimo_embed_url='/notebook/?run='+jid)
     targets=read_json(root/'run/targets.json',{})
     if result.get('baseline_ms') and targets.get('step_time_ms'):
         result['profiling']=dict(compiled_step_ms=result['baseline_ms'],eager_step_ms=targets['step_time_ms'],eligible_operations=len(targets.get('lineages',[])),operations_inspected=len(targets.get('lineages',[])))

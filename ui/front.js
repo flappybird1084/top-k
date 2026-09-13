@@ -78,7 +78,7 @@ async function poll(){
     if(['validating','queued','preparing'].includes(state.status)){
       if(dataDialog.open){dataForm.hidden=true;dataCheck.hidden=false;dataCheckText.textContent=state.message||'Preparing the run…'}
     }
-    if(['running','complete'].includes(state.status)){
+    if(['running','complete'].includes(state.status)||(state.related_runs&&['failed','cancelled'].includes(state.status))){
       location.href='assets/search.html?run='+runId;return;
     }
     if(['failed','cancelled'].includes(state.status)){
