@@ -1,0 +1,13 @@
+[project]
+name = "kernel-evolution"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["torch>=2.11", "triton>=3.6; sys_platform == 'linux'", "torchvision", "datasets", "numpy"]
+
+[project.optional-dependencies]
+observe = ["wandb", "weave"]
+llm = ["openai-codex>=0.154", "openai", "anthropic"]
+test = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

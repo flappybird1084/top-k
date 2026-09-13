@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+archive.sqlite*
+runs/
+data/
+wandb/
+.codex/auth.json
