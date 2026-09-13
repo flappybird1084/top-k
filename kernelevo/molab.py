@@ -140,7 +140,30 @@ def _project_tarball(root: str) -> bytes:
 
 
 ARTIFACT_EXTS = (".py", ".json", ".sqlite", ".txt")
-ARTIFACT_SKIP_DIRS = ("repo", "inductor-cache", "wandb", "__pycache__", "compile_cache")
+ARTIFACT_SKIP_DIRS = ("repo", "inductor-cache", "wandb", "__pycache__",
+                      "compile_cache", "search_relay")
+
+
+def _service_relay(client: MolabClient, work: str, pending: list, write_line):
+    """Serve remote search requests locally: the notebook can't reach the
+    (tailnet-private) SearXNG, but this dispatcher can."""
+    from kernelevo import websearch
+    relay = work + "/run/search_relay"
+    for req in pending[:4]:
+        rid, query, n = req.get("id"), req.get("query", ""), req.get("n", 5)
+        try:
+            results = websearch.direct_search(query, n)
+        except Exception as e:  # noqa: BLE001 — report the failure to the requester
+            results = [{"error": f"relay search failed: {e}"}]
+        write_line(f"[research-relay] {query[:70]} -> {len(results)} result(s)")
+        payload = json.dumps(results)
+        client.run(
+            "import os\n"
+            f"os.makedirs({relay!r}, exist_ok=True)\n"
+            f"_p = {relay + '/' + str(rid) + '.res.json'!r}\n"
+            f"open(_p + '.tmp', 'w').write({payload!r})\n"
+            "os.replace(_p + '.tmp', _p)\n"
+            "print('RELAYED')\n")
 
 
 def _fetch_file(client: MolabClient, remote: str, local: str, size: int):
@@ -288,6 +311,8 @@ class MolabTarget:
         if job.get("llm"):
             args += ["--llm", job["llm"]]
 
+        env_updates = dict(env_updates,
+                           KEVO_RELAY_DIR=work + "/run/search_relay")
         ok, out, err = client.run(
             "import subprocess, os, sys, json, shlex\n"
             f"_w = {work!r}\n"
@@ -334,7 +359,20 @@ class MolabTarget:
                 "_xp = os.path.join(_w, 'job.exit')\n"
                 "if os.path.exists(_xp) and len(_data) == 0:\n"
                 "    _ex = int(open(_xp).read().strip() or 1)\n"
-                "print(json.dumps({'off': _off + len(_data), 'exit': _ex}))\n"
+                "_relay = []\n"
+                "_rd = os.path.join(_w, 'run', 'search_relay')\n"
+                "if os.path.isdir(_rd):\n"
+                "    for _f2 in os.listdir(_rd):\n"
+                "        if _f2.endswith('.req.json'):\n"
+                "            _rid = _f2[:-len('.req.json')]\n"
+                "            if not os.path.exists(os.path.join(_rd, _rid + '.res.json')):\n"
+                "                try:\n"
+                "                    _r = json.load(open(os.path.join(_rd, _f2)))\n"
+                "                    _relay.append({'id': _rid, 'query': _r.get('query', ''),"
+                " 'n': _r.get('n', 5)})\n"
+                "                except ValueError:\n"
+                "                    pass\n"
+                "print(json.dumps({'off': _off + len(_data), 'exit': _ex, 'relay': _relay}))\n"
                 "print(_data.decode('utf-8', 'replace'), end='')\n")
             try:
                 ok, out, err = client.run(poll)
@@ -355,6 +393,11 @@ class MolabTarget:
             offset = status["off"]
             for line in chunk.splitlines():
                 write_line(line)
+            if status.get("relay"):
+                try:
+                    _service_relay(client, work, status["relay"], write_line)
+                except Exception as e:  # noqa: BLE001 — relay is best-effort
+                    write_line(f"[research-relay] servicing failed: {e}")
             if status["exit"] is not None:
                 write_line(f"[molab] remote run finished with exit {status['exit']}")
                 if artifacts_dir:
