@@ -20,11 +20,14 @@ def _parse_jobs(text: str) -> list[dict]:
 
 @weave_op
 def plan(llm, targets: dict, summary: dict, lessons: list[str],
-         n_jobs: int, generation: int, cfg: dict) -> list[dict]:
+         n_jobs: int, generation: int, web_search: bool = False) -> list[dict]:
+    # NOTE: only pass what this needs — a full cfg dict here gets logged as
+    # weave inputs and its unused provider defaults (e.g. anthropic_model)
+    # read as if those models were in play.
     active = [l["op"] for l in targets["lineages"] if not l.get("retired")]
     fuse_allowed = generation >= 2
     msgs = prompts.planner_prompt(targets, summary, lessons, n_jobs, generation, fuse_allowed)
-    tools = ("web_search" if cfg.get("planner_web_search") and llm.supports_search else None)
+    tools = ("web_search" if web_search and llm.supports_search else None)
     resp = llm.complete(msgs, json_mode=True, tools=tools,
                         meta={"active_lineages": active, "n_jobs": n_jobs,
                               "generation": generation})

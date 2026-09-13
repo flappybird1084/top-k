@@ -184,7 +184,8 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, only_lineage: str | None = N
         print(f"\n=== generation {gen} — active: {', '.join(active)}, "
               f"spend ${pool.total_usd():.2f} ===")
         jobs = planner.plan(pool.planner, active_targets, summary, lessons,
-                            cfg["candidates_per_gen"], gen, cfg)
+                            cfg["candidates_per_gen"], gen,
+                            web_search=bool(cfg.get("planner_web_search")))
         print(f"[planner] {len(jobs)} job(s): "
               + "; ".join(f"{j['lineage']}: {j['strategy'][:60]}" for j in jobs))
 
