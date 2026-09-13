@@ -16,8 +16,8 @@ function render(pair){latest=pair;const primary=pair.kernel||pair.architecture;f
  const width=Math.max(q('.canvas').clientWidth,404+depth*200*2),height=Math.max(q('.canvas').clientHeight,440,...Object.values(groups).flatMap(g=>g.map(([,rows])=>rows.length*100+100))),middle=width/2,y=height/2;
  q('#tree').style.width=width+'px';q('#tree').style.height=height+'px';const html=[],paths=[],lookup=new Map();
  html.push(`<span class="divider" style="left:${middle}px;top:${y-15}px"></span>`);
- for(const side of sides){const left=side==='architecture',sign=left?-1:1,s=pair[side],rootX=left?middle-190:middle+10,p=provider(s?.agent_model),title=left?'Architecture Orchestrator':'Kernel Orchestrator';
- html.push(`<section class="block orch ${s?'':'idle'}" style="left:${rootX}px;top:${y-90}px">${p?`<img class="sprite" src="agent-${p}.png" alt="${esc(p)} sprite">`:'<span class="neutral">✳</span>'}<span class="model">${p?{gpt:'GPT',claude:'Claude',glm:'GLM'}[p]:'—'}</span><h2>${title}</h2><p title="${esc(brief(s))}">${esc(brief(s))}</p></section>`);
+ for(const side of sides){const left=side==='architecture',sign=left?-1:1,s=pair[side],rootX=left?middle-190:middle+10,p=provider(s?.agent_model),title=left?'Architecture':'Kernel';
+ html.push(`<section class="block orch ${s?'':'idle'}" style="left:${rootX}px;top:${y-90}px">${p?`<img class="sprite" src="agent-${p}.png" alt="${esc(p)} sprite">`:'<span class="neutral">✳</span>'}<span class="model">${p?{gpt:'GPT',claude:'Claude',glm:'GLM'}[p]:'—'}</span><h2>${title}<br>Orchestrator</h2><p title="${esc(brief(s))}">${esc(brief(s))}</p></section>`);
  const positions=new Map();
  groups[side].forEach(([generation,rows],index)=>{const x=left?middle-390-index*200:middle+224+index*200,top=y-(rows.length*100-14)/2;
  html.push(`<span class="generation-caption" style="left:${x}px;top:${top-30}px">${generation===0?'Baseline':generation==='pending'?'Planning':'Gen '+esc(generation)}</span>`);
