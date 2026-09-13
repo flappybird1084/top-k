@@ -391,9 +391,12 @@ def _job_evolution(jid):
     try:
         db = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         db.row_factory = sqlite3.Row
+        # the archive persists across relaunches of a job; show the latest run
         rows = [dict(r) for r in db.execute(
             "SELECT c.*, l.op_name FROM candidates c "
-            "JOIN lineages l ON c.lineage_id = l.id ORDER BY c.generation, c.id")]
+            "JOIN lineages l ON c.lineage_id = l.id "
+            "WHERE l.model_id = (SELECT MAX(id) FROM models) "
+            "ORDER BY c.generation, c.id")]
         db.close()
     except sqlite3.Error:
         return None
