@@ -1,0 +1,95 @@
+'use strict';
+const form = document.querySelector('#repo-form');
+const input = document.querySelector('#repository');
+const note = document.querySelector('#form-note');
+const paused = matchMedia('(prefers-reduced-motion: reduce)').matches;
+document.body.classList.toggle('still', paused);
+const sprites = [...document.querySelectorAll('.sprite')];
+document.querySelector('main').addEventListener('pointermove', event => {
+  if (paused || event.pointerType === 'touch') return;
+  const x = (event.clientX / innerWidth - .5) * 12;
+  const y = (event.clientY / innerHeight - .5) * 9;
+  sprites.forEach((sprite, i) => {
+    sprite.style.setProperty('--dx', `${x * (i + 1) / 2}px`);
+    sprite.style.setProperty('--dy', `${y * (i + 1) / 2}px`);
+  });
+});
+
+const flow=document.querySelector('#agent-flow'), events=document.querySelector('#agent-events');
+const progress=document.querySelector('#agent-progress'), submit=form.querySelector('button[type="submit"]');
+const dataDialog=document.querySelector('#data-dialog'), dataForm=document.querySelector('#data-form');
+const dataInput=document.querySelector('#data-link'), dataError=document.querySelector('#data-error');
+const dataCheck=document.querySelector('#data-check'), dataCheckText=document.querySelector('#data-check-text');
+const stop=document.querySelector('#stop-flow');
+let runId=null,timer=null,posting=false,lastState=null,requestKey=crypto.randomUUID();
+document.querySelector('#search-mode').addEventListener('change',()=>{requestKey=crypto.randomUUID()});
+input.addEventListener('input',()=>{if(!runId)requestKey=crypto.randomUUID()});
+async function api(path,options={}) {
+  const response=await fetch(path,{...options,headers:{'Content-Type':'application/json',...options.headers},signal:AbortSignal.timeout(15000)});
+  if(response.status===401){location.href='/login.html';throw Error('Sign in required')}
+  const result=await response.json();if(!response.ok)throw Error(result.error||'Request failed');return result;
+}
+function message(text){note.textContent=text;note.classList.toggle('error',!!text)}
+function renderActivity(state){
+  flow.hidden=false;events.replaceChildren();
+  const terminal=['failed','cancelled'].includes(state.status);
+  const activity=[...(state.activity||[])];
+  if(terminal&&activity.length>1&&activity.at(-1).message===state.message)activity.pop();
+  activity.forEach((event,index)=>{
+    const last=index===activity.length-1;
+    const status=last?(terminal?'failed':['exploring','validating','queued','preparing'].includes(state.status)?'working':'done'):'done';
+    const li=document.createElement('li');li.className=status;
+    const marker=document.createElement('span');marker.className='event-marker';marker.textContent=status==='failed'?'×':status==='working'?'·':'✓';
+    const content=document.createElement('div');const label=document.createElement('span');label.className='event-agent';label.textContent='Repository agent';
+    const text=document.createElement('p');text.textContent=event.message;content.append(label,text);li.append(marker,content);events.append(li);
+  });
+  const stage={exploring:1,awaiting_data:2,validating:3,queued:4,preparing:5,running:6,complete:6}[state.status]||0;
+  progress.setAttribute('aria-valuenow',String(stage));progress.querySelector('span').style.width=`${stage/6*100}%`;
+  events.scrollTop=events.scrollHeight;
+  stop.hidden=['complete','failed','cancelled'].includes(state.status);
+}
+async function poll(){
+  clearTimeout(timer);
+  try{
+    const state=await api('/api/runs/'+runId);lastState=state;input.value=state.repo||input.value;input.readOnly=!['failed','cancelled','complete'].includes(state.status);renderActivity(state);
+    if(state.connection_error)message(state.connection_error);else message('');
+    if(state.status==='awaiting_data'){
+      dataForm.hidden=false;dataCheck.hidden=true;dataForm.querySelector('button').disabled=false;
+      dataError.textContent=state.message&&!state.message.startsWith('Add')&&!state.message.startsWith('Confirm')?state.message:'';
+      if(!dataDialog.open)dataDialog.showModal();
+      submit.disabled=false;submit.setAttribute('aria-label','Add training data');return;
+    }
+    if(['validating','queued','preparing'].includes(state.status)){
+      if(dataDialog.open){dataForm.hidden=true;dataCheck.hidden=false;dataCheckText.textContent=state.message||'Preparing the run…'}
+    }
+    if(['running','complete'].includes(state.status)){
+      location.href='workspace.html?run='+runId;return;
+    }
+    if(['failed','cancelled'].includes(state.status)){
+      message(state.message||'The run could not start.');submit.disabled=false;submit.textContent='↻';if(dataDialog.open)dataDialog.close();return;
+    }
+  }catch(err){message(err.message+'. Retrying…')}
+  timer=setTimeout(poll,2500);
+}
+form.addEventListener('submit',async e=>{
+  e.preventDefault();if(posting)return;
+  if(lastState&&['failed','cancelled'].includes(lastState.status)){requestKey=crypto.randomUUID();runId=null;lastState=null}
+  if(runId&&lastState?.status==='awaiting_data'){dataDialog.showModal();return}
+  posting=true;submit.disabled=true;message('');
+  try{
+    const result=await api('/api/runs',{method:'POST',headers:{'Idempotency-Key':requestKey},body:JSON.stringify({repo:input.value.trim(),mode:document.querySelector('#search-mode').value})});
+    runId=result.id;history.replaceState(null,'','?intake='+runId);submit.textContent='···';poll();
+  }catch(err){message(err.message);submit.disabled=false}finally{posting=false}
+});
+dataForm.addEventListener('submit',async e=>{
+  e.preventDefault();const button=dataForm.querySelector('button');button.disabled=true;dataError.textContent='';
+  try{
+    await api('/api/runs/'+runId+'/data',{method:'POST',body:JSON.stringify({url:dataInput.value.trim()})});
+    dataForm.hidden=true;dataCheck.hidden=false;dataCheckText.textContent='Checking data access and the training sample…';poll();
+  }catch(err){dataError.textContent=err.message;button.disabled=false}
+});
+document.querySelector('#close-data').addEventListener('click',()=>dataDialog.close());
+stop.addEventListener('click',async()=>{try{await api('/api/runs/'+runId+'/cancel',{method:'POST',body:'{}'});clearTimeout(timer);poll()}catch(err){message(err.message)}});
+const resume=new URLSearchParams(location.search).get('intake');
+if(resume&&/^[a-f0-9]{32}$/.test(resume)){runId=resume;submit.disabled=true;poll()}
+window.addEventListener('pagehide',()=>clearTimeout(timer));

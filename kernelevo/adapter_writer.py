@@ -38,7 +38,11 @@ def fetch_repo(repo: str, dest_dir: str, log=print) -> str:
     if os.path.isdir(os.path.join(target, ".git")):
         return target
     log(f"[adapter] cloning {repo}")
-    subprocess.run(["git", "clone", "--depth", "1", repo, target],
+    from urllib.parse import urlsplit, unquote
+    u = urlsplit(repo)
+    base, marker, ref = repo.partition('/tree/') if u.hostname == 'github.com' else (repo, '', '')
+    branch_args = ['--branch', unquote(ref), '--single-branch'] if marker else []
+    subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "clone", "--depth", "1", *branch_args, '--', base, target],
                    check=True, capture_output=True, text=True, timeout=600)
     return target
 

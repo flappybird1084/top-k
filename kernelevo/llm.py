@@ -52,6 +52,19 @@ def _split_system(messages):
     return None, messages
 
 
+class CodexOAuthLLM(BaseLLM):
+    provider = "codex_oauth"
+
+    def complete(self, messages, *, json_mode=False, tools=None, meta=None):
+        from kernelevo.codex_oauth import complete
+        answer=complete(dict(messages=messages,json_mode=json_mode,model=self.model))
+        return self._track(Response(**answer))
+
+    def usage_usd(self):
+        # Subscription usage is counted in tokens; it is not API dollar billing.
+        return 0.0
+
+
 class AnthropicLLM(BaseLLM):
     provider = "anthropic"
     supports_search = True
@@ -207,6 +220,8 @@ class LLMPool:
         provider, _, model = spec.partition(":")
         if provider == "stub":
             llm = StubLLM(role)
+        elif provider == "codex_oauth":
+            llm = CodexOAuthLLM(model, self.cfg["max_llm_tokens"])
         elif provider == "anthropic":
             default = (self.cfg["anthropic_subagent_model"] if role == "subagent"
                        else self.cfg["anthropic_model"])

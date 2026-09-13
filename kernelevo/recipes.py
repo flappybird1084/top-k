@@ -178,3 +178,8 @@ def author_recipe(llm, phase, job, base_source, parent_source, loss_source,
             msgs = msgs + [{"role": "assistant", "content": resp.text},
                            repair_prompt(note[:3000])]
     return result
+
+
+def is_better_final(loss, accepted, winner):
+    """Finals compare accepted candidates at the same finals budget."""
+    return bool(accepted) and (winner is None or loss < winner['final_val_loss'])
