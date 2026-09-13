@@ -42,15 +42,17 @@ def _cycled(adapter):
             it = iter(adapter.get_dataloader("train"))
 
 
-@torch.no_grad()
 def _holdout_loss(adapter, model, n_batches):
+    # grad stays ENABLED (never backward, detach immediately): the adapter
+    # contract requires loss to require grad, and generated adapters
+    # legitimately assert that inside loss_fn — no_grad here tripped them.
     was_training = model.training
     model.eval()
     losses = []
     for i, batch in enumerate(adapter.get_dataloader("val")):
         if i >= n_batches:
             break
-        losses.append(float(adapter.loss_fn(model, batch)))
+        losses.append(float(adapter.loss_fn(model, batch).detach()))
     model.train(was_training)
     return sum(losses) / len(losses)
 
