@@ -243,9 +243,9 @@ _register(OpDef(
 ))
 
 
-# 4. GELU-MLP epilogue: first MLP linear + tanh-GELU fused (both models).
-def _gm_eager(x: torch.Tensor, w: torch.Tensor, b: torch.Tensor):
-    return F.gelu(F.linear(x, w, b), approximate="tanh")
+# 4. GELU-MLP epilogue: first MLP linear + GELU fused (both approximations).
+def _gm_eager(x: torch.Tensor, w: torch.Tensor, b, approximate: str = "tanh"):
+    return F.gelu(F.linear(x, w, b), approximate=approximate)
 
 
 def _gm_perturb(argspec):
@@ -257,9 +257,11 @@ def _gm_perturb(argspec):
 _register(OpDef(
     name="gelu_mlp",
     eager=_gm_eager,
-    signature="kernel(x: Tensor[..., K], w: Tensor[F, K], b: Tensor[F]) -> Tensor[..., F]  "
-              "# gelu(x @ w.T + b, approximate='tanh') — nn.Linear weight layout. "
-              "Must support autograd wrt x, w, b.",
+    signature="kernel(x: Tensor[..., K], w: Tensor[F, K], b: Tensor[F] | None, "
+              "approximate: str) -> Tensor[..., F]  "
+              "# gelu(x @ w.T + b, approximate=approximate) — nn.Linear weight layout; "
+              "approximate is 'tanh' or 'none' (exact erf GELU), bias may be None. "
+              "Must support autograd wrt x, w (and b when present).",
     differentiable=True,
     perturb=_gm_perturb,
 ))
@@ -324,10 +326,63 @@ _register(OpDef(
     eager=_sw_eager,
     signature="kernel(x: Tensor[..., K], w1: Tensor[F, K], w2: Tensor[F, K]) -> Tensor[..., F]  "
               "# silu(x @ w1.T) * (x @ w2.T) — nn.Linear weight layout, no biases. "
-              "Two GEMMs sharing x plus the gate, a classic single-kernel fusion. "
               "Must support autograd wrt x, w1, w2.",
     differentiable=True,
     perturb=_gm_perturb,
+))
+
+
+# 8. GeGLU epilogue: dual GEMM + gelu-gate (Gemma/T5-style gated MLPs).
+def _gg_eager(x: torch.Tensor, w1: torch.Tensor, w2: torch.Tensor,
+              approximate: str = "none"):
+    return F.gelu(F.linear(x, w1), approximate=approximate) * F.linear(x, w2)
+
+
+_register(OpDef(
+    name="geglu_mlp",
+    eager=_gg_eager,
+    signature="kernel(x: Tensor[..., K], w1: Tensor[F, K], w2: Tensor[F, K], "
+              "approximate: str) -> Tensor[..., F]  "
+              "# gelu(x @ w1.T, approximate) * (x @ w2.T) — nn.Linear layout, no "
+              "biases. Must support autograd wrt x, w1, w2.",
+    differentiable=True,
+    perturb=_gm_perturb,
+))
+
+
+# 9. Cross-entropy over the vocab (every LM's last op).
+_F_CROSS_ENTROPY = F.cross_entropy  # captured so the oracle survives patching
+
+
+def _ce_eager(logits: torch.Tensor, targets: torch.Tensor, ignore_index: int = -100):
+    return _F_CROSS_ENTROPY(logits, targets, ignore_index=ignore_index)
+
+
+def _ce_make_inputs(op, argspec, device, seed):
+    g = _seeded(seed)
+    lg_e, tg_e, ii = argspec[0], argspec[1], argspec[2]
+    logits = _make_tensor(lg_e, device, g, lg_e.get("grad", True))
+    V = lg_e["shape"][-1]
+    targets = torch.randint(0, V, tg_e["shape"], generator=g).to(device)
+    return [logits, targets, ii["value"] if ii["kind"] == "scalar" else -100]
+
+
+def _ce_perturb(argspec):
+    spec = json.loads(json.dumps(argspec))
+    spec[0]["shape"][0] += 8
+    spec[1]["shape"][0] += 8
+    return spec
+
+
+_register(OpDef(
+    name="cross_entropy",
+    eager=_ce_eager,
+    signature="kernel(logits: Tensor[N, V], targets: LongTensor[N], ignore_index: int) "
+              "-> Tensor[] (scalar)  # mean cross-entropy, entries with "
+              "targets==ignore_index excluded. Must support autograd wrt logits.",
+    differentiable=True,
+    make_inputs=_ce_make_inputs,
+    perturb=_ce_perturb,
 ))
 
 
@@ -345,8 +400,8 @@ def layer_norm(x, weight, bias, eps=1e-5):
     return _dispatch("layer_norm", x, weight, bias, eps)
 
 
-def gelu_mlp(x, w, b):
-    return _dispatch("gelu_mlp", x, w, b)
+def gelu_mlp(x, w, b, approximate="tanh"):
+    return _dispatch("gelu_mlp", x, w, b, approximate)
 
 
 def rms_norm(x, weight=None, eps=None):
@@ -359,3 +414,11 @@ def relu2_mlp(x, w, b):
 
 def swiglu_mlp(x, w1, w2):
     return _dispatch("swiglu_mlp", x, w1, w2)
+
+
+def geglu_mlp(x, w1, w2, approximate="none"):
+    return _dispatch("geglu_mlp", x, w1, w2, approximate)
+
+
+def cross_entropy(logits, targets, ignore_index=-100):
+    return _dispatch("cross_entropy", logits, targets, ignore_index)

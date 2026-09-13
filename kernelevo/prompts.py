@@ -31,9 +31,8 @@ def k(x_ptr, y_ptr, n, BLOCK: tl.constexpr):
 #   p = tl.make_block_ptr(base, shape=(M,N), strides=(sm,sn), offsets=(m0,n0),
 #                         block_shape=(BM,BN), order=(1,0))
 #   x = tl.load(p, boundary_check=(0,1)); p = tl.advance(p, (0, BK))
-# math: tl.exp, tl.rsqrt, tl.sqrt, tl.where(cond, a, b), x.to(tl.float32)
-# tanh-GELU: 0.5*x*(1+tanh(0.79788456*(x+0.044715*x*x*x))) — tl.math.tanh(x)
-# atomics: tl.atomic_add(ptr + offs, x, mask=mask)   (for cross-block partials)
+# math: tl.exp, tl.rsqrt, tl.sqrt, tl.math.tanh, tl.where(cond, a, b), x.to(tl.float32)
+# atomics: tl.atomic_add(ptr + offs, x, mask=mask)
 # autotune:
 #   @triton.autotune(configs=[triton.Config({'BLOCK': 512}, num_warps=4), ...],
 #                    key=['n'])
@@ -68,9 +67,9 @@ def planner_prompt(targets, summary, lessons, n_jobs, generation, fuse_allowed):
          "You are the planner in an evolutionary search over Triton kernels. Each "
          "generation you propose implementation strategies; parallel subagents "
          "implement exactly what you name; a deterministic verifier accepts or "
-         "rejects. Strategies must be plain-language and SPECIFIC (tiling, memory "
-         "layout, vectorization, fusion structure) — diversity across jobs comes "
-         "from you. Past outcomes whose note starts with [infra] were harness "
+         "rejects. Strategies must be plain-language and SPECIFIC — diversity "
+         "across jobs comes from you. Past outcomes whose note starts with "
+         "[infra] were harness "
          "failures — they say nothing about the strategy, so do not design "
          "around them. Respond with JSON only."},
         {"role": "user", "content":

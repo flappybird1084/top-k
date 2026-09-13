@@ -48,8 +48,8 @@ def kernel(x, weight, bias, eps=1e-5):
 import torch.nn.functional as F
 
 
-def kernel(x, w, b):
-    return F.gelu(F.linear(x, w, b), approximate="tanh")
+def kernel(x, w, b, approximate="tanh"):
+    return F.gelu(F.linear(x, w, b), approximate=approximate)
 ''',
     "masked_gather_add": '''\
 import torch
@@ -86,6 +86,20 @@ import torch.nn.functional as F
 
 def kernel(x, w1, w2):
     return F.silu(F.linear(x, w1)) * F.linear(x, w2)
+''',
+    "geglu_mlp": '''\
+import torch.nn.functional as F
+
+
+def kernel(x, w1, w2, approximate="none"):
+    return F.gelu(F.linear(x, w1), approximate=approximate) * F.linear(x, w2)
+''',
+    "cross_entropy": '''\
+import torch.nn.functional as F
+
+
+def kernel(logits, targets, ignore_index=-100):
+    return F.cross_entropy(logits, targets, ignore_index=ignore_index)
 ''',
 }
 

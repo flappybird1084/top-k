@@ -40,8 +40,8 @@ def _compare(out_c, out_e, tol, label):
     bad = diff > thresh
     if bad.any():
         i = int(diff.argmax())
-        idx = torch.unravel_index(torch.tensor(i), e.shape)
-        idx = tuple(int(x) for x in idx)
+        idx = (() if e.dim() == 0 else
+               tuple(int(x) for x in torch.unravel_index(torch.tensor(i), e.shape)))
         max_rel = float((diff / (e.abs() + 1e-12)).max())
         return (f"{label}: mismatch — max_abs_err={float(diff.max()):.3e} "
                 f"max_rel_err={max_rel:.3e} at index {idx} "
@@ -126,8 +126,10 @@ def gate3(op, kernel, incumbent_fn, argspec, g3, device, seed):
 
 
 def measure_in_model(adapter, impl_map, g4, device, seed):
+    from kernelevo import patch
     torch.manual_seed(seed)
     model = adapter.build_model().to(device)
+    patch.auto_route(model)
     opt = bench.make_optimizer(model)
     step = bench.make_step(adapter, model, opt, iter(adapter.get_dataloader("train")))
     with ops.swapped(impl_map):

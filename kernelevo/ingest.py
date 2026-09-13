@@ -37,8 +37,12 @@ def load_adapter(path_or_module: str):
 
 
 def ingest(adapter, cfg) -> dict:
+    from kernelevo import patch
     torch.manual_seed(cfg["seed"])
     model = adapter.build_model().to(cfg["device"])
+    routed = patch.auto_route(model)
+    if routed:
+        print(f"[ingest] auto-routed onto registry: {routed}")
     batch = next(iter(adapter.get_dataloader("train")))
     loss = adapter.loss_fn(model, batch)
     assert isinstance(loss, torch.Tensor) and loss.dim() == 0, "loss_fn must return a scalar tensor"

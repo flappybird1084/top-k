@@ -79,9 +79,11 @@ def _extract_inductor_seed(op: ops.OpDef, argspec, device, out_path: str) -> str
 
 
 def run_profile(adapter, cfg, info: dict, out_dir: str) -> dict:
+    from kernelevo import patch
     device = cfg["device"]
     torch.manual_seed(cfg["seed"])
     model = adapter.build_model().to(device)
+    patch.auto_route(model)
     opt = bench.make_optimizer(model)
     step = bench.make_step(adapter, model, opt, iter(adapter.get_dataloader("train")))
 
