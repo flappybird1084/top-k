@@ -52,10 +52,14 @@ def _assert_invariants(harness):
     classes, functions, precision = guard
     if _precision() != precision:
         raise AssertionError('Candidate changed global precision or gradient settings during execution')
-    if any(vars(cls).get(name) is not value for (cls, name), value in classes.items()):
-        raise AssertionError('Candidate patched shared classes during execution')
-    if any(vars(module).get(name) is not value for (module, name), value in functions.items()):
-        raise AssertionError('Candidate patched global torch functions')
+    changed = [f'{cls.__module__}.{cls.__qualname__}.{name}'
+               for (cls, name), value in classes.items() if vars(cls).get(name) is not value]
+    if changed:
+        raise AssertionError('Candidate patched shared classes during execution: ' + ', '.join(changed))
+    changed = [f'{module.__name__}.{name}' for (module, name), value in functions.items()
+               if vars(module).get(name) is not value]
+    if changed:
+        raise AssertionError('Candidate patched global torch functions: ' + ', '.join(changed))
 
 
 def _groups(optimizer):
@@ -67,6 +71,11 @@ def install_candidate(harness, path):
     """Install only instance-local behavior and reject immediate state changes."""
     from kernel_evolution.runtime import clone
     from kernel_evolution.verifier import compare
+    # torch.compile performs lazy framework initialization, including legitimate
+    # optimizer class wrapping. Initialize its constructor before attributing
+    # subsequent global changes to candidate code. This executes no model step.
+    if getattr(harness, 'config', {}).get('step_backend') == 'inductor':
+        harness.step_callable({})
     model, optimizer = harness.model, harness.optimizer
     named = {name: id(p) for name, p in model.named_parameters()}
     trainable = {name: p.requires_grad for name, p in model.named_parameters()}
@@ -92,8 +101,10 @@ def install_candidate(harness, path):
         raise AssertionError('Candidate changed optimizer parameter groups or hyperparameters')
     if precision != _precision():
         raise AssertionError('Candidate changed global precision or gradient settings')
-    if any(vars(cls).get(name) is not value for (cls, name), value in classes.items()):
-        raise AssertionError('Candidate patched shared model classes')
+    changed = [f'{cls.__module__}.{cls.__qualname__}.{name}'
+               for (cls, name), value in classes.items() if vars(cls).get(name) is not value]
+    if changed:
+        raise AssertionError('Candidate patched shared model classes: ' + ', '.join(changed))
     compare((model.state_dict(), optimizer.state_dict()), state, 0., 0.)
     harness._whole_model_guard = (classes, functions, precision)
     _assert_invariants(harness)

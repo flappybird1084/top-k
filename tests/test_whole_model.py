@@ -115,3 +115,32 @@ class WholeModelTests(unittest.TestCase):
             self.assertEqual(check_reference(h, records, cfg)['checks'], 4)
             with self.assertRaisesRegex(ValueError, 'multiple shapes'):
                 selftest(h, records[:1], cfg)
+
+    def test_compiler_constructor_initializes_before_install_guard_without_running_step(self):
+        from kernel_evolution.whole_model import _assert_invariants
+        h = self.harness()
+        h.config = {'step_backend': 'inductor'}
+        calls = []
+        def step():
+            calls.append('executed')
+            return h.model(torch.ones(2, 3)).sum()
+        def step_callable(replacements):
+            h.compiled_step = torch.compile(step)
+            return h.compiled_step
+        h.step_callable = step_callable
+        self.install(h, '    return None\n')
+        self.assertIsNone(h.compiled_step)
+        h.step_callable({})
+        _assert_invariants(h)
+        self.assertEqual(calls, [])
+        self.assertEqual(h.optimizer.state, {})
+
+    def test_shared_class_patch_still_rejected_with_member_name(self):
+        h = self.harness()
+        cls = type(h.model)
+        original = cls.forward
+        try:
+            with self.assertRaisesRegex(AssertionError, 'Linear.forward'):
+                self.install(h, '    type(model).forward = lambda self, x: x\n')
+        finally:
+            cls.forward = original
