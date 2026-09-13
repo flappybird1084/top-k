@@ -314,6 +314,44 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, only_lineage: str | None = N
     if gen_id is not None:
         archive.set_stop_reason(gen_id, stop_reason)
     mirror.finish(stop_reason)
+    _print_final_summary(archive, model_id, targets)
     print(f"\n[loop] stopped: {stop_reason}; total LLM spend ${pool.total_usd():.2f}; "
           f"archive at {os.path.join(out_dir, 'archive.sqlite')}")
     return stop_reason
+
+
+def _print_final_summary(archive, model_id, targets):
+    rows = [dict(r) for r in archive.db.execute(
+        "SELECT c.*, l.op_name FROM candidates c JOIN lineages l "
+        "ON c.lineage_id = l.id WHERE l.model_id=? ORDER BY c.id", (model_id,))]
+    baseline = next((r["incumbent_step_time_ms"] for r in rows
+                     if r["incumbent_step_time_ms"]), targets.get("step_time_ms"))
+    accepted = [r for r in rows if r["accepted"] and r["step_time_ms"]]
+    best = min(accepted, key=lambda r: r["step_time_ms"], default=None)
+    print("\n[result] ================= final performance =================")
+    if baseline and best:
+        pct = 100.0 * (baseline - best["step_time_ms"]) / baseline
+        mfu = f" | MFU {best['mfu']:.3f}" if best.get("mfu") else ""
+        print(f"[result] step time: {baseline:.2f}ms baseline -> "
+              f"{best['step_time_ms']:.2f}ms best ({pct:+.1f}%){mfu} | "
+              f"{len(accepted)} accepted kernel(s)")
+    elif baseline:
+        print(f"[result] no kernels accepted — step time unchanged at "
+              f"{baseline:.2f}ms baseline")
+    for lin in archive.lineages(model_id):
+        op = lin["op_name"]
+        acc = [r for r in accepted if r["op_name"] == op]
+        if acc:
+            b = min(acc, key=lambda r: r["step_time_ms"])
+            pct = 100.0 * (b["incumbent_step_time_ms"] - b["step_time_ms"]) \
+                / b["incumbent_step_time_ms"]
+            print(f"[result]   {op}: ACCEPTED gen {b['generation']} — step "
+                  f"{b['incumbent_step_time_ms']:.2f}ms -> "
+                  f"{b['step_time_ms']:.2f}ms ({pct:+.1f}%)")
+        else:
+            tried = [r for r in rows if r["op_name"] == op and r["generation"] > 0]
+            top = max((r["gate_reached"] for r in tried), default=None)
+            note = ("no candidates attempted" if top is None else
+                    f"best attempt reached gate {top}/4"
+                    + (" (retired)" if lin["retired"] else ""))
+            print(f"[result]   {op}: no improvement — {note}")
