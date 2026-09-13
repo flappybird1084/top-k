@@ -56,12 +56,18 @@ Output contract — respond with exactly one Python code block:
 """
 
 
-def planner_prompt(targets, summary, lessons, n_jobs, generation, fuse_allowed):
+def planner_prompt(targets, summary, lessons, n_jobs, generation, fuse_allowed,
+                   search_enabled=False):
     fuse = ("You MAY propose FUSE jobs that combine two or more accepted candidates "
             "(strategy starts with 'FUSE:', field 'parents' lists their ids). Never "
             "required; unfused variants stay in the population.\n"
             if fuse_allowed else
             "FUSE jobs are not allowed yet (first allowed at generation 2).\n")
+    searchline = (
+        'Web search is available: to look up prior art or documentation before '
+        'planning, respond with ONLY {"search": "<query>"} and results will be '
+        'returned to you (up to 3 searches). Optional — respond with jobs '
+        'directly if you do not need it.\n' if search_enabled else "")
     return [
         {"role": "system", "content":
          "You are the planner in an evolutionary search over Triton kernels. Each "
@@ -78,7 +84,7 @@ def planner_prompt(targets, summary, lessons, n_jobs, generation, fuse_allowed):
          f"## Archive summary (incumbents, last generations, parents)\n"
          f"{json.dumps(summary, indent=1)}\n\n"
          f"## Lessons from previous generations\n" + ("\n".join(f"- {t}" for t in lessons) or "(none)") +
-         "\n\n" + fuse +
+         "\n\n" + fuse + searchline +
          'Respond with JSON: {"jobs": [{"lineage": <op name>, "strategy": <specific '
          'plain-language strategy>, "parent": <candidate id or null>'
          ', "parents": [<ids>]  // FUSE only\n}]}\n'
