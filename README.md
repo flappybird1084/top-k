@@ -10,8 +10,9 @@ The first Sol pilot is complete: five evaluated generations, 20 candidates,
 $2.7142 in token-equivalent cost, and no confirmed speedup after a baseline audit.
 See [PILOT_RESULTS.md](PILOT_RESULTS.md) for preserved evidence and the corrections.
 The subsequent handwritten fusion fixture reduced step time by 14.2% against a
-fresh direct-Inductor baseline; see [FUSION_RESULTS.md](FUSION_RESULTS.md). This
-validates the implementation, and is separate from the Sol pilot's search results.
+fresh per-region Inductor baseline; see [FUSION_RESULTS.md](FUSION_RESULTS.md).
+A subsequent whole-step compiler baseline was substantially faster, so the
+fixture result is integration evidence, not a confirmed compiler improvement.
 
 The first live pilot uses GPT-5.6 Sol, four candidates per generation, at most five
 generations, and a $100 API-equivalent ceiling. The ceiling is a guardrail, not a
@@ -106,10 +107,11 @@ Remaining v3 work is explicit:
   functional Linear/GELU patterns, functional LayerNorm with a weight, and explicit
   composite regions. General AOT graph discovery and RMSNorm backward are still
   incomplete; unsupported patterns remain eager and are not proposed for replacement.
-- Inductor seeds call captured backend entries directly after extraction, without
-  the outer Dynamo wrapper. They are compiled per region; this is not a whole-step Inductor
-  baseline. Report speedups against the named baseline and include native eager
-  step time when interpreting results.
+- Isolated Inductor seeds call captured backend entries directly. Gate 4 uses
+  whole-step `torch.compile` for both baseline and candidate integration, checking
+  loss, parameter gradients, model state, and AdamW state before timing. Profiling
+  still ranks regions in eager execution; mapping costs from whole-step compiled
+  regions back to original operations remains incomplete.
 - Fusion currently covers independent EMA call sites. Arbitrary cross-operation
   graph fusion and selecting arbitrary subsets of sites are not yet implemented;
   proposals without an executable contract fail closed.

@@ -41,6 +41,8 @@ def load_prepared(args,cfg,archive):
             if prepared['config'][key]!=cfg[key]: raise ValueError('Prepared configuration differs: '+key)
         if prepared['config'].get('functional_discovery',False)!=cfg.get('functional_discovery',False):
             raise ValueError('Prepared configuration differs: functional_discovery')
+        if prepared['config'].get('step_backend','eager')!=cfg.get('step_backend','eager'):
+            raise ValueError('Prepared configuration differs: step_backend')
         if cfg.get('source_identity'):
             from kernel_evolution.provenance import assert_compatible
             assert_compatible(prepared['config'].get('source_identity'),cfg['source_identity'])

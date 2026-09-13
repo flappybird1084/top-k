@@ -9,7 +9,7 @@ from unittest.mock import patch
 from pathlib import Path
 import torch
 from kernel_evolution.runtime import Harness, inductor_seed, load_source, cuda_times, summarize, clone
-from kernel_evolution.verifier import gate2, gate3, gate4, selftest, source_scan
+from kernel_evolution.verifier import gate2, gate3, gate4, selftest, source_scan,compare_step_state
 
 
 def case_list(cases,op):
@@ -60,6 +60,9 @@ def prepare(request):
         if not target.get('fusion_of'):
             gate2(op,seeds[op],case_list(harness.cases,op),cfg)
         cheat_results[op]=selftest(op,case_list(harness.cases,op),cfg)
+    eager_state=harness.state_after_step({},eager=True)
+    compiled_state=harness.state_after_step(seeds)
+    model_floor=compare_step_state(compiled_state,eager_state,cfg['rtol'],cfg['atol'])
     # Calibrate isolated and full-step drift over the same five-minute interval.
     samples=[]
     start=time.monotonic()
@@ -87,7 +90,8 @@ def prepare(request):
         model=dict(id=request['adapter'],name=request['adapter'],adapter_path=request['adapter'],
             n_params=sum(p.numel() for p in harness.model.parameters()),flops_per_sample=flops,gpu_name=gpu,peak_flops=peak),
         calibration=dict(samples=samples,noise_spread=max(spread('micro_ms'),spread('step_ms')),
-            numerical_floor=floors,cheats=cheat_results),
+            numerical_floor=floors,cheats=cheat_results,full_step_correctness=model_floor,
+            compiled_step_sources=harness.compiled_step_sources),
         step_time_ms=statistics.median(s['step_ms'] for s in samples),batch_size=harness.batch_size)
 
 

@@ -5,7 +5,10 @@ accepted kernel. The implementation now discovers 77 independent EMA updates in
 the JEPA adapter and exposes them as a fusion target from generation 2. There is
 no configured cap on the number of sites in the group.
 
-A **handwritten Triton fixture** passed all four gates against a fresh baseline:
+A **handwritten Triton fixture** passed all four gates against a fresh
+per-region Inductor baseline. A subsequent whole-step compiler audit found a
+stronger baseline, so this result does not establish a win over whole-step
+`torch.compile`:
 
 [W&B fixture check](https://wandb.ai/stephenslee0127-acme/kernel-evolution/runs/f0otw8pb)
 contains the raw paired measurements and source artifact.
@@ -28,8 +31,7 @@ was 4.77e-7. Gate 4 also compared loss, model state, and AdamW state outside the
 timed region. The candidate issued one Triton compute launch for all 77 pairs;
 copying its outputs into the target parameters remains part of the full step.
 
-This is evidence that the fusion implementation works and that the search space
-contains a useful optimization. It is **not an evolved Sol acceptance** and is
+This is evidence that the fusion implementation works. It is **not an evolved Sol acceptance** and is
 recorded as a handwritten-fixture event, not added to the search population.
 No additional search-model calls were made. The original Sol pilot remains at
 five evaluated generations, 20 candidates, and zero confirmed acceptances.
@@ -49,3 +51,14 @@ using it for straightforward EMA work: all 20 candidates compiled and passed
 correctness without repairs. It does not establish Sol's quality on harder
 normalization or GEMM fusion, nor prove that another model would find a speedup.
 An Astra comparison should use matched jobs and the corrected verifier.
+
+The whole-step compiler diagnostic measured 13.4242 ms for the per-region
+baseline versus 6.9520 ms for whole-step compilation in the same session.
+All four paired improvements exceeded 48%. Loss and numerical training state
+matched eager; only equivalent AdamW execution metadata was normalized
+(the location of exactly equal step counters and the `capturable` flag).
+Raw diagnostic results are in `runs/compiled-baseline/`. The default gate-4
+backend now compiles the full step, including candidate integration, and checks
+parameter gradients as well as loss, parameters, and optimizer state. It
+requires a new calibration; earlier fusion timing is retained as historical
+integration evidence.

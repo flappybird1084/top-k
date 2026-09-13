@@ -40,7 +40,8 @@ def active_config():
     if profile not in {"DEV", "RUN"}:
         raise ValueError("KERNEL_EVOLUTION_PROFILE must be DEV or RUN")
     defaults = dict(seed=1729, dtype="float32", batch_size=16,
-        benchmark_protocol="direct_inductor_v3_no_profile_spans",
+        benchmark_protocol="whole_step_inductor_v1",
+        step_backend="inductor",
         functional_discovery=True,
         subagent_models=[], planner_effort="medium",subagent_effort="medium",curator_effort="medium",
         allowed_ops=["layer_norm_backward", "ema_update", "masked_gather_add", "gelu_mlp"],

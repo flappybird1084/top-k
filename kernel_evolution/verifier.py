@@ -172,9 +172,27 @@ def gate4(harness,incumbents,op,candidate,config):
     new={**incumbents,op:candidate}
     baseline_state=harness.state_after_step(incumbents)
     candidate_state=harness.state_after_step(new)
-    compare(candidate_state,baseline_state,config['rtol'],config['atol'])
+    compare_step_state(candidate_state,baseline_state,config['rtol'],config['atol'])
     return paired_measure(lambda replacement:statistics.median(harness.time_set(replacement)),
                           incumbents,new,config['gate4_margin'])
+
+
+def compare_step_state(actual,expected,rtol,atol):
+    """Ignore only equivalent optimizer execution bookkeeping, not numerical state."""
+    actual=clone(actual)
+    normalized=[]
+    for key,state in actual[2]['state'].items():
+        a=state.get('step');e=expected[2]['state'][key].get('step')
+        if isinstance(a,torch.Tensor) and isinstance(e,torch.Tensor) and a.device!=e.device:
+            compare(a.cpu(),e.cpu(),0.,0.)
+            state['step']=a.to(e.device)
+            normalized.append('step_counter_device')
+    for i,group in enumerate(actual[2]['param_groups']):
+        other=expected[2]['param_groups'][i]
+        if group.get('capturable')!=other.get('capturable'):
+            group['capturable']=other['capturable']
+            normalized.append('capturable_execution_flag')
+    return {**compare(actual,expected,rtol,atol),'normalized_execution_metadata':normalized}
 
 
 def selftest(op,cases,config):

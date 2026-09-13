@@ -69,6 +69,7 @@ class Harness:
         self.loss = self.adapter.loss_fn(self.model,self.batch)
         if self.loss.ndim != 0 or not self.loss.requires_grad or not torch.isfinite(self.loss):
             raise ValueError('Adapter loss must be scalar, finite, and require grad')
+        self.loss=self.loss.detach()
         self.model = instrument(self.model)
         self.discovery={'backend':'modules','regions':[],'fallback_reason':None}
         if config.get('functional_discovery',False):
@@ -94,6 +95,33 @@ class Harness:
         self.snapshot = clone(self.model.state_dict())
         self.optimizer_snapshot = copy.deepcopy(self.optimizer.state_dict())
         self.cases = {}
+        self.compiled_step=None
+        self.compiled_step_sources=[]
+
+    def step_callable(self,replacements,*,eager=False):
+        from kernel_evolution.seeds import InductorSeed
+        compiled=not eager and self.config.get('step_backend','eager')=='inductor'
+        # The whole-step compiler emits its own kernels for reference regions.
+        # Do not insert separately compiled Python seed wrappers into its graph.
+        effective={name:fn for name,fn in replacements.items() if not (compiled and isinstance(fn,InductorSeed))}
+        self.replacements=effective
+        install(self.model,effective)
+        if compiled:
+            if self.compiled_step is None:self.compiled_step=torch.compile(self.step,dynamic=False)
+            return self.compiled_step
+        return self.step
+
+    def capture_step(self,fn):
+        if self.config.get('step_backend','eager')!='inductor' or fn is not self.compiled_step:return fn()
+        from torch._inductor.utils import run_and_get_code
+        output,sources=run_and_get_code(fn)
+        folder=self.run_dir/'compiled_steps';folder.mkdir(exist_ok=True)
+        from kernel_evolution.archive import source_hash
+        for source in sources:
+            path=folder/(source_hash(source)+'.py')
+            path.write_text(source)
+            if str(path) not in self.compiled_step_sources:self.compiled_step_sources.append(str(path))
+        return output
 
     def restore(self):
         self.model.load_state_dict(self.snapshot)
@@ -164,18 +192,17 @@ class Harness:
                     profiler_table=prof.key_averages().table(sort_by='self_cuda_time_total',row_limit=40))
 
     def time_set(self, replacements):
-        self.replacements=replacements
-        install(self.model,replacements)
+        fn=self.step_callable(replacements)
         self.restore()
-        return cuda_times(self.step,self.config['timed_steps'],self.config['warmup_steps'])
+        return cuda_times(fn,self.config['timed_steps'],self.config['warmup_steps'])
 
-    def state_after_step(self,replacements):
-        self.replacements=replacements
-        install(self.model,replacements)
+    def state_after_step(self,replacements,*,eager=False):
+        fn=self.step_callable(replacements,eager=eager)
         self.restore()
-        loss=self.step()
+        loss=self.capture_step(fn)
         torch.cuda.synchronize()
-        return clone((loss,self.model.state_dict(),self.optimizer.state_dict()))
+        gradients={name:p.grad for name,p in self.model.named_parameters() if p.requires_grad}
+        return clone((loss,self.model.state_dict(),self.optimizer.state_dict(),gradients))
 
     def flops(self):
         from torch.utils.flop_counter import FlopCounterMode
