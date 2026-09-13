@@ -24,7 +24,7 @@ for pattern in ['prepared.json','targets.json','profile.json','candidates/*.py',
                 'fixture_fused_ema.py','tests.log','validation.log',
                 'diagnostic*.json','diagnose.py','compiled_region_*.py','compiled_steps/*.py',
                 'input/adapter*.py','input/manifest.json','launch.json','result.json',
-                'seeds/*.py','platform_tests.log']:
+                'seeds/*.py','platform_tests.log','guard_*.py','guard_*.json','guard_*.log']:
     for p in root.glob(pattern):
         files[str(p.relative_to(root))]=base64.b64encode(p.read_bytes()).decode()
 payload=base64.b64encode(zlib.compress(json.dumps(files).encode())).decode()
