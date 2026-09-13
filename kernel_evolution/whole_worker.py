@@ -76,6 +76,9 @@ def evaluate(request):
     from triton.runtime.jit import JITFunction
     cfg, root = request['config'], Path(request['run_dir'])
     result = dict(gate_reached=1,compile_ok=0,correct_ok=0,accepted=0,details={})
+    from kernel_evolution.archive import source_hash
+    result['details']['verifier_source_hashes']={name:source_hash((Path(__file__).parent/name).read_text())
+                                               for name in ('whole_model.py','whole_worker.py','verifier.py','runtime.py')}
     try:
         baseline = Harness(request['adapter'],cfg,root)
         reference = capture_reference(baseline,cfg)
