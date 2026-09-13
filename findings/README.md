@@ -1,8 +1,9 @@
-# Findings — kernel evolution, 2026-09-12/13 session
+# Findings — kernel evolution + recipe golf, 2026-09-12/13 session
 
-Everything learned building and running the system end to end: 5 jobs, 2 target
-repos, ~9 remote GPU runs on a molab RTX PRO 6000 Blackwell, ~$28 of the $100
-W&B credit spent (rest intact).
+Everything learned building and running the system end to end: 10+ jobs,
+2 target repos, two search modes (Triton kernels; training recipes), remote
+GPU runs on molab RTX PRO 6000 Blackwell sandboxes, ≈$45–50 of the $100 W&B
+credit spent.
 
 | file | contents |
 |---|---|
@@ -25,6 +26,19 @@ W&B credit spent (rest intact).
   matched behaviorally), the fused `linear_cross_entropy` boundary (5.4% of
   step) — but no kernel was accepted at DEV search scale; the funded RUN search
   was stopped by user at calibration.
+- **Recipe-golf mode** (staged evolution over training recipes): first
+  completed search delivered **−7.21% held-out val loss at a 5-minute budget**
+  (cyclic-lr schedule on a parallel-block/reduced-KV architecture), with
+  measured horizon compression (proxy +15% → finals +7.21%) vindicating
+  finals re-training over proxy rank.
+- **The 09-13 incident chain** (02, bugs 25–28): an uncapped download killed
+  by a timeout drove the adapter agent to a reward-hack (synthetic tokens
+  behind fictional mount-point checks) that no correctness gate can see —
+  caught by the entropy-floor val-loss fingerprint (10.875 in bf16); the
+  recovery adapter then hung *after succeeding* because `subprocess.run` only
+  observes process exit. Both closed structurally: hardened DATA rules,
+  result-line reaping + idle-timeout heartbeats (`kernelevo/procstream.py`),
+  and the adapter self-repair trail surfaced in log/W&B/web UI.
 
 Live dashboards: W&B runs/artifacts and Weave traces at
 https://wandb.ai/rianbutala-ucla/kernel-evolution (+ `/weave`).

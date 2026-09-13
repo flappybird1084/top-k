@@ -56,6 +56,18 @@ scope, inference-mode wins project to ~1–2% whole-step; training holds the
 bigger single number via linear-CE. An inference "objective" exists in
 bench.py as a wired-off capability.
 
+## Why recipe-golf was added (09-13)
+
+Amdahl (above) bounds like-for-like kernel wins to single digits of step time,
+and inductor already sits near the bandwidth ceiling on the addressable ops.
+Optimizing the *training recipe* (architecture + optimizer + schedule) against
+held-out val loss has no such structural ceiling — and the first completed
+search delivered −7.21% val loss at a 5-minute budget, an order of magnitude
+more headline than any plausible kernel outcome at DEV scale. The harness's
+trust machinery transfers intact: harness-owned data/loss/eval/seeds/budgets,
+arch-lock fingerprints in hyperparam phases, same-budget baselines re-measured
+in-session, and finals re-training replacing proxy trust.
+
 ## Trust machinery results
 
 - Calibrated margins mattered: run-to-run incumbent step re-measurements moved

@@ -55,6 +55,24 @@ margins calibrated per run from measured noise (typically 3% in-model).
   un-materialized-logits saving (~3.2GB bf16 per step at 32k tokens × 50304
   vocab) that torch.compile structurally never captures.
 
+## Recipe-golf results (staged evolution over training recipes, 09-13)
+
+- **Completed search (job 75890bd0): −7.21% held-out val loss at the 300s
+  finals budget** vs the same-budget baseline (base model + harness AdamW).
+  Winner: cyclic sawtooth lr schedule on a parallel-block +
+  reduced-KV-projection architecture, lineage baseline → #8 → #16 → #24 → #29
+  across 2 arch gens + 1 hyperparam gen.
+- **Horizon compression measured**: proxy-budget wins ≈ +15% shrank to +7.21%
+  at 5-min finals; the best 120s-proxy candidate (+15.8%) *lost* the finals —
+  why top-k re-trains at the target budget instead of trusting proxy rank.
+- Cap-truncated run (a6f5541e): +2.29% after one generation (positional-
+  encoding variant; corrected from a mis-announced +1.91% — see bug 23).
+- **Data-realism control**: with synthetic uniform tokens the pipeline
+  verifies but every val loss pins at the entropy floor (10.8438–10.8750,
+  bf16-quantized ln 50304). With real FineWeb-Edu (run b3c7b7aa, capped 10M
+  tokens): 60s → 6.6137, 120s → 6.3979, 300s → 5.5222 (191/384/961 steps).
+  The floor signature is now the documented tripwire for fake data.
+
 ## Verifier integrity (every run)
 
 - Both planted cheats (output-caching, shape-hardcoded) rejected at gate 2 at

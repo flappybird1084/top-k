@@ -48,9 +48,61 @@ small norms — all 8 candidates would have concentrated on the two real
 targets). **Stopped by user during calibration, before generation 1.** ≈$1.
 The configuration remains ready to relaunch as-is.
 
+# Recipe-golf era (2026-09-13; sandboxes rotate — sb-1b36…, sb-5141…)
+
+All recipe runs target xerneas3318/modern-lm (481M) with the DEV schedule:
+2 architecture gens × 8 candidates × 60s + 1 hyperparam gen × 8 × 120s +
+top-2 finals × 300s; signal = held-out val loss; parent pool 4, cap ratio 1.1.
+
+## Jobs 006e2ef1 / fbec6d72 — recipe shakedowns
+First recipe-mode runs; surfaced the grad-enabled-eval and EMA-hook bugs and
+the original synthetic-token entropy-floor incident that created the standing
+DATA rule (bugs 18–20).
+
+## Job a555f12c — killed by molab (HTTP 410) mid-generation-2
+Sandbox terminated under the run; winning recipe sources existed only remotely
+and were lost. → continuous mid-run source/archive sync (bug 21).
+
+## Job 75890bd0 — the first complete recipe run: **−7.21% val loss**
+Real FineWeb data. Winner `g3_hyperparam_4_a0.py`: cyclic sawtooth lr schedule
+on a parallel-block + reduced-KV-projection architecture; lineage baseline →
+#8 → #16 → #24 → #29. Finals upset: the best *proxy* candidate (#27, +15.8%
+at 120s) lost at the 300s budget — measured horizon compression, proxy ≈+15%
+→ finals +7.21%, and the reason finals re-train top-k instead of trusting
+proxy rank.
+
+## Job a6f5541e — cap-truncated; wrong winner announced then corrected
+Web form had no spend-cap field → ran at the $10 DEV default and was
+cap-cancelled after generation 1. Its finals comparison used the previous
+winner's proxy loss (bug 23): announced GQA+FFN +1.91%, true winner
+positional-encoding **+2.29%**. Also the origin of the label-vs-diff lesson:
+the "GQA win" was pushing the repo's existing kv_group=4 further — trust
+numbers and diffs, never strategy prose.
+
+## Job d4f31b59 — the noise run (killed deliberately)
+Attempt 1 honestly streamed FineWeb uncapped → killed at the 900s ingest
+timeout; attempts 2–3 OOM / `Block.forward() missing 've'`; attempt 4
+"verified" on synthetic uniform tokens behind fictional mount-point checks.
+Baselines 10.8750 / 10.8750 / 10.8438 = entropy floor in bf16 ulps — the
+search signal was pure noise. Killed at generation 1, ≈$1.77. → bug 25's
+DATA-rule hardening + 1800s timeout.
+
+## Job b3c7b7aa — the recovery run (in flight at time of writing)
+Same specs, fixed prompts. Attempt 1: truncated file (`ids = ` SyntaxError).
+Attempt 2: adapter *correct* — streamed a capped 10M-token FineWeb-Edu slice,
+whole probe passes in 6s — but hung at interpreter exit (bug 26), manually
+reaped. Attempt 3: verified in seconds on the warm cache. Real-data baselines:
+**60s → 6.6137, 120s → 6.3979, 300s → 5.5222** (vs the noise run's flat
+10.87). Generation 1 underway ($1.35 at start; planner strategies: extra
+layers, SwiGLU FFN, Lion optimizer). The self-repair trail of this run —
+timeout → OOM → wrong signature → truncation → exit-hang → verified — is the
+demo material for the fail→recover story.
+
 ## Aggregate
-- Credit spent ≈ $28 of $100 (authoritative meter: wandb.ai/subscriptions).
-- Accepted kernels: 1 (nanochat rms_norm). Correct-but-slower: 2 (CE, rms at
-  481M). Cheats rejected: every calibration, 9/9 runs.
-- The RUN-scale search — the configuration designed to find acceptances —
-  has never completed a single generation.
+- Credit spent ≈ $45–50 of $100 (authoritative meter: wandb.ai/subscriptions).
+- Kernel mode — accepted kernels: 1 (nanochat rms_norm). Correct-but-slower:
+  2 (CE, rms at 481M). Cheats rejected: every calibration, 9/9 runs. The
+  RUN-scale kernel search has never completed a generation.
+- Recipe mode — completed searches: 1 (75890bd0, −7.21% val at 300s); one
+  cap-truncated (+2.29% at gen 1); one noise run caught and killed; one
+  recovery run in flight.

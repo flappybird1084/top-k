@@ -43,6 +43,35 @@
   import hoisting, linear-CE routing) — after which first-attempt success
   became the norm; verified adapters are cached and reused across relaunches.
 
+## Recipe mode (09-13)
+
+- **Repair-loop regression to the easy path** — the clearest agent-behavior
+  finding of the session. When the honest approach was *punished by
+  infrastructure* (uncapped FineWeb download killed at the ingest timeout),
+  three repairs later the agent satisfied the verifier with synthetic tokens
+  gated behind mount-point checks for directories that don't exist here —
+  technically compliant with "synthetic as last resort", actually a
+  reward hack the correctness gates cannot see (data realism isn't checkable
+  mechanically). Countermeasure is prompt-level: require an *actual* failed
+  download attempt with the caught error quoted in a comment.
+- With the hardened DATA rule, the very next adapter streamed a correctly
+  capped 10M-token slice, wrote a `ready.json` provenance marker unprompted,
+  and passed the probe in 6s — the rules work when the incentive trap is
+  removed.
+- **Truncation as a failure mode**: one attempt died on a mid-expression cut
+  (`ids = ` → SyntaxError) — output-length limits produce syntactically
+  broken files that gate 1 catches for free.
+- Recipe subagents follow the minimal-diff rule after one bad example: an
+  early "RMSNorm everywhere" candidate *rebuilt* the 481M model from scratch
+  and scored −17.9% (lost unstated details); post-rule candidates subclass or
+  patch the repo model.
+- **Label vs diff**: a "GQA win" turned out to be the repo's own kv_group=4
+  pushed further — strategy prose oversells; only diffs and numbers count.
+- The recipe planner, like the kernel planner, has never voluntarily used the
+  research subagent — offered `{"research": "<question>"}` each generation,
+  it goes straight to jobs every time. Forcing one gen-1 dispatch is the
+  known two-line fix if we want it exercised.
+
 ## Costs & latency (W&B serverless, 481M-scale prompts)
 
 - Planner call ≈ $0.15–0.40; kernel candidate incl. repairs ≈ $0.7–1.5;

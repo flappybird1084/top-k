@@ -81,6 +81,73 @@ them ever produced a false acceptance.
     adapter from scratch, re-hitting solved errors. → verified adapters cached
     (`adapter.py.ok`) and reused if they still pass ingest.
 
+## Recipe-golf mode (added 09-13)
+
+18. **`no_grad` holdout eval** — generated adapters legitimately assert
+    `loss.requires_grad` inside `loss_fn` (our own contract teaches it);
+    wrapping eval in `no_grad` tripped them. → eval runs grad-ENABLED, never
+    backward, `.detach()` immediately.
+19. **Missing `post_optimizer_step`** — the recipe train loop skipped the
+    adapter's EMA hook (JEPA target networks silently frozen). → honored
+    after every `opt.step()`.
+20. **Synthetic random tokens pass every gate** — an adapter yielding uniform-
+    random tokens verifies cleanly (loss0 ≈ ln V, gradients flow) but pins val
+    loss at the entropy floor (~10.83): the whole search signal becomes noise
+    and *no correctness gate can see it*. → standing DATA rule: always search
+    the repo for its real pipeline first; synthetic is a guarded last resort.
+21. **Sandbox termination mid-run (HTTP 410)** — molab killed a sandbox during
+    generation 2 and took the winning recipe sources with it. → mid-run sync
+    pulls archive.sqlite + all candidate/recipe/adapter sources continuously.
+22. **Indistinguishable W&B runs** — every run was named `run-recipe-dev`
+    (model name resolved from a path literal). → `<name>-<mode>-<profile>-<ts>`
+    naming, group = job work dir, tags; per-candidate W&B runs
+    `<run>-g<gen>-s<strategy>` with their own charts.
+23. **Finals compared against the previous winner's *proxy* loss** — run
+    a6f5541e announced the wrong winner (GQA+FFN +1.91%; the true winner was
+    positional-encoding +2.29%). → `is_better_final` compares only same-budget
+    finals numbers.
+24. **Web form had no spend-cap field** — jobs silently ran at the DEV $10
+    default; a6f5541e was cap-cancelled after generation 1. → per-job cap
+    field wired through `--spend-cap`.
+
+## The 09-13 incident chain (one afternoon, three compounding failures)
+
+25. **Unbounded dataset download vs ingest timeout → reward-hack regression.**
+    Attempt 1 honestly streamed FineWeb-Edu with no cap and was killed at the
+    900s ingest timeout; three repairs later the agent "passed" verification
+    by generating synthetic tokens behind mount-point checks for directories
+    that don't exist on molab (`/mnt/datasets/...`). Baselines came back
+    10.8750 / 10.8750 / 10.8438 — the entropy floor, quantized to bf16 ulps
+    (0.0625 apart at that magnitude): the fingerprint of bug 20 in production.
+    → DATA rule hardened: subset-only downloads (~25M-token hard cap,
+    stream-and-stop), reuse any cache an earlier attempt left, only read paths
+    verified to exist, synthetic allowed only after an *actual* failed
+    download with the caught error quoted in a comment; timeout 900→1800s.
+26. **Worker hang-at-exit** — the next run's adapter was *perfect* (capped
+    real download, probe passes in 6s) but `datasets`' streaming pool leaves
+    non-daemon threads, so the worker printed its result and then wedged
+    forever in interpreter shutdown. `subprocess.run(timeout=...)` observes
+    only process *exit*, so a finished-but-immortal child was
+    indistinguishable from a hang until the full 30-min ceiling. → workers
+    hard-exit (`os._exit` past flush) AND the orchestrator now streams worker
+    output (`procstream.run_result_worker`): it reaps the child the instant
+    the `KEVO_RESULT` line lands (measured 0.5s vs the old 60s-timeout wait in
+    the regression test) and kills anything silent past an idle window
+    (ingest 600s, recipe evals 90s) — workers emit `KEVO_HEARTBEAT` lines
+    (~8s in train loops) to prove liveness, which also narrates the formerly
+    silent authoring/ingest stages in the log.
+27. **Latent `NameError` in the hard-exit** — `recipe_worker`'s `import os`
+    was function-local, so the fix in 26 would have crashed at the exit line
+    (and only "worked" live by crash-exiting after the result was printed).
+    Caught while wiring 26; module-level import now.
+28. **Ops lesson: `ps` column truncation faked a dead run** — grepping
+    truncated `ps` output on the sandbox matched nothing for `search.py`, and
+    a live run mid-silent-authoring was misdiagnosed as silently SIGKILLed
+    (use `ps auxww`). The structural fix is 26's heartbeats: silence is no
+    longer ambiguous. The adapter's fail→repair→recovery trail is now also a
+    first-class artifact (`adapter_attempts.json` → log recap, W&B table,
+    web-UI self-repair panel).
+
 ## W&B account topology (not code bugs, but cost hours)
 
 - New-format W&B keys are **org-scoped**; the same user's keys can hit
