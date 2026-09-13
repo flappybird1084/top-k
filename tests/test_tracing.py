@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 from kernel_evolution.archive import Archive
 from kernel_evolution.tracing import Traces
 
@@ -69,3 +70,16 @@ class TraceTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.traces.start('bad', parent_id='absent')
         span=self.traces.start('valid', started_at=4)
         with self.assertRaises(ValueError): self.traces.finish(span, ended_at=3)
+
+    def test_llm_url_backfill(self):
+        self.archive.put('llm_calls', id='llm_001', role='subagent')
+        span=self.traces.record('agent.subagent', {'messages':[]}, {'input_tokens':1},
+            started_at=1, ended_at=2, attributes={'llm_call_id':'llm_001'})
+        self.traces.flush()
+        self.assertEqual(self.archive.rows('SELECT weave_trace_url FROM llm_calls')[0]['weave_trace_url'],
+                         self.traces.url(span))
+
+    def test_close_bounds_final_flush(self):
+        self.traces.flush=Mock()
+        self.traces.close()
+        self.traces.flush.assert_called_once_with(timeout=5)

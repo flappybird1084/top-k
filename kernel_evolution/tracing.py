@@ -96,6 +96,9 @@ class Traces:
                     self.archive.execute('UPDATE trace_outbox SET url=?,exported_end=?,last_error=NULL WHERE id=?',
                         (url, int(row['ended_at'] is not None), row['id']))
                     attrs = json.loads(row['attributes_json'])
+                    if attrs.get('llm_call_id'):
+                        self.archive.execute('UPDATE llm_calls SET weave_trace_url=? WHERE id=?',
+                                             (url, attrs['llm_call_id']))
                     if attrs.get('candidate_id') and attrs.get('span_kind') == 'candidate_lifecycle':
                         self.archive.execute('UPDATE candidates SET weave_trace_url=? WHERE id=?',
                                              (url, attrs['candidate_id']))
@@ -115,4 +118,4 @@ class Traces:
         self.wake.set()
         if self.thread: self.thread.join(timeout=timeout)
         # If network is still blocked, leave the durable outbox for the next process.
-        if self.thread is None or not self.thread.is_alive(): self.flush()
+        if self.thread is None or not self.thread.is_alive(): self.flush(timeout=5)
