@@ -5,6 +5,7 @@ import statistics
 import sys
 import time
 import traceback
+from contextlib import contextmanager
 from unittest.mock import patch
 from pathlib import Path
 import torch
@@ -16,11 +17,38 @@ def case_list(cases,op):
     return sorted(cases[op].values(),key=lambda c:c['count'],reverse=True)
 
 
+@contextmanager
+def gate_span(result,name,number):
+    span={'name':name,'gate':number,'started_at':time.time()}
+    result.setdefault('gate_spans',[]).append(span)
+    try:yield span
+    except BaseException:
+        span['error']=traceback.format_exc()[-14000:]
+        raise
+    finally:span['ended_at']=time.time()
+
+
+def ingest(request):
+    harness=Harness(request['adapter'],request['config'],request['run_dir'])
+    state=harness.state_after_step({},eager=True)
+    return dict(status='ready',loss=float(state[0]),n_params=sum(p.numel() for p in harness.model.parameters()),
+        batch_size=harness.batch_size,trainable_gradients=sum(v is not None for v in state[3].values()),
+        post_optimizer_hook=callable(getattr(harness.adapter,'post_optimizer_step',None)),
+        device=torch.cuda.get_device_name(0))
+
+
 def prepare(request):
     cfg=request['config']
     root=Path(request['run_dir'])
     harness=Harness(request['adapter'],cfg,root)
     profile=harness.profile()
+    eager_state=harness.state_after_step({},eager=True)
+    compiled_state=harness.state_after_step({})
+    model_floor=compare_step_state(compiled_state,eager_state,cfg['rtol'],cfg['atol'])
+    if cfg.get('step_backend')=='inductor':
+        from kernel_evolution.compiled_profile import profile_harness,augment_targets
+        compiled_profile=profile_harness(harness)
+        augment_targets(profile,compiled_profile,allowed_ops=cfg['allowed_ops'],min_pct_step_time=cfg['min_pct_step_time'])
     if request.get('lineage'):
         for target in profile['targets']:
             target['eligible'] &= target['id']==request['lineage']
@@ -60,9 +88,6 @@ def prepare(request):
         if not target.get('fusion_of'):
             gate2(op,seeds[op],case_list(harness.cases,op),cfg)
         cheat_results[op]=selftest(op,case_list(harness.cases,op),cfg)
-    eager_state=harness.state_after_step({},eager=True)
-    compiled_state=harness.state_after_step(seeds)
-    model_floor=compare_step_state(compiled_state,eager_state,cfg['rtol'],cfg['atol'])
     # Calibrate isolated and full-step drift over the same five-minute interval.
     samples=[]
     start=time.monotonic()
@@ -111,13 +136,17 @@ def evaluate(request):
         def track(jit,*args,**kwargs):
             if not kwargs.get('warmup',False):launches.append(jit.__name__)
             return launch(jit,*args,**kwargs)
-        with patch.object(JITFunction,'run',track):
-            fn(*clone(selected[0]['args']))
-        torch.cuda.synchronize()
-        if not launches:raise TypeError('Candidate entry point launched no Triton JIT kernel')
+        with gate_span(result,'compile',1) as span:
+            with patch.object(JITFunction,'run',track):
+                fn(*clone(selected[0]['args']))
+            torch.cuda.synchronize()
+            if not launches:raise TypeError('Candidate entry point launched no Triton JIT kernel')
+            span['output']={'triton_launches':launches,'compiled':True}
         result['details']['modal_triton_launches']=launches
         result.update(compile_ok=1,gate_reached=2)
-        result['details']['correctness']=gate2(op,fn,selected,cfg)
+        with gate_span(result,'correctness',2) as span:
+            result['details']['correctness']=gate2(op,fn,selected,cfg)
+            span['output']=result['details']['correctness']
         result.update(correct_ok=1,gate_reached=3)
         if request.get('correctness_only'):
             return result
@@ -130,15 +159,19 @@ def evaluate(request):
         if op=='fused_ema_update' and baseline is None:
             from kernel_evolution.fusion import composed
             baseline=composed(incumbents['ema_update'])
-        micro=gate3(op,baseline,fn,selected,cfg)
+        with gate_span(result,'isolation',3) as span:
+            micro=gate3(op,baseline,fn,selected,cfg)
+            span['output']=micro
         result['details']['gate3']=micro
         result.update(latency_us=micro['candidate']*1000,incumbent_latency_us=micro['baseline']*1000)
         if micro['status']!='pass':
             result['failure_note']='gate3_'+micro['status']
             return result
         result['gate_reached']=4
-        harness=Harness(request['adapter'],cfg,root)
-        step=gate4(harness,incumbents,op,fn,cfg)
+        with gate_span(result,'training_step',4) as span:
+            harness=Harness(request['adapter'],cfg,root)
+            step=gate4(harness,incumbents,op,fn,cfg)
+            span['output']=step
         result['details']['gate4']=step
         step_ms=step['candidate']
         sps=harness.batch_size/(step_ms/1000)
@@ -154,7 +187,7 @@ def evaluate(request):
 def main():
     request=json.loads(Path(sys.argv[1]).read_text())
     try:
-        result=(prepare if request['action']=='prepare' else evaluate)(request)
+        result={'prepare':prepare,'ingest':ingest,'evaluate':evaluate}[request['action']](request)
     except Exception:
         result={'status':'error','failure_note':traceback.format_exc()[-18000:]}
     Path(sys.argv[2]).write_text(json.dumps(result,indent=2,default=str))

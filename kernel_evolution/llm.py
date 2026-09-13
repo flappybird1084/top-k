@@ -31,12 +31,21 @@ class CodexOAuthLLM:
         if self.model not in PRICES:raise ValueError('Configure verified token pricing before using '+self.model)
         self.budget=Budget(archive,config['spend_cap_usd'])
         self.generation=0
+        self.candidate_id=None
+        self.parent_trace_id=None
+        self.repair=0
 
     def usage_usd(self): return self.budget.spent
 
     def complete(self,messages,*,json_mode=False,tools=None,schema=None,timeout=None):
         prompt='\n\n'.join(f"{m['role']}: {m['content']}" for m in messages)
         cid=self.budget.reserve(self.role,self.model,self.generation,self.config['max_call_reservation_usd'])
+        traces=getattr(self.archive,'traces',None)
+        trace_id=traces.start('agent.'+self.role,{'messages':messages,'schema':schema},
+            parent_id=self.parent_trace_id,attributes={'role':self.role,'model':self.model,
+            'generation':self.generation,'candidate_id':self.candidate_id,'llm_call_id':cid,'repair':self.repair}) if traces else None
+        self.archive.execute('UPDATE llm_calls SET candidate_id=?,trace_id=?,repair=? WHERE id=?',
+                             (self.candidate_id,trace_id,self.repair,cid))
         cwd=self.root/'llm_work'/cid
         cwd.mkdir(parents=True)
         request=dict(prompt=prompt,model=self.model,role=self.role,schema=schema,cwd=str(cwd),
@@ -46,13 +55,24 @@ class CodexOAuthLLM:
                               timeout or self.config['max_call_seconds'],cuda=False)
         except BaseException:
             self.budget.finish(cid,self.model,None,{'error':'worker interrupted'})
+            if traces:traces.finish(trace_id,output={'usage':'unknown'},error='worker interrupted')
             raise
         usage=usage_tokens(result.get('usage'))
         self.budget.finish(cid,self.model,usage,dict(status=result.get('status'),error=result.get('error'),log_path=result.get('log_path')))
         self.archive.event('llm_call',dict(id=cid,role=self.role,model=self.model,usage=usage,total_usd=self.usage_usd()))
+        error=result.get('error') or result.get('failure_note')
+        decoded=None
+        if result.get('text') and json_mode:
+            try:decoded=json.loads(result['text'])
+            except ValueError as exc:error='Invalid JSON response: '+str(exc)
+        if traces:traces.finish(trace_id,output={'response':result.get('text'),'usage':usage,
+            'model':self.model,'items':result.get('items',[]),'status':result.get('status'),
+            'api_equivalent_usd':self.archive.rows('SELECT usd FROM llm_calls WHERE id=?',(cid,))[0]['usd']},
+            error=str(error) if error else None)
         if not result.get('text'):
             raise RuntimeError(str(result.get('error') or result.get('failure_note') or result)[:4000])
-        return json.loads(result['text']) if json_mode else result['text']
+        if error:raise RuntimeError(str(error)[:4000])
+        return decoded if json_mode else result['text']
 
 
 class StubLLM:

@@ -62,7 +62,8 @@ class Harness:
         self.config, self.run_dir = config, Path(run_dir)
         seed_all(config['seed'])
         os.environ['KE_BATCH_SIZE'] = str(config['batch_size'])
-        self.adapter = importlib.import_module(adapter)
+        from kernel_evolution.intake import load_adapter
+        self.adapter = load_adapter(adapter,config.get('input_repo'))
         self.model = self.adapter.build_model().cuda().train()
         self.batch = move(next(iter(self.adapter.get_dataloader('train'))), 'cuda')
         self.batch_size = next(x for x in tree_flatten(self.batch)[0] if isinstance(x,torch.Tensor)).shape[0]
@@ -175,7 +176,7 @@ class Harness:
             targets.append(dict(id=name,op=name,pct_step_time=pct,op_time_ms=op_ms,
                 eligible=name in self.config['allowed_ops'] and pct>=self.config['min_pct_step_time'],
                 shapes=[dict(args=e['description'],count=e['count']) for e in entries]))
-        ema=next((t for t in targets if t['id']=='ema_update' and t['eligible']),None)
+        ema=next((t for t in targets if t['id']=='ema_update'),None)
         if self.ema_bindings and ema:
             from kernel_evolution.fusion import arguments
             args=clone(arguments(self.ema_bindings))

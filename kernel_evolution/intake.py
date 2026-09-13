@@ -12,7 +12,7 @@ from kernel_evolution.llm import CodexOAuthLLM, SOURCE_SCHEMA
 from kernel_evolution.processes import run_worker
 
 EXCLUDED = {'.git', '.venv', 'venv', 'node_modules', '__pycache__', '.pytest_cache',
-            'runs', 'data', 'datasets', 'checkpoints', 'weights', '.codex', '.ssh', '.aws'}
+            'runs', 'data', 'datasets', 'checkpoints', 'weights', 'wandb', '.codex', '.ssh', '.aws'}
 SOURCE_SUFFIXES = {'.py', '.toml', '.yaml', '.yml', '.json', '.md', '.txt'}
 SECRET_NAMES = ('secret', 'credential', 'token', 'password', '.env', 'auth', 'netrc')
 
@@ -170,6 +170,7 @@ def resolve_input(args, cfg, archive, root):
         adapter = str(adapter_source)
         role_cfg = dict(cfg, adapter_llm=cfg.get('adapter_llm', cfg['planner_llm']))
         llm = CodexOAuthLLM(archive, role_cfg, args.run_dir, 'adapter')
+        llm.parent_trace_id=getattr(archive,'run_trace_id',None)
         messages = [{'role': 'system', 'content': (
             'Write only a PyTorch training adapter for the supplied repository. Return JSON {"source": "..."}. '
             'Required functions: build_model() -> torch.nn.Module; get_dataloader(split) -> iterable of batches; '
@@ -188,6 +189,7 @@ def resolve_input(args, cfg, archive, root):
     for attempt in attempts:
         try:
             if llm:
+                llm.repair=attempt
                 response = llm.complete(messages, json_mode=True, schema=SOURCE_SCHEMA)
                 source = response['source']
                 # Save every attempt, including syntax failures, for audit.

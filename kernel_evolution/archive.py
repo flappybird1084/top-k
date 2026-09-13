@@ -50,6 +50,9 @@ class Archive:
         columns={r['name'] for r in self.db.execute('PRAGMA table_info(lineages)')}
         for name,kind in [('fusion_of','TEXT'),('call_sites','INTEGER')]:
             if name not in columns:self.db.execute(f'ALTER TABLE lineages ADD COLUMN {name} {kind}')
+        columns={r['name'] for r in self.db.execute('PRAGMA table_info(llm_calls)')}
+        for name,kind in [('candidate_id','TEXT'),('trace_id','TEXT'),('weave_trace_url','TEXT'),('repair','INTEGER')]:
+            if name not in columns:self.db.execute(f'ALTER TABLE llm_calls ADD COLUMN {name} {kind}')
         self.db.commit()
 
     def rows(self, sql, args=()):
