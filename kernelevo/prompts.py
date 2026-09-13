@@ -64,9 +64,10 @@ def planner_prompt(targets, summary, lessons, n_jobs, generation, fuse_allowed,
             if fuse_allowed else
             "FUSE jobs are not allowed yet (first allowed at generation 2).\n")
     searchline = (
-        'Web search is available: to look up prior art or documentation before '
-        'planning, respond with ONLY {"search": "<query>"} and results will be '
-        'returned to you (up to 3 searches). Optional — respond with jobs '
+        'A research subagent is available: to have it investigate prior art or '
+        'documentation before you plan, respond with ONLY '
+        '{"research": "<question for the researcher>"} and its brief will be '
+        'returned to you (up to 2 dispatches). Optional — respond with jobs '
         'directly if you do not need it.\n' if search_enabled else "")
     return [
         {"role": "system", "content":

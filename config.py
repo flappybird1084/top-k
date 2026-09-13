@@ -66,6 +66,7 @@ _COMMON = dict(
     subagent_llm=None,
     curator_llm=None,
     adapter_llm=None,           # adapter-writing agent; falls back to subagent_llm
+    researcher_llm=None,        # planner-dispatched research subagent; falls back to planner_llm
     max_debug_turns=5,          # adapter-writer ingest-repair attempts (repo pipeline)
     anthropic_model="claude-sonnet-5",
     anthropic_subagent_model="claude-opus-5",

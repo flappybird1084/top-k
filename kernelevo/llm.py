@@ -163,6 +163,8 @@ class StubLLM(BaseLLM):
             kind = job["strategy"].split(":", 1)[1] if job["strategy"].startswith("stub:") else "pass"
             src = fixtures.make(job["lineage"], kind)
             return Response(f"```python\n{src}\n```")
+        if self.role == "researcher":
+            return Response('{"brief": "stub research brief: no findings (stub mode)"}')
         if self.role == "adapter":
             # fixture adapter: wraps the bundled JEPA demo so the whole repo
             # pipeline (clone -> write -> ingest-verify -> optimize) runs
@@ -192,6 +194,10 @@ class LLMPool:
         # repo comprehension is subagent-hard, so the adapter writer defaults to
         # the (first) subagent provider
         self.adapter = self._make(cfg.get("adapter_llm") or subs[0], "adapter")
+        # research subagent (planner-dispatched web search)
+        self.researcher = self._make(
+            cfg.get("researcher_llm") or cfg.get("planner_llm") or cfg["llm"],
+            "researcher")
 
     def _make(self, spec: str, role: str) -> BaseLLM:
         provider, _, model = spec.partition(":")

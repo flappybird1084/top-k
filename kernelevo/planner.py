@@ -18,27 +18,27 @@ def _parse_obj(text: str) -> dict:
     return json.loads(text[start:end + 1])
 
 
-MAX_SEARCH_ROUNDS = 3
+MAX_RESEARCH_ROUNDS = 2
 
 
 @weave_op
 def plan(llm, targets: dict, summary: dict, lessons: list[str],
-         n_jobs: int, generation: int, web_search: bool = False) -> list[dict]:
+         n_jobs: int, generation: int, web_search: bool = False,
+         researcher_llm=None) -> list[dict]:
     # NOTE: only pass what this needs — a full cfg dict here gets logged as
     # weave inputs and its unused provider defaults (e.g. anthropic_model)
     # read as if those models were in play.
+    from kernelevo import researcher as researchmod
     from kernelevo import websearch
     active = [l["op"] for l in targets["lineages"] if not l.get("retired")]
     fuse_allowed = generation >= 2
-    searx = web_search and websearch.available()
+    can_research = bool(web_search and websearch.available()
+                        and researcher_llm is not None)
     msgs = prompts.planner_prompt(targets, summary, lessons, n_jobs, generation,
-                                  fuse_allowed, search_enabled=searx)
-    # native provider search only when there's no SearXNG (Anthropic-only)
-    tools = ("web_search" if web_search and not searx and llm.supports_search
-             else None)
+                                  fuse_allowed, search_enabled=can_research)
     jobs = None
-    for round_ in range(MAX_SEARCH_ROUNDS + 1):
-        resp = llm.complete(msgs, json_mode=True, tools=tools,
+    for round_ in range(MAX_RESEARCH_ROUNDS + 1):
+        resp = llm.complete(msgs, json_mode=True,
                             meta={"active_lineages": active, "n_jobs": n_jobs,
                                   "generation": generation})
         try:
@@ -46,20 +46,17 @@ def plan(llm, targets: dict, summary: dict, lessons: list[str],
         except (ValueError, json.JSONDecodeError) as e:
             print(f"[planner] unparseable output ({e}); skipping generation")
             return []
-        query = obj.get("search")
-        if query and searx and round_ < MAX_SEARCH_ROUNDS:
-            try:
-                results = websearch.search(str(query))
-            except Exception as e:  # noqa: BLE001 — instance down ≠ lost generation
-                results = [{"error": f"search failed: {e}"}]
-            print(f"[planner] searched: {str(query)[:80]} "
-                  f"({len(results)} result(s))")
+        question = obj.get("research")
+        if question and can_research and round_ < MAX_RESEARCH_ROUNDS:
+            brief = researchmod.research(researcher_llm, str(question))
+            print(f"[planner] research: {str(question)[:70]} -> "
+                  f"{len(brief)} char brief")
             msgs = msgs + [
                 {"role": "assistant", "content": resp.text},
                 {"role": "user", "content":
-                 "Search results:\n" + json.dumps(results, indent=1) +
-                 f'\n\nContinue: another {{"search": "..."}} '
-                 f'({MAX_SEARCH_ROUNDS - 1 - round_} left) or the final '
+                 "Research brief:\n" + brief +
+                 f'\n\nContinue: one more {{"research": "..."}} '
+                 f'({MAX_RESEARCH_ROUNDS - 1 - round_} left) or the final '
                  f'{{"jobs": [...]}}.'}]
             continue
         jobs = obj.get("jobs")
