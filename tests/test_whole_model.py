@@ -66,6 +66,9 @@ class WholeModelTests(unittest.TestCase):
         config = {'seed': 1729, 'rtol': 1e-4, 'atol': 1e-2}
         with patch('kernel_evolution.whole_model.correctness_cases', return_value=[torch.ones(4, 3)]), patch('torch.cuda.synchronize'):
             records = capture_reference(baseline, config)
+            baseline_floor = check_reference(candidate, records, config, update_floor=True)
+            self.assertEqual(baseline_floor['update_max_abs'], 0.)
+            self.assertTrue(baseline_floor['update_floor_measurement'])
             check_reference(candidate, records, config)
             original_step = candidate.optimizer.step
             # Preserve optimizer moment evolution while suppressing parameter updates.
@@ -74,6 +77,10 @@ class WholeModelTests(unittest.TestCase):
                 original_step(*args, **kwargs)
                 candidate.model.load_state_dict(saved)
             candidate.optimizer.step = skip_update
+            floor = check_reference(candidate, records, config, update_floor=True)
+            self.assertGreater(floor['update_max_abs'], 1e-5)
+            # Measuring the numerical floor is explicit; normal verification
+            # continues to reject skipped updates.
             with self.assertRaises(AssertionError):
                 check_reference(candidate, records, config)
 

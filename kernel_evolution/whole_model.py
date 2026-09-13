@@ -165,11 +165,12 @@ def capture_reference(harness, config, *, eager=True, draws=3, steps=2):
     return records
 
 
-def check_reference(harness, records, config, *, eager=False):
+def check_reference(harness, records, config, *, eager=False, update_floor=False):
     from kernel_evolution.runtime import clone, seed_all
     from kernel_evolution.verifier import compare, compare_step_state
     original_batch = harness.batch
     errors = []
+    update_errors = []
     try:
         for record in records:
             harness.restore()
@@ -187,13 +188,18 @@ def check_reference(harness, records, config, *, eager=False):
                 # updates separately so doing no optimizer work cannot pass.
                 actual_delta = {name: actual[1][name] - actual_previous[name] for name, p in harness.model.named_parameters() if p.requires_grad}
                 expected_delta = {name: expected[1][name] - expected_previous[name] for name in actual_delta}
-                compare(actual_delta, expected_delta, config.get('update_rtol', config['rtol']), config.get('update_atol', 1e-7))
+                update_errors.append(compare(actual_delta, expected_delta,
+                    float('inf') if update_floor else config.get('update_rtol', config['rtol']),
+                    float('inf') if update_floor else config.get('update_atol', 1e-7)))
                 actual_previous, expected_previous = actual[1], expected[1]
     finally:
         harness.batch = original_batch
         harness.restore()
     return {'checks': len(errors), 'batches': len(records), 'sequential_steps': len(records[0]['states']),
-            'unseen_batches': 1, 'max_abs': max(x['max_abs'] for x in errors), 'max_rel': max(x['max_rel'] for x in errors)}
+            'unseen_batches': 1, 'max_abs': max(x['max_abs'] for x in errors), 'max_rel': max(x['max_rel'] for x in errors),
+            'update_max_abs': max(x['max_abs'] for x in update_errors),
+            'update_max_rel': max(x['max_rel'] for x in update_errors),
+            'update_floor_measurement': update_floor}
 
 
 def compare_training_paths(baseline, candidate, config, *, baseline_eager=True,
