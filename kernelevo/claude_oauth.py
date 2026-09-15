@@ -76,7 +76,12 @@ def complete_local(request):
             raise RuntimeError('Claude returned an empty or failed response.')
         if request.get('json_mode'):text=_unfence(text)
         usage=payload.get('usage') or {}
-        return dict(text=text,input_tokens=usage.get('input_tokens',0),
+        # input_tokens alone excludes the cached prompt (the bulk of every
+        # call) — run 1a2f11f3 reported '36 tokens in / 228,460 out'
+        tokens_in=(usage.get('input_tokens',0)
+                   +usage.get('cache_read_input_tokens',0)
+                   +usage.get('cache_creation_input_tokens',0))
+        return dict(text=text,input_tokens=tokens_in,
                     output_tokens=usage.get('output_tokens',0))
 
 
