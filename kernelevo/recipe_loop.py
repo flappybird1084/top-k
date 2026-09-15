@@ -66,11 +66,21 @@ def _execute_worker(job: dict, path_hint: str, timeout: int):
 
 @weave_op
 def _run_worker(job: dict, path_hint: str, timeout: int):
+    # authoring load-checks are plumbing, not evaluations — no event, or the
+    # diagram fills with dozens of 'Checking recipe' bubbles per generation
+    if job.get('check_only'):
+        result = _execute_worker(job, path_hint, timeout)
+        result['weave_trace_url'] = current_trace_url()
+        return result
     import uuid
-    eid=uuid.uuid4().hex
-    event=dict(id=eid,kind='architecture',kernel=os.path.basename(job['candidate_path']),
-               stage='Checking recipe' if job.get('check_only') else 'Training and evaluating held-out data',
-               strategy=str(job['train_seconds'])+'s training budget',started_at=time.time())
+    wcfg = (job.get('wandb') or {}).get('config') or {}
+    eid = uuid.uuid4().hex
+    event = dict(id=eid, kind=wcfg.get('phase') or 'architecture',
+                 kernel=os.path.basename(job['candidate_path']),
+                 stage='Training and evaluating held-out data',
+                 strategy=wcfg.get('strategy')
+                 or str(job['train_seconds']) + 's training budget',
+                 started_at=time.time())
     print('[evaluation] '+json.dumps(event),flush=True)
     try:
         result=_execute_worker(job,path_hint,timeout)

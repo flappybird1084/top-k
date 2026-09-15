@@ -212,6 +212,8 @@ def snapshot(jid):
             rows=[dict(r) for r in db.execute('SELECT c.*,l.op_name FROM candidates c JOIN lineages l ON c.lineage_id=l.id WHERE l.model_id=(SELECT MAX(id) FROM models) ORDER BY c.generation,c.id')]
             for row in rows:
                 candidate={k:row.get(k) for k in ('id','generation','strategy','accepted','gate_reached','step_time_ms','incumbent_step_time_ms','created_at','val_loss','phase','train_secs','model_params','parent_id','parents_json','model_name','failure_note','correct_ok')}
+                # basename only: evaluation-event dedupe key, never a full path
+                candidate['code_file']=str(row.get('code_path') or '').rsplit('/',1)[-1] or None
                 candidate['lineage_id']=row['op_name'];result['candidates'].append(candidate)
                 if row.get('weave_trace_url'):result['traces'].append(dict(id=str(row['id']),name=row['op_name'],url=row['weave_trace_url'],ended_at=0,error=None))
             result['architecture']={'candidates':[r for r in result['candidates'] if r.get('phase')]}
@@ -239,9 +241,19 @@ def snapshot(jid):
     archived=result.get('candidates',[])+result.get('architecture',{}).get('candidates',[])
     pending=[]
     for event in evaluation_history(root):
+        # authoring load-checks are plumbing, never diagram nodes (older runs'
+        # logs still contain their events)
+        if event.get('stage')=='Checking recipe':continue
+        kernel=str(event.get('kernel') or '')
+        # baselines are archived as generation-0 rows the moment they finish
+        if kernel=='BASELINE' and event.get('finished'):continue
         match=re.match(r'^(\d+)-',event['id'])
         generation=event.get('generation',int(match[1]) if match else None)
         if any(r.get('strategy')==event.get('strategy') and (generation is None or r.get('generation')==generation) for r in archived):continue
+        # recipe events name the candidate FILE; older ones carried a generic
+        # 'Ns training budget' strategy that never matched an archived row, so
+        # every evaluation lingered as a phantom bubble — dedupe by code_path
+        if kernel.endswith('.py') and any(r.get('code_file')==kernel for r in archived):continue
         event['generation']=generation
         event['state']='disconnected' if disconnected else 'awaiting_sync' if event.get('finished') else 'running' if status=='running' else 'interrupted'
         pending.append(event)

@@ -5,7 +5,11 @@ const provider=s=>/claude|anthropic/i.test(s||'')?'claude':/glm/i.test(s||'')?'g
 let replayStart=performance.now(),consoleTimer=null;
 let timer,tick=1,centered=false,latest=null;const models=new Map();
 function rowsFor(s,side){if(!s)return[];if(s.rows)return s.rows;const rows=(side==='architecture'?s.architecture?.candidates||[]:s.candidates||[]).map(r=>({...r,state:r.generation===0||r.phase==='baseline'?'baseline':r.state}));
- for(const [i,e]of(s.pending_evaluations||s.active_evaluations||[]).entries()){const parsed=/^(\d+)-/.exec(String(e.id||''));const generation=e.generation??(parsed?Number(parsed[1]):s.generation);rows.push({id:'active-'+(e.id||i),generation:generation??'pending',strategy:e.strategy||e.kernel,model_name:e.model_name,state:e.state||'running',failure_note:e.state==='disconnected'?'Connection lost. Last known stage: '+e.stage:e.state==='awaiting_sync'?'Evaluation finished; awaiting archive sync.':e.stage,started_at:e.started_at})}return rows;}
+ for(const [i,e]of(s.pending_evaluations||s.active_evaluations||[]).entries()){
+  // recipe worker plumbing (load-checks, generically-labelled budget ticks)
+  // is not a diagram node — without this, dozens of phantom bubbles pile up
+  if(e.stage==='Checking recipe'||/^\d+s training budget$/.test(e.strategy||''))continue;
+  const parsed=/^(\d+)-/.exec(String(e.id||''));const generation=e.generation??(parsed?Number(parsed[1]):s.generation);rows.push({id:'active-'+(e.id||i),generation:generation??'pending',strategy:e.strategy||e.kernel,model_name:e.model_name,state:e.state||'running',failure_note:e.state==='disconnected'?'Connection lost. Last known stage: '+e.stage:e.state==='awaiting_sync'?'Evaluation finished; awaiting archive sync.':e.stage,started_at:e.started_at})}return rows;}
 function brief(s){if(!s)return 'No run connected';const log=(s.activity||[]).filter(a=>/^\[(planner|recipe|loop|finals)\]/.test(a.message)).at(-1)?.message;if(!log)return s.message||'Waiting for proposals';return log.replace(/^\[\w+\]\s*/,'').replace(/\s*;.*$/,'').slice(0,170);}
 function state(r){return r.state||(r.accepted?'improved':r.failure_note&&!r.correct_ok?'failed':'dropped')}
 function shortLabel(r){return (r.title||r.strategy||'Candidate '+r.id).replace(/^(Implement |Keep |Preserve )/i,'').replace(/^a (custom autograd function |tensor-core-focused custom autograd function )?(using |with )?/i,'').split(/[.;]/)[0].split(/\s+/).slice(0,6).join(' ')}
