@@ -1,0 +1,13 @@
+This demo replays historical evidence. It does not launch a repository agent, GPU evaluation, or model training. Only the diagram has a playback clock. Performance and logs are complete on first load.
+
+Start at `/?demo=1`, submit the repository field, then follow the 26-second diagram replay to Performance. Architecture progresses through generations 1–3. Kernel search progresses through its actual five generations in the same 24 seconds. Final selection blocks then verify for two seconds and reveal the recorded winners. The sources are separate workloads, not a combined experiment.
+
+Architecture: platform job 75890bd0 maps to W&B run pwn5or77 in rianbutala-ucla/kernel-evolution. The W&B CLI downloaded output.log. Weave authoring and curator calls provide strategies, parent IDs, model identities, exact validation losses, and failure explanations. Kimi-K2.7-Code authored the recipes. Generation-3 candidate 24 descends from 16, then 8; final candidate 29 reaches 5.42578125 versus 5.84765625 after equal 300-second training budgets. Final values come from the source report; full-precision screening values come from Weave digests. The recorded stop reason is recipe_complete.
+
+Kernel: commit 660b6d9 and its immutable snapshot-1789288092293612000-35c7ab3e41d7 contain 37 candidate lifecycles across five generations. Final verification compares compiled PyTorch with the Astra-written candidate cand_04_04_3f280b. The headline is the median of four paired reductions, 3.300144840337499%, not the ratio of separately aggregated medians. All four pairs exceed 3.11%; eight full-state checks passed. Search measurements and final paired verification are shown separately.
+
+`architecture.json` and `kernel.json` contain the browser-safe evidence. `recorded-data.js` is generated from these sources for synchronous first paint. Raw W&B downloads and source calls remain ignored under jobs/video-source; credentials and raw model reasoning are not exported.
+
+`ui/recorded_notebook.py` produces the marimo HTML exports alongside the native W&B report panel. The exports contain all evaluation rows. Regenerate with the project marimo CLI and `--view architecture` or `--view kernel`.
+
+W&B CLI sync uploaded only a separate recorded-evidence run: topk-evidence-660b6d9. Original runs remain unchanged. Native reports are private drafts pending permission to share. integrations.json controls their embed URLs. W&B's app sends frame-ancestors 'self', so ARIA is linked to its native interface with a copyable analysis prompt rather than impersonated by a local chatbot. W&B supports undocking ARIA into its own window.

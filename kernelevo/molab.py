@@ -332,6 +332,20 @@ class MolabTarget:
 
         env_updates = dict(env_updates,
                            KEVO_RELAY_DIR=work + "/run/search_relay")
+        sandbox_setup = ''
+        if job.get('judge_expires_at'):
+            remaining = min(1800, int(float(job['judge_expires_at']) - time.time()))
+            if remaining < 60:
+                write_line('[molab] judging window ended before launch')
+                return 1
+            sandbox_setup = (
+                "sys.path.insert(0, _w)\n"
+                "_sandbox_ns = {}\n"
+                "exec(compile(open(_w + '/kernelevo/judges_sandbox.py').read(), _w + '/kernelevo/judges_sandbox.py', 'exec'), _sandbox_ns)\n"
+                "_sandbox_command = _sandbox_ns['user_command']\n"
+                f"_cmd = _sandbox_command(_w, _cmd, {int(job.get('judge_uid',0))})\n"
+                f"_cmd = ['/usr/bin/timeout', '--signal=TERM', '--kill-after=10', {str(remaining)!r}] + _cmd\n"
+            )
         ok, out, err = client.run(
             "import subprocess, os, sys, json, shlex\n"
             f"_w = {work!r}\n"
@@ -341,6 +355,7 @@ class MolabTarget:
             "        os.remove(_p)  # a stale exit file makes the poller think the new run died\n"
             f"_env = dict(os.environ); _env.update(json.loads({json.dumps(env_updates)!r}))\n"
             f"_cmd = [sys.executable, '-u'] + json.loads({json.dumps(args)!r})\n"
+            + sandbox_setup +
             "_sh = ' '.join(shlex.quote(c) for c in _cmd) + ' > job.log 2>&1; echo $? > job.exit'\n"
             "_p = subprocess.Popen(['bash', '-c', _sh], cwd=_w, env=_env,"
             " start_new_session=True)\n"

@@ -143,7 +143,7 @@ def _run_job(jid):
             # subprocess so each job runs the CURRENT dispatch code from disk,
             # even if this server process has been up for days
             env = dict(os.environ)
-            env["KEVO_REMOTE_ENV"] = json.dumps(_job_env(job))
+            env["KEVO_REMOTE_ENV"] = json.dumps({} if job.get("judge_expires_at") else _job_env(job))
             proc = subprocess.Popen(
                 [sys.executable, "-u", "-m", "kernelevo.molab_dispatch",
                  _job_path(jid), ROOT, os.path.join(JOBS_DIR, jid, "run")],
