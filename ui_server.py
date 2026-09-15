@@ -72,6 +72,9 @@ def validate_provider(job):
             if provider=='codex_oauth':
                 from kernelevo.codex_oauth import check_login
                 check_login()
+            if provider=='claude_oauth':
+                from kernelevo.claude_oauth import check_login
+                check_login()
             keys={'anthropic':('ANTHROPIC_API_KEY',),'openai':('OPENAI_API_KEY',),'wandb':('WANDB_INFERENCE_API_KEY','WANDB_API_KEY')}.get(provider,())
             if keys and not any(env.get(key) for key in keys):
                 raise ValueError('Training is not configured yet. Set '+ ' or '.join(keys)+' on the server, then retry. Your links are saved.')
