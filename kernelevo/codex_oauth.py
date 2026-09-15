@@ -69,6 +69,9 @@ def complete(request):
 
 
 class Relay:
+    label='Codex'
+    worker=staticmethod(complete_local)
+
     def __init__(self):
         self.pool=ThreadPoolExecutor(max_workers=2)
         self.pending={}
@@ -79,16 +82,16 @@ class Relay:
             if len(rid)!=32 or any(c not in '0123456789abcdef' for c in rid):continue
             if rid not in self.pending:
                 if len(self.pending)>=8:continue
-                self.pending[rid]=self.pool.submit(complete_local,request)
-                write_line('[agent] Request sent through local Codex OAuth session.')
+                self.pending[rid]=self.pool.submit(self.worker,request)
+                write_line(f'[agent] Request sent through local {self.label} OAuth session.')
             future=self.pending[rid]
             if not future.done():continue
             try:answer=future.result()
-            except Exception:answer={'error':'Codex OAuth request failed. Check server login and usage limits.'}
+            except Exception:answer={'error':f'{self.label} OAuth request failed. Check server login and usage limits.'}
             path=work+'/run/search_relay/'+rid+'.res.json'
             code=(f'from pathlib import Path\n_p=Path({path!r})\n'
                   f'_t=_p.with_suffix(".tmp"); _t.write_text({json.dumps(answer)!r}); _t.replace(_p)\nprint("OAUTH-OK")\n')
             ok,out,_=client.run(code)
             if ok and 'OAUTH-OK' in out:
                 del self.pending[rid]
-                write_line('[agent] Codex response delivered to GPU worker.')
+                write_line(f'[agent] {self.label} response delivered to GPU worker.')

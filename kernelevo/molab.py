@@ -370,8 +370,10 @@ class MolabTarget:
             return 1
         write_line(f"[molab] {out.strip().splitlines()[0]} — streaming remote log")
 
+        from kernelevo.claude_oauth import Relay as ClaudeRelay
         from kernelevo.codex_oauth import Relay
         oauth_relay = Relay()
+        claude_relay = ClaudeRelay()
         offset, misses = 0, 0
         last_archive_sync = 0.0
         while True:
@@ -431,7 +433,8 @@ class MolabTarget:
             if status.get("relay"):
                 try:
                     oauth_relay.service(client, work, [r for r in status["relay"] if r.get("kind")=="codex_oauth"], write_line)
-                    _service_relay(client, work, [r for r in status["relay"] if r.get("kind")!="codex_oauth"], write_line)
+                    claude_relay.service(client, work, [r for r in status["relay"] if r.get("kind")=="claude_oauth"], write_line)
+                    _service_relay(client, work, [r for r in status["relay"] if r.get("kind") not in ("codex_oauth", "claude_oauth")], write_line)
                 except Exception as e:  # noqa: BLE001 — relay is best-effort
                     write_line(f"[research-relay] servicing failed: {e}")
             if status["exit"] is not None:

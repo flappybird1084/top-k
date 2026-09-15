@@ -65,6 +65,21 @@ class CodexOAuthLLM(BaseLLM):
         return 0.0
 
 
+class ClaudeOAuthLLM(BaseLLM):
+    """Claude via the local Claude Code / Agent SDK session (subscription
+    OAuth); rides the dispatcher relay on remote sandboxes, same as codex."""
+    provider = "claude_oauth"
+
+    def complete(self, messages, *, json_mode=False, tools=None, meta=None):
+        from kernelevo.claude_oauth import complete
+        answer=complete(dict(messages=messages,json_mode=json_mode,model=self.model))
+        return self._track(Response(**answer))
+
+    def usage_usd(self):
+        # Subscription usage is counted in tokens; it is not API dollar billing.
+        return 0.0
+
+
 class AnthropicLLM(BaseLLM):
     provider = "anthropic"
     supports_search = True
@@ -222,6 +237,8 @@ class LLMPool:
             llm = StubLLM(role)
         elif provider == "codex_oauth":
             llm = CodexOAuthLLM(model, self.cfg["max_llm_tokens"])
+        elif provider == "claude_oauth":
+            llm = ClaudeOAuthLLM(model, self.cfg["max_llm_tokens"])
         elif provider == "anthropic":
             default = (self.cfg["anthropic_subagent_model"] if role == "subagent"
                        else self.cfg["anthropic_model"])

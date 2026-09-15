@@ -32,7 +32,7 @@ def main():
                     help="config profile; default from KERNELEVO_PROFILE, else DEV")
     ap.add_argument("--llm", default=None,
                     help="override LLM provider for all roles (stub|anthropic|openai|wandb"
-                         "[:model])")
+                         "|codex_oauth|claude_oauth[:model])")
     ap.add_argument("--lineage", default=None, help="restrict the run to one lineage")
     ap.add_argument("--out", default=None, help="output dir (default runs/<name>-<ts>)")
     ap.add_argument("--max-generations", type=int, default=None)
