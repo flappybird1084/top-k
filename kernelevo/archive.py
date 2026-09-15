@@ -31,7 +31,9 @@ CREATE TABLE IF NOT EXISTS candidates (
   accepted INTEGER, failure_note TEXT, flags TEXT, created_at REAL,
   -- recipe-golf columns (null for kernel candidates)
   val_loss REAL, phase TEXT, train_secs REAL, model_params INTEGER,
-  arch_fp TEXT);
+  arch_fp TEXT,
+  -- authoring LLM usage for this candidate (all attempts summed)
+  tokens_in INTEGER, tokens_out INTEGER);
 CREATE TABLE IF NOT EXISTS generations (
   id INTEGER PRIMARY KEY, model_id INTEGER, started_at REAL, finished_at REAL,
   n_candidates INTEGER, n_accepted INTEGER, llm_usd REAL, stop_reason TEXT,
@@ -52,11 +54,12 @@ class Archive:
         self.db.executescript(SCHEMA)
         # archives persist across relaunches of a job; add columns introduced
         # after the archive was created (no-op error when they already exist)
-        for col in ("tokens_in INTEGER", "tokens_out INTEGER"):
-            try:
-                self.db.execute(f"ALTER TABLE generations ADD COLUMN {col}")
-            except sqlite3.OperationalError:
-                pass
+        for table in ("generations", "candidates"):
+            for col in ("tokens_in INTEGER", "tokens_out INTEGER"):
+                try:
+                    self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col}")
+                except sqlite3.OperationalError:
+                    pass
         self.db.commit()
 
     def _insert(self, table: str, row: dict) -> int:

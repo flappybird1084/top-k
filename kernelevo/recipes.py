@@ -236,11 +236,15 @@ def author_recipe(llm, phase, job, base_source, parent_source, loss_source,
                                   model_report=model_report)
     result = dict(strategy=job["strategy"], parent=job.get("parent"),
                   model_name=llm.model, code_path=None, repairs_used=0,
-                  load_ok=False, failure_note=None)
+                  load_ok=False, failure_note=None, tokens_in=0, tokens_out=0)
     for attempt in range(max_repairs + 1):
         resp = llm.complete(msgs, meta={"recipe_phase": phase["kind"], "job": job,
                                         "fallback_source": fallback_source or base_source,
                                         "attempt": attempt})
+        # summed from each response (exact per-candidate; pool-level deltas
+        # would race across the parallel authoring threads)
+        result["tokens_in"] += resp.input_tokens
+        result["tokens_out"] += resp.output_tokens
         path = save_fn(extract_code(resp.text), attempt)
         result.update(code_path=path, repairs_used=attempt)
         ok, note = check_fn(path)

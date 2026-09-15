@@ -394,6 +394,9 @@ GENS_T = """{% if trail %}
    <tr><td>strategy</td><td>{{ c['strategy'] }}</td></tr>
    <tr><td>gate reached</td><td>{{ c['gate_reached'] }} / 4
        (repairs used: {{ c['repairs_used'] }})</td></tr>
+   {% if c.get('tokens_in') or c.get('tokens_out') %}<tr><td>tokens</td>
+    <td>{{ '{:,}'.format(c.get('tokens_in') or 0) }} in /
+        {{ '{:,}'.format(c.get('tokens_out') or 0) }} out</td></tr>{% endif %}
    {% if c['latency_us'] %}<tr><td>isolation latency</td>
     <td>{{ '%.1f'|format(c['latency_us']) }}µs vs incumbent
         {{ '%.1f'|format(c['incumbent_latency_us']) }}µs</td></tr>{% endif %}

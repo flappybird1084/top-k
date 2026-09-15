@@ -254,7 +254,8 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, only_lineage: str | None = N
                 incumbent_step_time_ms=res.get("incumbent_step_time_ms"),
                 samples_per_s=res.get("samples_per_s"), mfu=res.get("mfu"),
                 accepted=int(bool(res.get("accepted"))),
-                failure_note=res.get("failure_note"), flags=res.get("flags"))
+                failure_note=res.get("failure_note"), flags=res.get("flags"),
+                tokens_in=res.get("tokens_in", 0), tokens_out=res.get("tokens_out", 0))
             mirror.log_candidate(op, res)
             if res.get("accepted"):
                 n_accepted += 1

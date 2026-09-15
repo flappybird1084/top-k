@@ -86,3 +86,38 @@ def test_precision_cast_policy():
     # default when key absent is bf16
     out = _apply_precision(nn.Linear(4, 4), {}, "cuda")
     assert out.weight.dtype == torch.bfloat16
+
+
+def test_author_recipe_accumulates_tokens(tmp_path):
+    from kernelevo.llm import Response
+    from kernelevo.recipes import author_recipe
+
+    class FakeLLM:
+        model = "fake"
+        calls = 0
+        def complete(self, msgs, meta=None):
+            FakeLLM.calls += 1
+            return Response("```python\nx=1\n```", input_tokens=100, output_tokens=40)
+
+    checks = iter([(False, "nope"), (True, "")])
+    out = author_recipe(FakeLLM(), dict(kind="architecture", train_seconds=1),
+                        dict(strategy="s"), "base", None, "loss", 10, [],
+                        max_repairs=1,
+                        save_fn=lambda src, a: str(tmp_path / f"c{a}.py"),
+                        check_fn=lambda p: next(checks))
+    assert out["tokens_in"] == 200 and out["tokens_out"] == 80  # 2 attempts summed
+    assert out["load_ok"] and out["repairs_used"] == 1
+
+
+def test_candidate_token_columns_migrate(tmp_path):
+    import sqlite3
+    from kernelevo.archive import Archive
+    old = tmp_path / "old.sqlite"
+    db = sqlite3.connect(old)
+    db.executescript("CREATE TABLE candidates (id INTEGER PRIMARY KEY, lineage_id INTEGER, created_at REAL);"
+                     "CREATE TABLE generations (id INTEGER PRIMARY KEY, model_id INTEGER, started_at REAL);")
+    db.close()
+    a = Archive(str(old))
+    cid = a.add_candidate(lineage_id=1, tokens_in=123, tokens_out=45)
+    row = a.candidate(cid)
+    assert row["tokens_in"] == 123 and row["tokens_out"] == 45

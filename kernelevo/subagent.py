@@ -31,6 +31,7 @@ def _run_candidate(job: dict, job_index: int, generation: int, ctx) -> dict:
         source_kind="fusion" if str(job["strategy"]).upper().startswith("FUSE") else "mutation",
         gate_reached=0, compile_ok=False, correct_ok=False, repairs_used=0,
         code_path=None, source_hash=None, flags=None, failure_note=None,
+        tokens_in=0, tokens_out=0,
         weave_trace_url=current_trace_url(),
     )
 
@@ -40,6 +41,8 @@ def _run_candidate(job: dict, job_index: int, generation: int, ctx) -> dict:
             result["failure_note"] = f"[infra] aborted before attempt {attempt}: {why}"
             return result
         resp = llm.complete(messages, meta={"job": job, "attempt": attempt})
+        result["tokens_in"] += resp.input_tokens
+        result["tokens_out"] += resp.output_tokens
         src = extract_code(resp.text)
         name = f"gen{generation}_{op}_{job_index}_a{attempt}.py"
         path = os.path.join(ctx.candidates_dir, name)

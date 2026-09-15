@@ -272,6 +272,8 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                        phase=phase["kind"], train_secs=phase["train_seconds"],
                        compile_ok=int(a.get("load_ok", False)), correct_ok=0,
                        gate_reached=0, accepted=0,
+                       tokens_in=a.get("tokens_in", 0),
+                       tokens_out=a.get("tokens_out", 0),
                        failure_note=a.get("failure_note"))
             if a.get("load_ok"):
                 parent = parents_by_id.get(job.get("parent"))
