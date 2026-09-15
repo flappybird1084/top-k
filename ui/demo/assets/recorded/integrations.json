@@ -1,0 +1,14 @@
+{
+  "architecture": {
+    "wandb_report_url": "https://wandb.ai/rianbutala-ucla/kernel-evolution/reports/Top-Kernel-\u00b7-architecture-recorded-results--VmlldzoxNzkyNTE3NQ==",
+    "wandb_embed_url": null,
+    "report_pending": true,
+    "wandb_url": "https://wandb.ai/rianbutala-ucla/kernel-evolution/runs/topk-evidence-660b6d9"
+  },
+  "kernel": {
+    "wandb_report_url": "https://wandb.ai/rianbutala-ucla/kernel-evolution/reports/Top-Kernel-\u00b7-kernel-recorded-results--VmlldzoxNzkyNTE3Ng==",
+    "wandb_embed_url": null,
+    "report_pending": true,
+    "wandb_url": "https://wandb.ai/rianbutala-ucla/kernel-evolution/runs/topk-evidence-660b6d9"
+  }
+}

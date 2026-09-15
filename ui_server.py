@@ -197,6 +197,12 @@ def static_ui(name):
     response=send_from_directory(UI,name);response.headers['Cache-Control']='no-store';return response
 @app.get('/assets/<path:name>')
 def assets(name):return send_from_directory(UI/'assets',name)
+@app.get('/demo/')
+@app.get('/demo/<path:name>')
+def recorded_demo(name='index.html'):
+    if Path(name).suffix.lower() not in {'.html','.js','.css','.png','.svg','.json','.woff2','.ttf'}:
+        return jsonify(error='Not found'),404
+    return send_from_directory(UI/'demo',name)
 @app.get('/api/runs/<jid>')
 def run_api(jid):return snapshot(jid)
 

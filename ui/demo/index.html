@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head><script>if(!new URLSearchParams(location.search).has("demo")){const u=new URL(location.href);u.searchParams.set("demo","1");location.replace(u.href)}</script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Top-Kernel</title><meta name="description" content="Start with your repository. Evolve faster training kernels."><link rel="stylesheet" href="front.css?v=local-fonts-1"><script src="front.js?v=20" defer></script></head>
+<body>
+
+<main>
+<div class="sprites" aria-label="Built with CoreWeave, marimo, and Weights & Biases">
+<div class="sprite coreweave" tabindex="0"><img src="assets/coreweave-sprite.png" alt="CoreWeave pixel sprite" width="100" height="100"><span>CoreWeave</span></div>
+<div class="sprite marimo" tabindex="0"><img src="assets/marimo-sprite.png" alt="marimo pixel sprite" width="100" height="100"><span>marimo</span></div>
+<div class="sprite wandb" tabindex="0"><img src="assets/wandb-sprite.png" alt="Weights & Biases pixel sprite" width="100" height="100"><span>W&B</span></div>
+</div>
+<h1><span class="project-name">Top-K<small>ernel</small></span></h1>
+<form id="repo-form" novalidate>
+<label class="sr-only" for="repository">Repository URL</label>
+<div class="repo-field"><span class="repo-icon" aria-hidden="true">↳</span><input id="repository" name="repository" type="text" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="Paste your repository or branch URL" aria-describedby="form-note" required><button type="submit" aria-label="Continue with this repository"><span aria-hidden="true">↗</span></button></div>
+<p id="form-note" role="status"></p>
+<section id="agent-flow" aria-label="Agent progress" hidden>
+<div id="agent-progress" role="progressbar" aria-label="Repository review progress" aria-valuemin="0" aria-valuemax="6" aria-valuenow="0"><span></span></div>
+<div class="flow-heading"><span>AGENT ACTIVITY</span><button id="stop-flow" type="button">Stop</button></div>
+<ol id="agent-events" aria-live="polite" aria-relevant="additions text"></ol>
+
+</section>
+<label class="mode-choice"><span>Optimize</span><select id="search-mode" aria-label="Optimization mode"><option value="recipe">Architecture</option><option value="kernel" selected>Kernels</option><option value="both">Both</option></select></label></form>
+</main>
+<footer><span>CoreWeave Hacks</span></footer>
+<dialog id="data-dialog" aria-labelledby="data-title" aria-describedby="data-caption">
+<button id="close-data" type="button" aria-label="Close data dialog">×</button>
+<h2 id="data-title">Data?</h2>
+<p id="data-caption">Add the Hugging Face or data link for your training run.</p>
+<p id="discovery-summary"></p><div id="dataset-options"></div>
+<form id="data-form" novalidate>
+<label class="sr-only" for="data-link">Hugging Face or data repository URL</label>
+<div class="repo-field"><input id="data-link" type="text" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="huggingface.co/datasets/…" aria-describedby="data-error"><button type="submit" aria-label="Use training data">↗</button></div>
+<p id="data-error" role="alert"></p>
+</form>
+<div id="data-check" hidden><span class="spinner" aria-hidden="true"></span><p id="data-check-text" role="status"></p></div>
+</dialog>
+</body></html>
