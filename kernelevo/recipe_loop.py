@@ -196,6 +196,7 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
         nonlocal gen_index
         gen_index += 1
         gen_id = archive.start_generation(model_id)
+        tok_in0, tok_out0 = pool.total_tokens()
         outs = []
         n_acc = 0
         # authoring runs 8-wide; each candidate's (serial, GPU-exclusive)
@@ -345,7 +346,15 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                                      default=None),
             })
         ex.shutdown(wait=True)
-        archive.finish_generation(gen_id, len(outs), n_acc, pool.total_usd())
+        tok_in, tok_out = pool.total_tokens()
+        gen_tok_in, gen_tok_out = tok_in - tok_in0, tok_out - tok_out0
+        archive.finish_generation(gen_id, len(outs), n_acc, pool.total_usd(),
+                                  tokens_in=gen_tok_in, tokens_out=gen_tok_out)
+        print(f"[generation] g{gen_index} done: {len(outs)} candidate(s), "
+              f"{n_acc} accepted — {gen_tok_in:,} tokens in / "
+              f"{gen_tok_out:,} out")
+        mirror._log({"gen/tokens_in": gen_tok_in, "gen/tokens_out": gen_tok_out,
+                     "generation": gen_index})
 
         # curator lessons
         if pool.total_usd() < cfg["spend_cap_usd"]:

@@ -382,7 +382,9 @@ GENS_T = """{% if trail %}
 {% for g in evo['generations'] %}
 <details class=gen id="gen-{{ g['n'] }}" {{ 'open' if loop.last }}>
  <summary>generation {{ g['n'] }} — {{ g['cands']|length }} candidate(s),
-  {{ g['n_acc'] }} accepted</summary>
+  {{ g['n_acc'] }} accepted{% if g.get('tokens_in') %} ·
+  {{ '{:,}'.format(g['tokens_in']) }} tok in /
+  {{ '{:,}'.format(g['tokens_out'] or 0) }} out{% endif %}</summary>
  {% for c in g['cands'] %}
  <details class=cand id="cand-{{ c['id'] }}">
   <summary><span class="pill {{ c['pill'] }}">{{ c['op_name'] }}</span>
@@ -424,6 +426,9 @@ JOB = """
 <p class=muted id=stageline>{{ job.get('stage','') }}</p>
 <table>
  <tr><td>target</td><td>{{ job.get('repo') or job.get('adapter') }}</td></tr>
+ <tr><td>optimization</td><td>{{ 'recipe — training-recipe evolution (val loss at fixed wall-clock)'
+     if job.get('mode') == 'recipe'
+     else 'kernel — Triton kernel evolution (training-step time)' }}</td></tr>
  <tr><td>profile / llm</td><td>{{ job['profile'] }} / {{ job.get('llm') or '(profile default)' }}</td></tr>
  <tr><td>max debug turns</td><td>{{ job['max_debug_turns'] }}</td></tr>
  <tr><td>execution</td><td>{{ job['execution_target'] }}</td></tr>
@@ -578,6 +583,17 @@ def _job_evolution(jid):
             "JOIN lineages l ON c.lineage_id = l.id "
             "WHERE l.model_id = (SELECT MAX(id) FROM models) "
             "ORDER BY c.generation, c.id")]
+        # per-generation LLM token usage (generations rows for the latest
+        # model, in order, are generations 1..N)
+        gen_tokens = {}
+        try:
+            for i, g in enumerate(db.execute(
+                    "SELECT tokens_in, tokens_out FROM generations "
+                    "WHERE model_id = (SELECT MAX(id) FROM models) ORDER BY id")):
+                gen_tokens[i + 1] = dict(tokens_in=g["tokens_in"],
+                                         tokens_out=g["tokens_out"])
+        except sqlite3.Error:   # archive predates the token columns
+            pass
         db.close()
     except sqlite3.Error:
         return None
@@ -657,7 +673,8 @@ def _job_evolution(jid):
         n_accepted=len(accepted) if not recipe_mode else
             sum(1 for r in rows if r["accepted"] and r["generation"] > 0),
         generations=[{"n": g, "cands": cs,
-                      "n_acc": sum(1 for c in cs if c["accepted"])}
+                      "n_acc": sum(1 for c in cs if c["accepted"]),
+                      **gen_tokens.get(g, {})}
                      for g, cs in sorted(gens.items())])
 
 

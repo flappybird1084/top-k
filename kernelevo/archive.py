@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS candidates (
   arch_fp TEXT);
 CREATE TABLE IF NOT EXISTS generations (
   id INTEGER PRIMARY KEY, model_id INTEGER, started_at REAL, finished_at REAL,
-  n_candidates INTEGER, n_accepted INTEGER, llm_usd REAL, stop_reason TEXT);
+  n_candidates INTEGER, n_accepted INTEGER, llm_usd REAL, stop_reason TEXT,
+  tokens_in INTEGER, tokens_out INTEGER);
 CREATE TABLE IF NOT EXISTS lessons (
   id INTEGER PRIMARY KEY, generation_id INTEGER, model_id INTEGER, text TEXT);
 """
@@ -49,6 +50,13 @@ class Archive:
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        # archives persist across relaunches of a job; add columns introduced
+        # after the archive was created (no-op error when they already exist)
+        for col in ("tokens_in INTEGER", "tokens_out INTEGER"):
+            try:
+                self.db.execute(f"ALTER TABLE generations ADD COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass
         self.db.commit()
 
     def _insert(self, table: str, row: dict) -> int:
@@ -146,11 +154,13 @@ class Archive:
     def start_generation(self, model_id) -> int:
         return self._insert("generations", dict(model_id=model_id, started_at=time.time()))
 
-    def finish_generation(self, gen_id, n_candidates, n_accepted, llm_usd, stop_reason=None):
+    def finish_generation(self, gen_id, n_candidates, n_accepted, llm_usd,
+                          stop_reason=None, tokens_in=None, tokens_out=None):
         self.db.execute(
             "UPDATE generations SET finished_at=?, n_candidates=?, n_accepted=?, "
-            "llm_usd=?, stop_reason=? WHERE id=?",
-            (time.time(), n_candidates, n_accepted, llm_usd, stop_reason, gen_id))
+            "llm_usd=?, stop_reason=?, tokens_in=?, tokens_out=? WHERE id=?",
+            (time.time(), n_candidates, n_accepted, llm_usd, stop_reason,
+             tokens_in, tokens_out, gen_id))
         self.db.commit()
 
     def set_stop_reason(self, gen_id, reason):

@@ -259,6 +259,12 @@ class LLMPool:
     def total_usd(self) -> float:
         return sum(llm.usage_usd() for llm in self._instances)
 
+    def total_tokens(self) -> tuple[int, int]:
+        """(input, output) tokens summed across all role providers — snapshot
+        at generation start, diff at finish for per-generation accounting."""
+        return (sum(llm._in_tokens for llm in self._instances),
+                sum(llm._out_tokens for llm in self._instances))
+
 
 def extract_code(text: str) -> str:
     blocks = re.findall(r"```(?:python)?\s*\n(.*?)```", text, re.DOTALL)
