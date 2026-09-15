@@ -30,7 +30,7 @@ document.querySelector('#search-mode').addEventListener('change',()=>{requestKey
 input.addEventListener('input',()=>{if(!runId)requestKey=crypto.randomUUID()});
 async function api(path,options={}) {
   const response=await fetch(path,{...options,headers:{'Content-Type':'application/json',...options.headers},signal:AbortSignal.timeout(15000)});
-  if(response.status===401){location.href='/login.html';throw Error('Sign in required')}
+  if(response.status===401)throw Error('Sign in with GitHub to continue.');
   const result=await response.json();if(!response.ok)throw Error(result.error||'Request failed');return result;
 }
 function message(text){note.textContent=text;note.classList.toggle('error',!!text)}

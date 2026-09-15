@@ -25,6 +25,8 @@ def create_app():
     app.secret_key = os.environ['JUDGES_SESSION_SECRET']
     signer = URLSafeTimedSerializer(app.secret_key, salt='judges-visitor')
     origin = 'https://top-kernel-demo.andre520395.chatgpt.site'
+    from github_signin import GitHubSignIn
+    github = GitHubSignIn(app, origin)
     expires_at = float(os.environ['JUDGES_EXPIRES_AT'])
     app.config.update(MAX_CONTENT_LENGTH=16384, SESSION_COOKIE_SECURE=True,
                       SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax')
@@ -37,14 +39,25 @@ def create_app():
 
     @app.before_request
     def authenticate_gateway():
+        if request.path in ('/auth/github/login', '/auth/github/callback') and request.method == 'GET':
+            return None
         if request.headers.get('Origin') != origin:
             return jsonify(error='Origin rejected'), 403
         if request.method == 'OPTIONS':
             return '', 204
         if request.method not in ('GET', 'POST', 'HEAD'):
             return jsonify(error='Method not allowed'), 405
+        if request.path in ('/api/auth/config', '/api/auth/me', '/api/auth/logout'):
+            return None
+        if github.enabled:
+            user = github.identity()
+            if not user:
+                return jsonify(error='Sign in with GitHub to continue.'), 401
+            g.visitor = user['id']
         if request.method == 'POST' and time.time() >= expires_at:
             return jsonify(error='The live judging window has ended.'), 410
+        if github.enabled:
+            return None
         if request.path == '/api/session':
             return None
         try:
@@ -54,6 +67,8 @@ def create_app():
 
     @app.post('/api/session')
     def new_session():
+        if github.enabled:
+            return jsonify(error='Use GitHub sign-in.'), 401
         return jsonify(token=signer.dumps(secrets.token_hex(24)))
 
     @app.after_request
@@ -64,7 +79,7 @@ def create_app():
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
         response.headers['Vary'] = 'Origin'
         response.headers['X-Content-Type-Options'] = 'nosniff'
-        response.headers['Referrer-Policy'] = 'same-origin'
+        response.headers.setdefault('Referrer-Policy', 'same-origin')
         return response
 
     def owned(jid):
