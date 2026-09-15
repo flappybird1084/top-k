@@ -223,6 +223,15 @@ def snapshot(jid):
             if baseline:result['baseline_ms']=baseline
             gens=db.execute('SELECT id,stop_reason FROM generations WHERE model_id=(SELECT MAX(id) FROM models) ORDER BY id DESC LIMIT 1').fetchone()
             if gens:result.update(generation=gens['id'],stop_reason=gens['stop_reason'])
+            try:  # per-generation metadata (older archives lack the token columns)
+                result['generations']=[
+                    dict(n=i+1,n_candidates=g['n_candidates'],n_accepted=g['n_accepted'],
+                         llm_usd=g['llm_usd'],tokens_in=g['tokens_in'],tokens_out=g['tokens_out'])
+                    for i,g in enumerate(db.execute(
+                        'SELECT n_candidates,n_accepted,llm_usd,tokens_in,tokens_out '
+                        'FROM generations WHERE model_id=(SELECT MAX(id) FROM models) ORDER BY id'))]
+            except sqlite3.Error:
+                result['generations']=[]
     urls=re.findall(r'https://wandb.ai/[\w.-]+/[\w.-]+/runs/[\w]+',log)
     if urls:result['integrations']['wandb_url']=urls[-1]
     weave=re.findall(r'https://wandb.ai/[\w.-]+/[\w.-]+/weave',log)
