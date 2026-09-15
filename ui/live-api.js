@@ -1,6 +1,6 @@
 'use strict';
 (() => {
- const backend='https://cancel-permanent-enlarge-sent.trycloudflare.com';
+ const backend='https://top-k.andredlcruz.com';
  const original=window.fetch.bind(window), key='top-k-github-session-v1';
  let user=null, popup=null, config=null, accountButton, accountStatus;
  const headers=()=>({'Authorization':'Bearer '+(localStorage.getItem(key)||'')});
