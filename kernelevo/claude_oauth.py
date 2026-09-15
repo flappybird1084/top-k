@@ -14,6 +14,7 @@ import time
 import uuid
 
 from kernelevo import codex_oauth
+from kernelevo.obs import weave_op
 
 
 def _unfence(text):
@@ -70,7 +71,11 @@ def complete_local(request):
                     output_tokens=usage.get('output_tokens',0))
 
 
+@weave_op
 def complete(request):
+    # Traced explicitly: Weave autopatches the anthropic/openai SDKs, but this
+    # provider never makes an in-process SDK call (CLI subprocess locally, file
+    # relay on remotes) — this op is the per-call prompt->response trace.
     relay=os.getenv('KEVO_RELAY_DIR')
     if not relay:return complete_local(request)
     root=Path(relay);root.mkdir(parents=True,exist_ok=True)
