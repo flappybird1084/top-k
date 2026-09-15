@@ -66,6 +66,14 @@ eval; gates load/param_cap/arch_lock/sanity), `kernelevo/recipe_loop.py`
 knobs exposed in the web form and via `--recipe-json`). DEV schedule ≈ 42 min
 GPU: 2×8×60s arch + 1×8×120s hyperparam + 2×300s finals. Wall-clock budgets
 introduce ±1-step noise in val loss — `loss_margin_rel` absorbs it.
+Audit-driven invariants (run ef48abdf): planner/subagents receive a
+ground-truth `model_report` (instantiated module inventory + class sources) so
+strategies can't "introduce" features the repo already ships; the harness owns
+precision (`cfg["recipe"]["precision"]`, default bf16, cast uniformly onto
+baseline AND candidates so throughput levers are equal); every evaluated
+candidate gets a mechanical `[recipe-diff]` line (params Δ, module-inventory
+Δ, schedule/hints, steps) that also feeds the planner's outcomes — trust the
+diff, never the strategy prose.
 
 ## Running and testing
 

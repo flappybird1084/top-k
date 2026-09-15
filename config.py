@@ -148,6 +148,8 @@ RECIPE = dict(
     subagent_parallelism=8,
     recipe_max_repairs=2,       # authoring repairs (raw feedback) before the slot is lost
     eval_timeout_grace_s=150,   # worker timeout = train_seconds + grace
+    precision="bf16",           # HARNESS-owned dtype for baseline AND candidates
+                                # (uniform — throughput levers must be equal)
 )
 
 import copy as _copy

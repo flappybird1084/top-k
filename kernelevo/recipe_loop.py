@@ -124,6 +124,21 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
     param_cap = int(info["n_params"] * rc["param_budget_ratio"])
     base_source = _base_source(adapter_spec, adapter)
     loss_source = _loss_source(adapter)
+    precision = rc.get("precision", "bf16")
+
+    # ground-truth model report for the planner/subagents + baseline module
+    # inventory for the label-vs-diff line (audit: run ef48abdf spent two
+    # generations "introducing" features the repo already shipped, sight unseen)
+    try:
+        _m = adapter.build_model()
+        model_report = recipes.model_report(_m)
+        base_modules = recipes.module_inventory(_m)
+        del _m
+        import gc
+        gc.collect()
+    except Exception as e:  # noqa: BLE001 — the report is an aid, never a blocker
+        print(f"[recipe] model report unavailable ({e}); prompts go without it")
+        model_report, base_modules = None, {}
 
     model_id = archive.add_model(
         name=model_name, adapter_path=adapter_spec, n_params=info["n_params"],
@@ -153,6 +168,7 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
         job = dict(base_adapter=adapter_name, candidate_path="BASELINE",
                    train_seconds=secs, eval_batches=rc["eval_batches"],
                    seed=cfg["seed"], device=cfg["device"], param_cap=None,
+                   precision=precision,
                    wandb=wmeta(f"baseline-{secs}s", "baseline",
                                "baseline", secs))
         r = _run_worker(job, os.path.join(cand_dir, f"baseline_{secs}s"),
@@ -210,7 +226,7 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                     base_adapter=adapter_name, candidate_path=path,
                     train_seconds=0, eval_batches=1, seed=cfg["seed"],
                     device=cfg["device"], param_cap=param_cap,
-                    check_only=True), path, 240)
+                    precision=precision, check_only=True), path, 240)
                 return bool(r.get("ok")), (r.get("note") or r.get("gate") or "")
 
             llm = pool.subagent_for(i)
@@ -219,7 +235,8 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                 recipes.author_recipe, llm, phase, job, base_source,
                 parent_src, loss_source, param_cap, lessons,
                 rc["recipe_max_repairs"], save_fn, check_fn,
-                recipes.baseline_recipe_source(adapter_name))
+                recipes.baseline_recipe_source(adapter_name),
+                model_report)
             fut_to_job[fut] = job
 
         authored = []
@@ -254,7 +271,7 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                     train_seconds=phase["train_seconds"],
                     eval_batches=rc["eval_batches"], seed=cfg["seed"],
                     device=cfg["device"], param_cap=param_cap,
-                    expected_arch_fp=expected_fp,
+                    precision=precision, expected_arch_fp=expected_fp,
                     wandb=wmeta(f"g{gen_index}-s{job.get('_idx', 0)}",
                                 phase["kind"], a["strategy"],
                                 phase["train_seconds"])), a["code_path"],
@@ -275,6 +292,23 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                           f"{baseline[phase['train_seconds']]:.4f} ({delta:+.2f}%)"
                           f"{' ACCEPTED' if accepted else ''} — "
                           f"{a['strategy'][:70]}")
+                    # mechanical label-vs-diff line: what ACTUALLY changed,
+                    # independent of the strategy prose
+                    dparams = r["n_params"] - info["n_params"]
+                    bits = [f"params {dparams / 1e6:+.1f}M" if dparams else
+                            "params unchanged"]
+                    mod_d = recipes.inventory_diff(base_modules,
+                                                   r.get("modules") or {})
+                    bits.append(f"modules: {mod_d}" if mod_d
+                                else "modules unchanged")
+                    if r.get("has_lr_schedule"):
+                        bits.append("+lr_schedule")
+                    if r.get("hints"):
+                        bits.append(f"hints={r['hints']}")
+                    if r.get("steps") is not None:
+                        bits.append(f"{r['steps']} steps")
+                    row["diff"] = " | ".join(bits)
+                    print(f"[recipe-diff] #{job.get('_idx', 0)}: {row['diff']}")
                 else:
                     note = r.get("note") or r.get("gate")
                     row.update(gate_reached=1, correct_ok=0,
@@ -286,7 +320,8 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                     wmeta(f"g{gen_index}-s{job.get('_idx', 0)}", phase["kind"],
                           a["strategy"], phase["train_seconds"]),
                     "author_failed", a.get("failure_note"))
-            cid = archive.add_candidate(**row)
+            cid = archive.add_candidate(**{k: v for k, v in row.items()
+                                           if k != "diff"})
             row["id"] = cid
             outs.append(row)
             base_v = baseline[phase["train_seconds"]]
@@ -340,8 +375,10 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                 model=model_name, params=info["n_params"], param_cap=param_cap,
                 baseline_val_loss_by_budget=baseline,
                 batch=info["samples_per_batch"])
+            # 'diff' is the mechanical record of what each candidate actually
+            # changed — the planner reasons from it, not from strategy prose
             outcomes = [{k: r.get(k) for k in ("phase", "strategy", "val_loss",
-                                               "failure_note")}
+                                               "failure_note", "diff")}
                         for r in results_all[-16:]]
             print(f"\n=== recipe {phase['kind']} generation {gen_index + 1} — "
                   f"spend ${pool.total_usd():.2f} ===")
@@ -351,7 +388,8 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
             msgs = recipes.recipe_planner_prompt(phase, base_summary, outcomes,
                                                  lessons, phase["candidates"],
                                                  parents,
-                                                 research_enabled=can_research)
+                                                 research_enabled=can_research,
+                                                 model_report=model_report)
             jobs, research_used, empty_retry = [], 0, False
             for _ in range(5):
                 resp = pool.planner.complete(
@@ -410,6 +448,7 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
             base_adapter=adapter_name, candidate_path=fr["code_path"],
             train_seconds=fsecs, eval_batches=rc["eval_batches"],
             seed=cfg["seed"], device=cfg["device"], param_cap=param_cap,
+            precision=precision,
             wandb=wmeta(f"final-s{fi}", "finals", fr["strategy"], fsecs)),
             fr["code_path"], fsecs + rc["eval_timeout_grace_s"])
         if not r.get("ok"):

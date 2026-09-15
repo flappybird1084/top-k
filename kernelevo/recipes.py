@@ -50,6 +50,13 @@ STRONGLY prefer importing the repo's model classes and modifying only what the
 strategy names (subclass, patch modules, adjust config) over reimplementing
 the model from scratch — a rebuild silently loses unstated details (positional
 encodings, norm placement, init, auxiliary pathways) and reliably scores worse.
+If the strategy asks to ADD something the model report shows is ALREADY
+PRESENT, do not invent a substitute change to justify the label: state the
+fact in your file's docstring and make no change beyond the strategy's other
+components — an honestly-measured no-op teaches the planner more than a
+smuggled unrelated edit. Do not bundle extras the strategy did not name
+(learning-rate schedules, precision changes, size changes); the harness logs
+a mechanical diff of every candidate, so undeclared changes are visible.
 """
 
 HP_RULES = """\
@@ -87,10 +94,62 @@ def arch_fingerprint(model) -> str:
     return hashlib.sha256(json.dumps(sig).encode()).hexdigest()[:16]
 
 
+def module_inventory(model) -> dict:
+    """Counter of module class names — the mechanical 'what is this model made
+    of' record used for the label-vs-diff line."""
+    from collections import Counter
+    return dict(Counter(type(m).__name__ for m in model.modules()))
+
+
+def inventory_diff(base: dict, cand: dict) -> str:
+    """Human-readable module-inventory delta ('' when structurally identical)."""
+    if not base or not cand:
+        return ""
+    parts = []
+    for name in sorted(set(base) | set(cand)):
+        d = cand.get(name, 0) - base.get(name, 0)
+        if d:
+            parts.append(f"{'+' if d > 0 else ''}{d} {name}")
+    return ", ".join(parts)
+
+
+def model_report(model, max_chars: int = 9000) -> str:
+    """Ground-truth report of the ACTUAL instantiated baseline model, given to
+    the planner and subagents so strategies are proposed against reality
+    instead of a guessed-at architecture (run ef48abdf spent two generations
+    'introducing' RMSNorm/SwiGLU/RoPE/Muon that the repo already shipped).
+
+    Contents: parameter count, module-class inventory, and the source of each
+    distinct module class (via inspect), capped."""
+    import inspect
+    n_params = sum(p.numel() for p in model.parameters())
+    inv = module_inventory(model)
+    lines = [f"total parameters: {n_params:,}",
+             "module classes (name: count): " +
+             ", ".join(f"{k}: {v}" for k, v in sorted(inv.items()))]
+    seen, budget = set(), max_chars - sum(len(l) for l in lines)
+    for m in model.modules():
+        cls = type(m)
+        if cls.__name__ in seen or cls.__module__.startswith("torch."):
+            continue
+        seen.add(cls.__name__)
+        try:
+            src = inspect.getsource(cls)
+        except (OSError, TypeError):
+            continue
+        chunk = f"\n### class {cls.__name__}\n```python\n{src[:2500]}\n```"
+        if budget - len(chunk) < 0:
+            lines.append("\n(further class sources omitted for length)")
+            break
+        lines.append(chunk)
+        budget -= len(chunk)
+    return "\n".join(lines)
+
+
 # ------------------------------------------------------------------ planner
 
 def recipe_planner_prompt(phase, base_summary, outcomes, lessons, n_jobs, parents,
-                          research_enabled=False):
+                          research_enabled=False, model_report=None):
     rules = ("propose ARCHITECTURE/optimizer modification strategies"
              if phase["kind"] == "architecture" else
              "propose HYPERPARAMETER-tuning strategies (architecture is frozen)")
@@ -115,7 +174,11 @@ def recipe_planner_prompt(phase, base_summary, outcomes, lessons, n_jobs, parent
         {"role": "user", "content":
          f"Phase: {phase['kind']} (train budget {phase['train_seconds']}s per "
          f"candidate). Propose at most {n_jobs} jobs — {rules}.\n\n"
-         f"## Baseline / target\n{json.dumps(base_summary, indent=1)}\n"
+         f"## Baseline / target\n{json.dumps(base_summary, indent=1)}\n" +
+         (f"\n## Baseline model — ground truth (instantiated structure and "
+          f"class sources)\nVerify every strategy against this: proposing to "
+          f"ADD a feature listed below wastes the slot on a no-op.\n"
+          f"{model_report}\n" if model_report else "") +
          f"{parent_txt}\n"
          f"## Previous outcomes this run\n{json.dumps(outcomes, indent=1)}\n"
          "(strategies that FAILED TO AUTHOR were never evaluated — their idea "
@@ -131,7 +194,7 @@ def recipe_planner_prompt(phase, base_summary, outcomes, lessons, n_jobs, parent
 # ----------------------------------------------------------------- subagent
 
 def recipe_subagent_prompt(phase, strategy, base_source, parent_source,
-                           loss_source, param_cap, lessons):
+                           loss_source, param_cap, lessons, model_report=None):
     rules = ARCH_RULES if phase["kind"] == "architecture" else HP_RULES
     current = parent_source or base_source
     return [
@@ -143,7 +206,9 @@ def recipe_subagent_prompt(phase, strategy, base_source, parent_source,
          f"\nParameter cap: {param_cap:,} total parameters.\n"
          f"Held-out signal: mean val loss after {phase['train_seconds']}s of "
          f"training (harness-owned).\n\n"
-         f"## Strategy to implement\n{strategy}\n\n"
+         f"## Strategy to implement\n{strategy}\n\n" +
+         (f"## Baseline model — ground truth (instantiated structure and "
+          f"class sources)\n{model_report}\n\n" if model_report else "") +
          f"## Current recipe / architecture (your starting point)\n"
          f"```python\n{current[:14000]}\n```\n\n"
          f"## Harness-owned loss function (your model must stay compatible)\n"
@@ -162,12 +227,13 @@ def repair_prompt(note):
 @weave_op
 def author_recipe(llm, phase, job, base_source, parent_source, loss_source,
                   param_cap, lessons, max_repairs, save_fn, check_fn,
-                  fallback_source=None):
+                  fallback_source=None, model_report=None):
     """One recipe-candidate lifecycle: write file, cheap load-check, repair on
     raw feedback. Heavy (budgeted-train) evaluation happens later, serially."""
     from kernelevo.llm import extract_code
     msgs = recipe_subagent_prompt(phase, job["strategy"], base_source,
-                                  parent_source, loss_source, param_cap, lessons)
+                                  parent_source, loss_source, param_cap, lessons,
+                                  model_report=model_report)
     result = dict(strategy=job["strategy"], parent=job.get("parent"),
                   model_name=llm.model, code_path=None, repairs_used=0,
                   load_ok=False, failure_note=None)
