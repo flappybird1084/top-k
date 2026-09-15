@@ -31,7 +31,20 @@ def check_login():
                          '@anthropic-ai/claude-code) and sign in with `claude`.')
 
 
+RETRY_DELAY_S = 30
+
+
 def complete_local(request):
+    """One retry after RETRY_DELAY_S: transient CLI failures (rate-window
+    brushes, stream hiccups) shouldn't cost a candidate slot as [infra]."""
+    try:
+        return _complete_once(request)
+    except (RuntimeError, subprocess.TimeoutExpired):
+        time.sleep(RETRY_DELAY_S)
+        return _complete_once(request)
+
+
+def _complete_once(request):
     # Empty working directory so no repo instructions/CLAUDE.md leak into what
     # is deliberately a text-only provider invocation; --max-turns 1 plus the
     # tool denylist keeps print mode from acting like an agent. Headless -p

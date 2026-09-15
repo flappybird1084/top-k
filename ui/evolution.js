@@ -46,11 +46,11 @@ function architectureRender(snapshot){
    const b=baseByBudget.get(r.train_secs);
    const delta=Number.isFinite(r.val_loss)&&b?100*(b-r.val_loss)/b:null;
    const cls=r.accepted?'improved':Number.isFinite(r.val_loss)?'not-improved':'failed';
-   const label=r.accepted?'Improved':Number.isFinite(r.val_loss)?'Not improved':'Failed';
+   const label=r.accepted?'Improved':Number.isFinite(r.val_loss)?'Not improved':'Failed'+(r.repairs_used>0?' · '+r.repairs_used+(r.repairs_used===1?' repair':' repairs'):'');
    const head=Number.isFinite(r.val_loss)
     ?`val ${r.val_loss.toFixed(4)}${delta!=null?` (${delta>=0?'+':''}${delta.toFixed(2)}% vs baseline)`:''} — ${r.strategy||''}`
     :`${(r.failure_note||'failed to evaluate')} — ${r.strategy||''}`;
-   return `<details class="cand-row" data-key="c${r.id}"${open.has('c'+r.id)?' open':''}><summary><span class="pill ${cls}">${label}</span><span class="cand-head">${escapeHTML(head)}</span></summary><div class="cand-body"><p>${escapeHTML(r.strategy||'')}</p><dl>${r.model_params?`<div><dt>Parameters</dt><dd>${(r.model_params/1e6).toFixed(1)}M</dd></div>`:''}${Number.isFinite(r.val_loss)?`<div><dt>Val loss</dt><dd>${r.val_loss.toFixed(4)} @${r.train_secs}s</dd></div>`:''}${r.model_name?`<div><dt>Agent model</dt><dd>${escapeHTML(r.model_name)}</dd></div>`:''}${r.parent_id?`<div><dt>Parent</dt><dd>#${r.parent_id}</dd></div>`:''}${r.failure_note?`<div><dt>Failure</dt><dd>${escapeHTML(String(r.failure_note).slice(0,600))}</dd></div>`:''}</dl></div></details>`;
+   return `<details class="cand-row" data-key="c${r.id}"${open.has('c'+r.id)?' open':''}><summary><span class="pill ${cls}">${label}</span><span class="cand-head">${escapeHTML(head)}</span></summary><div class="cand-body"><p>${escapeHTML(r.strategy||'')}</p><dl>${r.model_params?`<div><dt>Parameters</dt><dd>${(r.model_params/1e6).toFixed(1)}M</dd></div>`:''}${Number.isFinite(r.val_loss)?`<div><dt>Val loss</dt><dd>${r.val_loss.toFixed(4)} @${r.train_secs}s</dd></div>`:''}${Number.isFinite(r.repairs_used)?`<div><dt>Repairs used</dt><dd>${r.repairs_used}</dd></div>`:''}${r.model_name?`<div><dt>Agent model</dt><dd>${escapeHTML(r.model_name)}</dd></div>`:''}${r.parent_id?`<div><dt>Parent</dt><dd>#${r.parent_id}</dd></div>`:''}${r.failure_note?`<div><dt>Failure</dt><dd>${escapeHTML(String(r.failure_note).slice(0,600))}</dd></div>`:''}</dl></div></details>`;
   }).join('')+`</details>`;
  }).join('');
 }

@@ -28,11 +28,33 @@ def test_complete_local_parses_result(tmp_path, monkeypatch):
 def test_complete_local_rejects_empty(tmp_path, monkeypatch):
     from kernelevo import claude_oauth
     _fake_claude(tmp_path, {"type": "result", "subtype": "success", "result": ""}, monkeypatch)
+    monkeypatch.setattr(claude_oauth, "RETRY_DELAY_S", 0)
     try:
         claude_oauth.complete_local({"messages": []})
         assert False, "empty response should raise"
     except RuntimeError:
         pass
+
+
+def test_complete_local_retries_transient_failure(tmp_path, monkeypatch):
+    """First CLI invocation fails, second succeeds — the 30s-backoff retry
+    (delay pinned to 0 here) turns a transient failure into a result."""
+    import json as _json
+    import os as _os
+    import stat as _stat
+    from kernelevo import claude_oauth
+    marker = tmp_path / "tries"
+    ok = _json.dumps({"type": "result", "subtype": "success", "result": "second try",
+                      "usage": {"input_tokens": 1, "output_tokens": 2}})
+    exe = tmp_path / "claude"
+    exe.write_text("#!/bin/sh\ncat > /dev/null\n"
+                   f"if [ -f {marker} ]; then echo '{ok}'; else touch {marker}; exit 1; fi\n")
+    exe.chmod(exe.stat().st_mode | _stat.S_IEXEC)
+    monkeypatch.setenv("PATH", str(tmp_path) + _os.pathsep + _os.environ.get("PATH", ""))
+    monkeypatch.setattr(claude_oauth, "RETRY_DELAY_S", 0)
+    out = claude_oauth.complete_local({"messages": [{"role": "user", "content": "x"}]})
+    assert out["text"] == "second try"
+    assert marker.exists()
 
 
 def test_relay_request_kind(tmp_path, monkeypatch):

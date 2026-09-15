@@ -211,7 +211,7 @@ def snapshot(jid):
             db.row_factory=sqlite3.Row
             rows=[dict(r) for r in db.execute('SELECT c.*,l.op_name FROM candidates c JOIN lineages l ON c.lineage_id=l.id WHERE l.model_id=(SELECT MAX(id) FROM models) ORDER BY c.generation,c.id')]
             for row in rows:
-                candidate={k:row.get(k) for k in ('id','generation','strategy','accepted','gate_reached','step_time_ms','incumbent_step_time_ms','created_at','val_loss','phase','train_secs','model_params','parent_id','parents_json','model_name','failure_note','correct_ok')}
+                candidate={k:row.get(k) for k in ('id','generation','strategy','accepted','gate_reached','step_time_ms','incumbent_step_time_ms','created_at','val_loss','phase','train_secs','model_params','parent_id','parents_json','model_name','failure_note','correct_ok','repairs_used')}
                 # basename only: evaluation-event dedupe key, never a full path
                 candidate['code_file']=str(row.get('code_path') or '').rsplit('/',1)[-1] or None
                 candidate['lineage_id']=row['op_name'];result['candidates'].append(candidate)
