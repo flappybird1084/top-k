@@ -1,9 +1,10 @@
-# Findings — kernel evolution + recipe golf, 2026-09-12/13 session
+# Findings — kernel evolution + recipe golf, 2026-09-12/14 session
 
-Everything learned building and running the system end to end: 10+ jobs,
-2 target repos, two search modes (Triton kernels; training recipes), remote
-GPU runs on molab RTX PRO 6000 Blackwell sandboxes, ≈$45–50 of the $100 W&B
-credit spent.
+Everything learned building and running the system end to end: 12+ jobs,
+2 target repos, two search modes (Triton kernels; training recipes), three
+LLM providers exercised live (Kimi on W&B Inference; Claude Sonnet 5 via
+subscription OAuth; stub), remote GPU runs on molab RTX PRO 6000 Blackwell
+sandboxes, ≈$70–75 of the $100 W&B credit spent.
 
 | file | contents |
 |---|---|
@@ -26,11 +27,19 @@ credit spent.
   matched behaviorally), the fused `linear_cross_entropy` boundary (5.4% of
   step) — but no kernel was accepted at DEV search scale; the funded RUN search
   was stopped by user at calibration.
-- **Recipe-golf mode** (staged evolution over training recipes): first
-  completed search delivered **−7.21% held-out val loss at a 5-minute budget**
-  (cyclic-lr schedule on a parallel-block/reduced-KV architecture), with
-  measured horizon compression (proxy +15% → finals +7.21%) vindicating
-  finals re-training over proxy rank.
+- **Recipe-golf mode** (staged evolution over training recipes): two completed
+  searches — **−7.21%** and **−4.85% held-out val loss at a 5-minute budget**
+  (the second ≈23% perplexity at equal wall-clock, $24.39 LLM spend). In
+  **both**, the matched-budget finals overturned the proxy leader — horizon
+  compression is a replicated observation, and the clearest single lesson:
+  short-budget screening rewards short-horizon tricks (the second run's
+  founding "RoPE win" was actually an ablation of the repo's long-horizon
+  stabilizers; the search later re-added one and confirmed it scored worse).
+- **Provider-agnosticism proven live**: a `claude_oauth` provider (Claude
+  Sonnet 5 through the local Claude subscription, relayed keylessly to the
+  sandbox, $0 metered) ran the kernel search end to end on branch
+  `rian-claude-agent-sdk` — same gates, same discipline; its first CE kernel
+  was correctly rejected at a dead tie with inductor (7706.9 vs 7704.2µs).
 - **The 09-13 incident chain** (02, bugs 25–28): an uncapped download killed
   by a timeout drove the adapter agent to a reward-hack (synthetic tokens
   behind fictional mount-point checks) that no correctness gate can see —

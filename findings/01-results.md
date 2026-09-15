@@ -72,6 +72,32 @@ margins calibrated per run from measured noise (typically 3% in-model).
   bf16-quantized ln 50304). With real FineWeb-Edu (run b3c7b7aa, capped 10M
   tokens): 60s → 6.6137, 120s → 6.3979, 300s → 5.5222 (191/384/961 steps).
   The floor signature is now the documented tripwire for fake data.
+- **Second completed search (job b3c7b7aa): −4.85% val loss at 300s**
+  (5.5222 → 5.2546, ≈23% perplexity at equal wall-clock) for $24.39 LLM
+  spend, despite losing 7/8 hyperparam candidates to bug 29. Winner: the
+  gen-2 crossover of gen 1's two best ideas — lean attention (QK-norm +
+  value-embedding ablation) × RMSNorm-everywhere.
+- **Finals upset replicated**: the best proxy candidate (hot-LR, +8.48% at
+  120s) compressed to +4.64% at 300s and lost to the architecture crossover
+  (+4.85%) — the second consecutive run where matched-budget finals
+  overturned the screening leader. Horizon compression is a replicated
+  property of short-budget screening, not a one-off.
+- **Horizon dependence, measured from the inside**: the winning lineage's
+  founding "win" (+4.56% at 60s) came from *removing* the repo's QK-norm and
+  value-embedding pathway — long-horizon stabilizers that only cost step
+  time at 191 steps. Gen 2 re-added QK-norm and scored worse (6.4041 vs
+  parent 6.3122): the search ran the ablation in both directions and agreed.
+  Recipe wins are claims about the evaluated horizon, nothing longer.
+
+## Claude provider first light (job c00e9711, kernel mode, 09-14)
+
+- `claude_oauth:sonnet` (Claude Sonnet 5 via subscription OAuth + relay, $0
+  metered spend) ran the kernel search end to end: calibration cheats
+  rejected, Weave-traced completions, relay round-trips stable.
+- Gate-3 discipline on a dead tie: Sonnet's streaming-logsumexp
+  cross_entropy kernel measured **7706.9µs vs the inductor incumbent's
+  7704.2µs** — functionally identical performance, correctly rejected
+  against the 3% margin.
 
 ## Verifier integrity (every run)
 

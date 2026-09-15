@@ -67,10 +67,44 @@
   patch the repo model.
 - **Label vs diff**: a "GQA win" turned out to be the repo's own kv_group=4
   pushed further — strategy prose oversells; only diffs and numbers count.
+- **Label vs diff, second data point (b3c7b7aa)**: gen 1's best candidate,
+  labeled "Add RoPE to queries and keys" — the repo *already has RoPE*. The
+  diff showed the +4.56% actually came from what the rewrite silently
+  dropped: QK-norm and the value-embedding pathway (its added RoPE duplicated
+  the repo's, its explicit 1/√d scale is SDPA's default, its wpe-zeroing
+  zeroed nothing). A correctly-measured ablation wearing a fictional label.
+  Gen 2 then re-added QK-norm and scored worse — the search validated the
+  ablation empirically without ever knowing what it was.
+- **Objective literalism**: the search deletes long-horizon machinery (QK-norm,
+  value embeddings) because the objective is val-loss-at-60s and those only
+  cost step time there. Not misbehavior — the scarier version: precise
+  optimization of exactly what was asked. The staged finals are the working
+  countermeasure (proxy leaders lost the finals in both completed runs).
+- **Param-cap repair behavior**: a "widen hidden ~10%" candidate came out at
+  563.4M vs the 529.0M cap, got the raw cap error verbatim, and busted the
+  cap on both repairs — some strategies are unimplementable under their
+  constraints, and the planner's "failed to author = untested idea" re-offer
+  is the right recycling path.
 - The recipe planner, like the kernel planner, has never voluntarily used the
   research subagent — offered `{"research": "<question>"}` each generation,
   it goes straight to jobs every time. Forcing one gen-1 dispatch is the
   known two-line fix if we want it exercised.
+
+## Claude Sonnet 5 as subagent/planner (claude_oauth, job c00e9711, 09-14)
+
+- **Strategy verbosity is a different species from Kimi's**: planner
+  strategies arrive as full implementation specs — block sizes (BLOCK_M=64,
+  BLOCK_N=64, BLOCK_K=32), num_warps/num_stages, fp32-accumulation notes,
+  autograd.Function structure — where Kimi wrote 1–3 sentences. Whether
+  spec-density improves gate passage is exactly what the per-candidate
+  `model_name` column will answer.
+- **Agentic habits leak into a text-provider role**: one call tried to invoke
+  `ToolSearch` three times instead of answering (bug 32) — Claude Code's
+  agent training surfacing where only a completion was wanted. Needed
+  explicit "you have NO tools" framing plus turn headroom to recover.
+- First gate outcome: a correct-looking CE kernel at a dead performance tie
+  with inductor (rejected, gate 3) — consistent with the standing analysis
+  that memory-bound single ops offer no headroom regardless of author.
 
 ## Costs & latency (W&B serverless, 481M-scale prompts)
 

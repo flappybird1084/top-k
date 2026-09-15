@@ -87,22 +87,49 @@ Baselines 10.8750 / 10.8750 / 10.8438 = entropy floor in bf16 ulps — the
 search signal was pure noise. Killed at generation 1, ≈$1.77. → bug 25's
 DATA-rule hardening + 1800s timeout.
 
-## Job b3c7b7aa — the recovery run (in flight at time of writing)
+## Job b3c7b7aa — the recovery run: **−4.85% val loss, second finals upset**
 Same specs, fixed prompts. Attempt 1: truncated file (`ids = ` SyntaxError).
 Attempt 2: adapter *correct* — streamed a capped 10M-token FineWeb-Edu slice,
 whole probe passes in 6s — but hung at interpreter exit (bug 26), manually
 reaped. Attempt 3: verified in seconds on the warm cache. Real-data baselines:
 **60s → 6.6137, 120s → 6.3979, 300s → 5.5222** (vs the noise run's flat
-10.87). Generation 1 underway ($1.35 at start; planner strategies: extra
-layers, SwiGLU FFN, Lion optimizer). The self-repair trail of this run —
-timeout → OOM → wrong signature → truncation → exit-hang → verified — is the
-demo material for the fail→recover story.
+10.87).
+- **Gen 1 (arch, 60s)**: 5/8 accepted — best +4.56% ("Add RoPE", actually a
+  QK-norm + value-embedding *ablation*, see 04); SwiGLU/RMSNorm +3.43%; MQA
+  +2.81%; +2 layers +2.45%; sliding-window +1.53%. Lion evaluated but worse
+  (7.04). One candidate burned both repairs on the param cap (563.4M vs
+  529.0M) and was dropped pre-GPU — the cap gate costing seconds, not a slot.
+- **Gen 2 (recombination)**: both crossovers of gen 1's top two ideas took
+  the lead — lean-attention × RMSNorm-everywhere **6.2350 (+5.73%)** and the
+  mirror-image 6.2596 (+5.35%). Re-adding QK-norm to the ablation parent
+  scored *worse* (6.4041) — the search empirically confirmed the ablation.
+- **Gen 3 (hyperparam, 120s)**: 7/8 candidates destroyed by a partial
+  hot-patch (bug 29, `[infra]`-tagged, no false lessons). The lone survivor —
+  lr bracketed *upward* on the gen-2 leader — posted the run's best proxy:
+  **5.8557 (+8.48% at 120s)**.
+- **Finals (300s)**: hot-LR compressed to +4.64% (5.2662) and **lost** to the
+  gen-2 architecture crossover: winner **5.2546 (+4.85%**, ≈23% perplexity
+  reduction at equal wall-clock**)**. Second consecutive finals upset of the
+  proxy leader. Total LLM spend **$24.39**; exit 0, 107 artifacts synced.
+
+## Job c00e9711 — first claude_oauth run (kernel mode, in flight 09-14)
+modern-lm DEV, `--llm claude_oauth:sonnet` (Claude Sonnet 5 via the local
+Claude subscription, relay-transported — spend $0.00 by construction). New
+provider verified end to end in production: relay round-trips, Weave-traced
+completions, calibration cheats rejected. Gen 1: cross_entropy kernel reached
+gate 3 and was correctly rejected at a dead tie (7706.9 vs 7704.2µs); one
+swiglu slot lost to bug 32 (ToolSearch under --max-turns 1), fixed on branch
+`rian-claude-agent-sdk`. Profile note: DEV threshold admitted sub-5% lineages
+(CE 1.55%, rms 0.96%) — swiglu (29.4%) is the real target.
 
 ## Aggregate
-- Credit spent ≈ $45–50 of $100 (authoritative meter: wandb.ai/subscriptions).
+- Credit spent ≈ $70–75 of $100 (authoritative meter: wandb.ai/subscriptions);
+  claude_oauth runs add $0 (subscription).
 - Kernel mode — accepted kernels: 1 (nanochat rms_norm). Correct-but-slower:
-  2 (CE, rms at 481M). Cheats rejected: every calibration, 9/9 runs. The
-  RUN-scale kernel search has never completed a generation.
-- Recipe mode — completed searches: 1 (75890bd0, −7.21% val at 300s); one
-  cap-truncated (+2.29% at gen 1); one noise run caught and killed; one
-  recovery run in flight.
+  3 (CE ×2, rms at 481M). Cheats rejected: every calibration. The RUN-scale
+  kernel search has never completed a generation.
+- Recipe mode — completed searches: **2** (75890bd0 −7.21%; b3c7b7aa −4.85%,
+  hobbled by the gen-3 wipeout); one cap-truncated (+2.29% at gen 1); one
+  noise run caught and killed. **Both completed searches saw the proxy leader
+  lose the matched-budget finals** — horizon compression is now a replicated
+  observation, not an anecdote.
