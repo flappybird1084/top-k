@@ -1,5 +1,7 @@
 # Top-Kernel
 
+[**Open the website ↗**](https://top-kernel-demo.andre520395.chatgpt.site/?demo=1)
+
 **Evolutionary search over training recipes and Triton kernels, run by LLM agents, judged only by deterministic measurement.**
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
