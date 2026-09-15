@@ -259,7 +259,9 @@ FORM = """
  <input type=number name=spend_cap step=0.5 min=1 placeholder="e.g. 20">
  <label>llm override (blank = from profile)</label>
  <select name=llm><option value="">(from profile)</option><option>stub</option>
-  <option>anthropic</option><option>openai</option><option>wandb</option></select>
+  <option>anthropic</option><option>openai</option><option>wandb</option>
+  <option>claude_oauth:sonnet</option><option>claude_oauth:opus</option>
+  <option>claude_oauth:haiku</option><option>codex_oauth</option></select>
  <label>execution target</label>
  <select name=execution_target>
   <option value=molab>molab remote — runs on the notebook's GPU</option>
