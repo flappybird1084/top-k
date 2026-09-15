@@ -78,6 +78,7 @@ def list_jobs():
 def masked(job):
     j = dict(job)
     j.pop("molab", None)
+    j.pop("molab_connection", None)  # pasted pair prompt contains the token
     if j.get("wandb", {}).get("api_key"):
         j["wandb"] = {**j["wandb"], "api_key": "••••"}
     return j
