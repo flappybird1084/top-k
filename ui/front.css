@@ -110,3 +110,4 @@ form{position:relative}#agent-flow{position:absolute;top:100%;left:0;width:100%;
 .settings-actions button[type=submit]{background:#26362b;color:#fff}
 .settings-actions button[type=submit]:hover{background:#147662}
 @media(max-width:600px){#settings-dialog{padding:29px 24px}.settings-grid,.settings-grid.three{grid-template-columns:1fr 1fr}}
+.repo-field button{display:inline-flex;align-items:center;justify-content:center;line-height:1;padding:0}

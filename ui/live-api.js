@@ -164,7 +164,7 @@
   const style=document.createElement('link');style.rel='stylesheet';style.href='/github-auth.css?v=7';document.head.append(style);
   gate=document.createElement('section');gate.className='github-gate';gate.setAttribute('aria-labelledby','github-gate-title');
   gate.classList.toggle('landing-gate',isLanding);
-  gate.innerHTML='<div class="github-gate-card"><button type="button" class="github-gate-close" aria-label="Close sign-in">×</button><p class="github-gate-kicker">Top-Kernel</p><h1 id="github-gate-title">Sign in to continue</h1><p class="github-gate-copy">Repository analysis, agent traces, and performance results are private.</p></div>';
+  gate.innerHTML='<div class="github-gate-card"><button type="button" class="github-gate-close" aria-label="Close sign-in">×</button><p class="github-gate-kicker">Top-Kernel</p><h1 id="github-gate-title">Sign in to continue</h1></div>';
  gateButton=document.createElement('button');gateButton.type='button';gateButton.textContent='Checking GitHub sign-in…';gateButton.disabled=true;
   gateStatus=document.createElement('p');gateStatus.className='github-gate-status';gateStatus.setAttribute('role','status');
   gate.querySelector('.github-gate-card').append(gateButton,gateStatus);document.body.prepend(gate);
@@ -176,7 +176,7 @@
   repoForm?.addEventListener('submit',event=>{
    if(user||!isLanding)return;
    event.preventDefault();event.stopImmediatePropagation();
-   gate.hidden=false;paint('Sign in with GitHub to enter.');
+   gate.hidden=false;paint('');
    if(config?.enabled)beginSignIn();
   },true);
 
