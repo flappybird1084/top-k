@@ -178,6 +178,16 @@ def _run_job(jid):
                 write_line(line)
             rc = proc.wait()
         else:
+            # A visitor's (public) job must never run on the operator's own box:
+            # the local branch runs search.py directly under the server's full
+            # environment (operator ANTHROPIC_API_KEY / WANDB_API_KEY included),
+            # which would hand a stranger the operator's credentials. Public runs
+            # always go to the visitor's own notebook via molab; refuse anything
+            # else rather than trusting KEVO_UI_TARGET config to be set safely.
+            if job.get("visitor") or job.get("judge_expires_at"):
+                raise RuntimeError(
+                    "Public runs must execute on the visitor's own notebook; "
+                    "local execution is not available for this job.")
             run_dir = os.path.join(JOBS_DIR, jid, "run")
             cmd = [sys.executable, "-u", "search.py", "--profile", job["profile"],
                    "--out", run_dir]

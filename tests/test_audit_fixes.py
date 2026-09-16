@@ -163,3 +163,76 @@ def test_set_stop_reason_roundtrip(tmp_path):
     a.set_stop_reason(gid, "recipe_complete")
     row = a.db.execute("SELECT stop_reason FROM generations WHERE id=?", (gid,)).fetchone()
     assert row["stop_reason"] == "recipe_complete"
+
+
+# ---- review fix: the search relay stamps the per-run token the policy needs ----
+
+def test_search_relay_request_carries_the_run_token(tmp_path, monkeypatch):
+    """The dispatcher's RelayPolicy refuses any search that does not carry the
+    active run's relay token; the real writer must stamp it. Regression: the
+    writer emitted {query, n} only, so once the token gate landed every relayed
+    search — operator and opted-in alike — was refused. Exercises the actual
+    writer, not a hand-stamped synthetic request."""
+    import threading
+    from kernelevo import websearch
+    from kernelevo.relay_policy import OwnerLedger, RelayPolicy
+
+    monkeypatch.setenv("KEVO_RELAY_DIR", str(tmp_path))
+    monkeypatch.setenv("KEVO_RELAY_TOKEN", "run-secret")
+    monkeypatch.setattr(websearch, "RELAY_TIMEOUT_S", 5)
+    websearch._cache.clear()
+
+    worker = threading.Thread(target=websearch._relay_search, args=("triton softmax", 3))
+    worker.start()
+    try:
+        deadline = time.time() + 3
+        req_file = None
+        while time.time() < deadline and req_file is None:
+            hits = list(tmp_path.glob("*.req.json"))
+            req_file = hits[0] if hits else None
+            if req_file is None:
+                time.sleep(0.02)
+        assert req_file is not None, "the writer never dropped a request file"
+        request = json.loads(req_file.read_text())
+        request["id"] = req_file.name[: -len(".req.json")]
+        assert request.get("relay_token") == "run-secret"
+
+        # the dispatcher's policy must now ADMIT the stamped request
+        monkeypatch.setenv("KEVO_ALLOW_OPERATOR_SEARCH_RELAY", "1")
+        p = RelayPolicy({"id": "j" * 32, "visitor": "github:7"}, "run-secret",
+                        OwnerLedger(tmp_path / "ledger.json"))
+        assert p.check_search(request) is None, "a correctly-stamped search was refused"
+
+        # unblock the writer so its thread exits cleanly
+        (tmp_path / (request["id"] + ".res.json")).write_text(json.dumps([]))
+    finally:
+        worker.join(timeout=5)
+    assert not worker.is_alive()
+
+
+# ---- review fix: a visitor's job never runs on the operator's own box ----
+
+def test_visitor_job_refuses_local_execution(tmp_path, monkeypatch):
+    """The local execution branch runs search.py under the server's full
+    environment (operator ANTHROPIC_API_KEY / WANDB_API_KEY included). A public
+    (visitor-owned) job must be refused there rather than handed the operator's
+    credentials. Regression: the branch ran it without scoping the environment."""
+    from unittest.mock import patch
+    import web
+
+    monkeypatch.setattr(web, "JOBS_DIR", str(tmp_path))
+    jid = "vjob"
+    (tmp_path / jid).mkdir()
+    web.save_job(dict(id=jid, execution_target="local", visitor="github:7",
+                      profile="DEV", adapter="adapters/lm.py",
+                      stage="starting", status="queued"))
+
+    with patch.object(web.subprocess, "Popen") as popen:
+        try:
+            web._run_job(jid)
+            refusal = None
+        except RuntimeError as e:
+            refusal = str(e)
+    assert refusal and "local execution is not available" in refusal
+    popen.assert_not_called()
+    assert web.load_job(jid)["status"] != "running"
