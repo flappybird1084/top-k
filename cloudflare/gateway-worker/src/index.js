@@ -1,4 +1,5 @@
 const SITE_ORIGIN = "https://top-kernel-demo.andre520395.chatgpt.site";
+const SITE_ORIGINS = new Set([SITE_ORIGIN, "https://top-k.dev"]);
 
 function json(body, status = 200, extra = {}) {
   return new Response(JSON.stringify(body), {
@@ -14,9 +15,9 @@ function json(body, status = 200, extra = {}) {
 
 function corsHeaders(request) {
   const origin = request.headers.get("origin");
-  return origin === SITE_ORIGIN
+  return SITE_ORIGINS.has(origin)
     ? {
-        "access-control-allow-origin": SITE_ORIGIN,
+        "access-control-allow-origin": origin,
         "access-control-allow-methods": "GET, POST, HEAD, OPTIONS",
         "access-control-allow-headers": "Authorization, Content-Type, Idempotency-Key",
         vary: "Origin",
@@ -45,12 +46,12 @@ export default {
       return Response.redirect(destination.toString(), 302);
     }
 
-    if (url.pathname.startsWith("/api/") && request.headers.get("origin") !== SITE_ORIGIN) {
+    if (url.pathname.startsWith("/api/") && !SITE_ORIGINS.has(request.headers.get("origin"))) {
       return json({ error: "Origin rejected" }, 403);
     }
 
     if (request.method === "OPTIONS") {
-      if (request.headers.get("origin") !== SITE_ORIGIN) {
+      if (!SITE_ORIGINS.has(request.headers.get("origin"))) {
         return json({ error: "Origin rejected" }, 403);
       }
       return new Response(null, { status: 204, headers: cors });

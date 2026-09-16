@@ -3,8 +3,9 @@
 This Worker owns the backend at `https://api.top-k.dev` and keeps
 `https://top-k.andredlcruz.com` as a compatibility alias. The project site is
 served directly at `https://top-k.dev` by Sites. The API domain exposes Top-K
-health, API, and GitHub OAuth routes. Keeping compute at the edge lets the
-backend and GitHub callback stay stable when compute moves.
+health, API, and GitHub OAuth routes. API CORS is allowlisted for both the Sites
+URL and `https://top-k.dev`. Keeping compute at the edge lets the backend and
+GitHub callback stay stable when compute moves.
 
 Two secrets, both server-side:
 
