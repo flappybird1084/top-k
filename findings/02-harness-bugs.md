@@ -155,3 +155,45 @@ them ever produced a false acceptance.
   selected by the `OpenAI-Project` header. The $100 credit lived on
   `rianbutala-ucla-org`; a differently-scoped key silently billed a different
   org until probed. Weave/W&B logging follows the key's org access too.
+
+## 09-13 evening → 09-14 (run b3c7b7aa's tail and the Claude provider)
+
+29. **Partial hot-patch wiped a generation** — mid-run, `recipe_worker.py` was
+    hot-patched onto the live sandbox to add W&B error traces, but by then it
+    also imported the new `procstream` module, which was *not* uploaded. Every
+    generation-3 check subprocess died instantly on ModuleNotFoundError; 7/8
+    hyperparam candidates burned their repairs against an infra crash. The
+    defenses bounded the damage exactly as designed: all failures
+    `[infra]`-tagged (no false lessons), the check gate caught them pre-GPU
+    (authoring spend only), and the finals still ran on gens 1–2. Lesson:
+    hot-patch the *closure* of changed files — diff the sandbox tree against
+    local first, never ship one file of a multi-file change.
+30. **`claude -p` persona/config leak** — the new claude_oauth provider's
+    first live call answered as "Claude, an interactive software engineering
+    assistant" instead of following the prompt: headless mode still loads the
+    CLI's agent persona and user-level CLAUDE.md. → `--system-prompt`
+    REPLACES the persona (the codex `--ignore-user-config` analogue), cwd is
+    an empty tempdir so no project memory loads. After: byte-exact replies.
+31. **json_mode has no switch on Claude** — no `response_format` equivalent;
+    models fence the object in ```json blocks. → prompt-enforced JSON +
+    fence-stripping in the provider, keeping it drop-in with the
+    OpenAI-style guaranteed-parseable contract.
+32. **Tool attempt + `--max-turns 1` = silent death, misdiagnosed by our own
+    error string** — a subagent call failed with our generic "check login and
+    usage limits" message; the CLI session log showed the real cause: the
+    model emitted three `ToolSearch` calls (absent from the denylist), and
+    one turn left no room to recover, so the CLI exited nonzero with no
+    result. The provider's error text *invented* a plausible cause. →
+    max-turns 4 (denied tool calls recover into text), denylist extended to
+    the full tool surface, system prompt states no tools exist, and on
+    nonzero exit the CLI's JSON is parsed anyway so errors carry the real
+    subtype (e.g. `error_max_turns`) instead of speculation. Meta-lesson:
+    generic error messages that guess at causes *manufacture* misdiagnoses —
+    same family as bug 28.
+33. **Ops lesson: worktree-add failure + silent cd = merge in the real tree**
+    — a PR merge *preview* ran in the main checkout because `git worktree add
+    <dir> main` failed (main already checked out) and the follow-up `cd` to
+    the never-created directory failed silently, so the merge executed in the
+    original cwd. Caught immediately and `git merge --abort`ed clean.
+    Preview merges now use `worktree add --detach`, and compound commands
+    that depend on a `cd` must verify it.
