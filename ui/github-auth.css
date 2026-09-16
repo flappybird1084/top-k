@@ -1,7 +1,9 @@
 html.topk-auth-pending:not(.topk-landing) body>*,html.topk-auth-locked:not(.topk-landing) body>*{visibility:hidden!important}
 html.topk-auth-pending body>.github-gate,html.topk-auth-locked body>.github-gate{visibility:visible!important}
 .github-gate{position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;padding:24px;background:#f7f8f3;color:#263126;font-family:"DM Sans",Arial,sans-serif}
-.github-gate-card{width:min(440px,100%);padding:42px 38px;border:1px solid #dce3d6;border-radius:20px;background:#fff;box-shadow:0 24px 80px rgba(38,49,38,.09);text-align:center}
+.github-gate-card{position:relative;width:min(440px,100%);padding:42px 38px;border:1px solid #dce3d6;border-radius:20px;background:#fff;box-shadow:0 24px 80px rgba(38,49,38,.09);text-align:center}
+.github-gate-close{position:absolute;top:14px;right:16px!important;width:34px!important;min-height:34px!important;padding:0!important;border:0!important;background:transparent!important;color:#6d7968!important;font-size:26px!important;line-height:1;cursor:pointer}
+.github-gate-close:hover{background:#eef2ea!important;color:#263126!important}
 .github-gate-kicker{margin:0 0 9px;color:#6d7968;font-size:14px;letter-spacing:.08em;text-transform:uppercase}
 .github-gate h1{margin:0;color:#263126;font:500 clamp(34px,7vw,48px)/1.05 Georgia,serif}
 .github-gate-copy{max-width:340px;margin:19px auto 28px;color:#687465;font-size:16px;line-height:1.55}
@@ -15,9 +17,6 @@ html.topk-auth-pending body>.github-gate,html.topk-auth-locked body>.github-gate
 .github-account button{padding:10px 15px}
 .github-account span{max-width:320px;font-size:12px}
 html:not(.topk-authenticated) .github-account{display:none}
-.landing-gate{inset:auto;top:22px;right:24px;display:block;padding:0;background:transparent}
-.landing-gate .github-gate-card{width:min(360px,calc(100vw - 48px));padding:24px 26px;border-radius:14px;box-shadow:0 14px 42px rgba(38,49,38,.12)}
-.landing-gate .github-gate-copy{margin-bottom:20px}
 @media(max-width:600px){.github-gate-card{padding:34px 24px}.github-account{padding:14px 18px;justify-content:center}}
 .topk-setup .setup-card{width:min(560px,100%);text-align:left}
 .topk-setup h1{font:500 clamp(28px,5vw,38px)/1.08 Georgia,serif}
