@@ -7,7 +7,11 @@ def observe(jid):
     import wandb
     root=ui_server.job_path(jid)
     job=ui_server.read_json(root/'job.json',{})
-    run=wandb.init(project='top-k-judges', entity=os.environ.get('WANDB_ENTITY') or None,
+    # Account, entity and project come from the job owner's own credentials in
+    # the environment this process was started with; there is no server-wide
+    # fallback for a public run.
+    project=os.environ.get('WANDB_PROJECT') or 'top-k-judges'
+    run=wandb.init(project=project, entity=os.environ.get('WANDB_ENTITY') or None,
                    id=jid, name=job['mode']+'-'+jid[:8],
                    group=job.get('related_runs',{}).get('architecture',jid),
                    config={'repo':job.get('repo'),'data':job.get('data'),'mode':job['mode']})
@@ -15,7 +19,7 @@ def observe(jid):
     record=lambda row:row
     try:
         import weave
-        project=run.entity+'/top-k-judges'
+        project=run.entity+'/'+project
         weave.init(project)
         @weave.op()
         def measured_evaluation(run_id, repository, measurement):

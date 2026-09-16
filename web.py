@@ -100,12 +100,27 @@ PASS_ENV = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "WANDB_API_KEY", "WANDB_ENTIT
             "WANDB_INFERENCE_BASE_URL", "WANDB_INFERENCE_PROJECT", "SEARXNG_URL")
 
 
-def _job_env(job):
-    env = {k: os.environ[k] for k in PASS_ENV if os.environ.get(k)}
+def _job_env(job, own_only=False):
+    """Environment for a run. `own_only` drops the operator's server-wide keys
+    and passes just what this job's owner supplied — the public deployment
+    must never hand a visitor's sandbox our credentials.
+
+    A job owned by a signed-in visitor keeps no secret in its job file: the
+    W&B key is read from that owner's integration record here, on the way into
+    the child process environment."""
+    env = {} if own_only else {k: os.environ[k] for k in PASS_ENV if os.environ.get(k)}
     for key, envname in (("api_key", "WANDB_API_KEY"), ("entity", "WANDB_ENTITY"),
                          ("project", "WANDB_PROJECT")):
         if job.get("wandb", {}).get(key):
             env[envname] = job["wandb"][key]
+    if job.get("visitor"):
+        from kernelevo.integrations import wandb_env
+        owner = wandb_env(job["visitor"])
+        env.update(owner)
+        if own_only and not owner.get("WANDB_API_KEY"):
+            # No key of their own: report nowhere rather than into ours.
+            for name in ("WANDB_API_KEY", "WANDB_ENTITY", "WANDB_PROJECT"):
+                env.pop(name, None)
     return env
 
 
@@ -144,7 +159,16 @@ def _run_job(jid):
             # subprocess so each job runs the CURRENT dispatch code from disk,
             # even if this server process has been up for days
             env = dict(os.environ)
-            env["KEVO_REMOTE_ENV"] = json.dumps({} if job.get("judge_expires_at") else _job_env(job))
+            env["KEVO_REMOTE_ENV"] = json.dumps(
+                _job_env(job, own_only=bool(job.get("judge_expires_at"))))
+            if job.get("visitor"):
+                # The notebook token lives in the owner's integration record,
+                # not in job.json; hand it to the dispatcher in its environment.
+                from kernelevo.integrations import notebook_connection
+                connection = notebook_connection(job["visitor"])
+                if not connection:
+                    raise RuntimeError("This run has no notebook connected.")
+                env["KEVO_MOLAB_CONNECTION"] = json.dumps(connection)
             proc = subprocess.Popen(
                 [sys.executable, "-u", "-m", "kernelevo.molab_dispatch",
                  _job_path(jid), ROOT, os.path.join(JOBS_DIR, jid, "run")],
@@ -154,6 +178,16 @@ def _run_job(jid):
                 write_line(line)
             rc = proc.wait()
         else:
+            # A visitor's (public) job must never run on the operator's own box:
+            # the local branch runs search.py directly under the server's full
+            # environment (operator ANTHROPIC_API_KEY / WANDB_API_KEY included),
+            # which would hand a stranger the operator's credentials. Public runs
+            # always go to the visitor's own notebook via molab; refuse anything
+            # else rather than trusting KEVO_UI_TARGET config to be set safely.
+            if job.get("visitor") or job.get("judge_expires_at"):
+                raise RuntimeError(
+                    "Public runs must execute on the visitor's own notebook; "
+                    "local execution is not available for this job.")
             run_dir = os.path.join(JOBS_DIR, jid, "run")
             cmd = [sys.executable, "-u", "search.py", "--profile", job["profile"],
                    "--out", run_dir]

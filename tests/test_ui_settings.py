@@ -87,3 +87,42 @@ def test_masked_hides_pasted_connection():
     import web
     j = web.masked(dict(id="x", molab_connection="--token SECRET", molab={"t": 1}))
     assert "molab_connection" not in j and "molab" not in j
+
+
+def test_starting_a_run_never_waits_on_a_model_call(monkeypatch):
+    """Finding 7: checking the Claude login used to run a real completion —
+    up to 90 seconds inside the request, and billed — before a run could
+    start. The request path now only looks for the installed CLI and reads
+    whatever the background probe last found."""
+    import threading
+    probes = []
+    monkeypatch.setattr(ui_server.shutil, "which", lambda name: "/usr/bin/" + name)
+    monkeypatch.setattr(ui_server, "_provider_probe", {})
+    monkeypatch.setattr(ui_server, "_live_probe", lambda provider: probes.append(provider))
+    started = []
+    monkeypatch.setattr(threading, "Thread",
+                        lambda target, args=(), daemon=None: type(
+                            "T", (), {"start": lambda self: started.append(args)})())
+    ui_server.provider_ready("claude_oauth")      # must return immediately
+    assert started == [("claude_oauth",)], "the live check did not move off the request"
+
+
+def test_a_known_bad_provider_is_reported_without_reprobing(monkeypatch):
+    import time
+    monkeypatch.setattr(ui_server.shutil, "which", lambda name: "/usr/bin/" + name)
+    monkeypatch.setattr(ui_server, "_provider_probe",
+                        {"codex_oauth": (time.time(), "Sign in with ChatGPT first.")})
+    try:
+        ui_server.provider_ready("codex_oauth")
+        assert False, "a known-broken provider should be reported"
+    except ValueError as e:
+        assert "ChatGPT" in str(e)
+
+
+def test_a_provider_that_is_not_installed_fails_immediately(monkeypatch):
+    monkeypatch.setattr(ui_server.shutil, "which", lambda name: None)
+    try:
+        ui_server.provider_ready("claude_oauth")
+        assert False, "a missing CLI should be reported"
+    except ValueError as e:
+        assert "Install Claude Code" in str(e)

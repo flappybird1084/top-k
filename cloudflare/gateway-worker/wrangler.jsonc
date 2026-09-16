@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "top-k-gateway",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-15",
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "api.top-k.dev",
+      "custom_domain": true
+    },
+    {
+      "pattern": "top-k.andredlcruz.com",
+      "custom_domain": true
+    }
+  ]
+}

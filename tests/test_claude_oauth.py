@@ -8,10 +8,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
 
+HELP = ('if [ "$1" = "--help" ]; then echo "--allowedTools --disallowedTools '
+        '--strict-mcp-config --mcp-config --setting-sources"; exit 0; fi\n')
+
+
 def _fake_claude(tmp_path, payload, monkeypatch):
     """Put a fake `claude` executable on PATH that prints one JSON result."""
     exe = tmp_path / "claude"
-    exe.write_text("#!/bin/sh\ncat > /dev/null\necho '" + json.dumps(payload) + "'\n")
+    # --help is the capability probe, not a completion: the provider refuses to
+    # run against a build whose tool isolation it cannot confirm.
+    exe.write_text("#!/bin/sh\n" + HELP + "cat > /dev/null\necho '" + json.dumps(payload) + "'\n")
     exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
     monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ.get("PATH", ""))
 
@@ -47,7 +53,7 @@ def test_complete_local_retries_transient_failure(tmp_path, monkeypatch):
     ok = _json.dumps({"type": "result", "subtype": "success", "result": "second try",
                       "usage": {"input_tokens": 1, "output_tokens": 2}})
     exe = tmp_path / "claude"
-    exe.write_text("#!/bin/sh\ncat > /dev/null\n"
+    exe.write_text("#!/bin/sh\n" + HELP + "cat > /dev/null\n"
                    f"if [ -f {marker} ]; then echo '{ok}'; else touch {marker}; exit 1; fi\n")
     exe.chmod(exe.stat().st_mode | _stat.S_IEXEC)
     monkeypatch.setenv("PATH", str(tmp_path) + _os.pathsep + _os.environ.get("PATH", ""))

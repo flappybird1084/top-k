@@ -35,7 +35,7 @@ class OAuth(TestCase):
     request=next(Path(temp).glob('*.req.json'))
     payload=json.loads(request.read_text())
     self.assertEqual(payload['kind'],'codex_oauth')
-    self.assertEqual(set(payload),{'messages','kind'})
+    self.assertEqual(set(payload),{'messages','kind','relay_token'})
     request.with_name(request.name.replace('.req.','.res.')).write_text(json.dumps({'text':'connected','input_tokens':2,'output_tokens':1}))
    with patch('kernelevo.codex_oauth.time.sleep',side_effect=respond):
     self.assertEqual(complete({'messages':[]})['text'],'connected')

@@ -19,6 +19,10 @@ def main():
     job = json.load(open(sys.argv[1]))
     project_root, artifacts_dir = sys.argv[2], sys.argv[3]
     env_updates = json.loads(os.environ.get("KEVO_REMOTE_ENV", "{}"))
+    # A run owned by a signed-in visitor carries no notebook token in its job
+    # file; the server passes it here, in this process's environment only.
+    if os.environ.get("KEVO_MOLAB_CONNECTION"):
+        job["molab"] = json.loads(os.environ["KEVO_MOLAB_CONNECTION"])
 
     def write_line(line):
         print(line, flush=True)

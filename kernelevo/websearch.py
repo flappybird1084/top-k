@@ -47,8 +47,12 @@ def _relay_search(query: str, n: int) -> list[dict]:
     rid = uuid.uuid4().hex[:12]
     req_path = os.path.join(relay, f"{rid}.req.json")
     res_path = os.path.join(relay, f"{rid}.res.json")
+    # The launch environment's relay secret is what makes a request
+    # attributable to this run; the dispatcher's policy refuses any search
+    # without it (mirrors kernelevo.codex_oauth.relay_complete).
     with open(req_path + ".tmp", "w") as f:
-        json.dump({"query": query, "n": n}, f)
+        json.dump({"query": query, "n": n,
+                   "relay_token": os.environ.get("KEVO_RELAY_TOKEN", "")}, f)
     os.replace(req_path + ".tmp", req_path)
     deadline = time.time() + RELAY_TIMEOUT_S
     while time.time() < deadline:
