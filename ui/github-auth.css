@@ -1,5 +1,6 @@
 html.topk-auth-pending:not(.topk-landing) body>*,html.topk-auth-locked:not(.topk-landing) body>*{visibility:hidden!important}
 html.topk-auth-pending body>.github-gate,html.topk-auth-locked body>.github-gate{visibility:visible!important}
+.github-gate[hidden]{display:none!important}
 .github-gate{position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;padding:24px;background:#f7f8f3;color:#263126;font-family:"DM Sans",Arial,sans-serif}
 .github-gate-card{position:relative;width:min(440px,100%);padding:42px 38px;border:1px solid #dce3d6;border-radius:20px;background:#fff;box-shadow:0 24px 80px rgba(38,49,38,.09);text-align:center}
 .github-gate-close{position:absolute;top:14px;right:16px!important;width:34px!important;min-height:34px!important;padding:0!important;border:0!important;background:transparent!important;color:#6d7968!important;font-size:26px!important;line-height:1;cursor:pointer}
