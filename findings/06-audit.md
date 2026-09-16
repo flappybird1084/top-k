@@ -66,6 +66,13 @@ there and are inert in ordinary single-user local use.
    `grep -rn "4\.85\|5\.2546" findings/` returns nothing; `01-results.md` reports
    only that run's baselines and `05-run-ledger.md` calls it "in flight". The
    top-level README nevertheless carries it as a headline result.
+   **Resolved 2026-09-15**: the write-up existed on `main` (findings commit
+   `2ba324e`) and postdated this branch's fork point — the audit grep ran
+   against the branch. Merged in; `01-results.md` and `05-run-ledger.md` now
+   carry the full b3c7b7aa account. Bonus correction found while closing this:
+   the archive puts the b3c7b7aa finals winner at **480,881,212 params — the
+   same count as the baseline** (like-for-like), and the README cell that
+   briefly said "382M" (run `ef48abdf`'s winner, a conflation) is fixed.
 8. **…and it conceals a 7-of-8 infra collapse in the phase meant to refine it**
    `[arch]`. The winner of `b3c7b7aa` is an *architecture*-phase candidate; the
    gen-3 hyperparam phase lost 7 of 8 candidates to
@@ -101,6 +108,9 @@ there and are inert in ordinary single-user local use.
     `torch.compile` comparison is the *easier* one on an 8ms launch-bound step.
 15. `05-run-ledger.md` lists **1** completed recipe search; the archives hold
     **2**. The doc set does not contain its own second headline.
+    **Resolved 2026-09-15**: same root cause as 7 — the updated ledger lived on
+    `main` past the branch fork point. Post-merge, `05-run-ledger.md` records
+    both completed recipe searches (75890bd0 and b3c7b7aa) plus the later runs.
 16. `01-results.md` says "typically 3% in-model"; actual `gate4_margin` values
     are 0.010–0.060. CLAUDE.md's "10 warmup + 30 timed steps" is the RUN default;
     every cited run used `gate4_steps=10`, and "median-of-50" (gate 3) was 20 in
@@ -362,7 +372,7 @@ All ten priority items fixed, plus 22/26/37; regression tests in
 | 27 | `extract_code`: last python-tagged block preferred, then last fenced block, single-line fences handled, stray fences stripped on the raw fallback |
 | 34 | `pytest.ini` makes pytest the one runner; `UI.md`'s unittest command replaced (it silently skipped 7 files) |
 | 31 | Gate 3 rotates input (and grad-output) content between timed iterations, outside the event window, identically for incumbent and candidate — content-keyed memoization now fails gate 3 |
-| 5/6/9 | README results table discloses winner param counts (298M / 382M vs 481M baseline, framed as recipe wins at this horizon), quotes the kernel win against both baselines (−4.1% vs compile, −1.7% vs eager), and scopes the cheat self-test to kernel-mode calibrations |
+| 5/6/9 | README results table discloses winner param counts (75890bd0: 298M vs 481M baseline, framed as a recipe win at this horizon; b3c7b7aa: 481M, like-for-like — an earlier "382M" in this cell conflated run ef48abdf and is corrected), quotes the kernel win against both baselines (−4.1% vs compile, −1.7% vs eager), and scopes the cheat self-test to kernel-mode calibrations |
 | 17 | Recipe loop writes `stop_reason` (`recipe_complete` / `deadline_or_spend_cap`); a crashed generation closes its row with `crashed: <err>` instead of leaving NULLs; verified via stub pipeline |
 | 33 | Ingest computes loss on the same batch before and after `auto_route` (grad enabled, seeded, detached) and aborts on drift > max(2% rel, 1e-3) — misroutes can no longer silently change the model's math |
 | 32 | Gate 4 interleaves `gate4_reps` (default 3) incumbent/candidate measurements and compares medians |
@@ -370,9 +380,12 @@ All ten priority items fixed, plus 22/26/37; regression tests in
 | 26 | `claude_oauth.check_login` verifies sign-in with one minimal haiku call instead of only `which('claude')` |
 | 37 | Stale `--max-turns 1` comment corrected; prompt-level isolation limits stated in the comment |
 
-Still open from this audit: 7 (−4.85% write-up), 8 (b3c7b7aa gen-3 collapse
-not in `log.txt` — recorded here and in 02), 12 (n=1 / no seed replication),
-13 (cost reconciliation), 20 (`command()` bwrap unwired), 28 (curator output
+7 and 15 resolved by merging `main`'s findings commit (`2ba324e`), which
+postdated the branch fork point — see the annotated entries above.
+
+Still open from this audit: 8 (b3c7b7aa gen-3 collapse not in `log.txt` —
+recorded here and in 02), 12 (n=1 / no seed replication), 13 (cost
+reconciliation), 20 (`command()` bwrap unwired), 28 (curator output
 unvalidated), 29 (procstream reap-path truncation, latent), 30 (observer
 lifecycle beyond the path fix), 35 (agent-loop test coverage), 36 (web.py dead
 lines), 18 (inert inference path vs stated boundary).
