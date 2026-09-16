@@ -24,7 +24,8 @@ def create_app():
     app = Flask(__name__)
     app.secret_key = os.environ['JUDGES_SESSION_SECRET']
     signer = URLSafeTimedSerializer(app.secret_key, salt='judges-visitor')
-    origin = 'https://top-kernel-demo.andre520395.chatgpt.site'
+    origin = os.environ.get('JUDGES_ORIGIN',
+                            'https://top-kernel-demo.andre520395.chatgpt.site')
     expires_at = float(os.environ['JUDGES_EXPIRES_AT'])
     app.config.update(MAX_CONTENT_LENGTH=16384, SESSION_COOKIE_SECURE=True,
                       SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax')

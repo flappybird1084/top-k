@@ -58,6 +58,7 @@ _COMMON = dict(
     # gate 4: in-model, 10 warmup + 30 timed steps
     gate4_warmup=10,
     gate4_steps=30,
+    gate4_reps=3,               # interleaved incumbent/candidate repetitions, medians compared
     gate4_margin=0.01,
     verify_timeout_s=600,       # hard cap per verify subprocess (hang kill)
     compile_timeout_s=180,

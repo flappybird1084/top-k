@@ -9,8 +9,10 @@ import statistics
 import torch
 
 
-def _median_event_time(run, warmup: int, iters: int) -> float:
-    """Median wall time of run() in ms via CUDA events."""
+def _median_event_time(run, warmup: int, iters: int, between=None) -> float:
+    """Median wall time of run() in ms via CUDA events. `between` (if given)
+    runs after each timed iteration, outside the event window — its cost never
+    enters the measurement."""
     for _ in range(warmup):
         run()
     torch.cuda.synchronize()
@@ -23,6 +25,9 @@ def _median_event_time(run, warmup: int, iters: int) -> float:
         e.record()
         torch.cuda.synchronize()
         times.append(s.elapsed_time(e))
+        if between is not None:
+            between()
+            torch.cuda.synchronize()
     return statistics.median(times)
 
 
@@ -30,6 +35,8 @@ def time_op(fn, args, grad_inputs, warmup: int, iters: int) -> float:
     """Isolation latency in µs. For differentiable ops this times fwd+bwd —
     LayerNorm-backward-style lineages are meaningless to time forward-only."""
     go = None
+    floats = [a for a in args
+              if isinstance(a, torch.Tensor) and a.is_floating_point()]
 
     def run():
         nonlocal go
@@ -40,7 +47,20 @@ def time_op(fn, args, grad_inputs, warmup: int, iters: int) -> float:
             torch.autograd.grad(out, grad_inputs, grad_outputs=go, retain_graph=False,
                                 allow_unused=True)
 
-    return _median_event_time(run, warmup, iters) * 1000.0
+    def perturb():
+        # Anti-memoization (gate 3): rotate input content between timed
+        # iterations so a cache keyed on input identity OR content cannot
+        # serve replays — gate 2's fresh-seeds defense only covers the naive
+        # replay-always cheat. Runs outside the event window (zero timing
+        # cost) and identically for incumbent and candidate, so the A/B
+        # comparison stays fair.
+        with torch.no_grad():
+            for t in floats:
+                t.add_(torch.randn_like(t), alpha=1e-6)
+            if go is not None:
+                go.add_(torch.randn_like(go), alpha=1e-6)
+
+    return _median_event_time(run, warmup, iters, between=perturb) * 1000.0
 
 
 def time_steps(step, warmup: int, iters: int) -> float:

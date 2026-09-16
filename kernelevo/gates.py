@@ -115,6 +115,7 @@ class GateRunner:
             gate3=dict(warmup=self.cfg["gate3_warmup"], iters=self.cfg["gate3_iters"],
                        margin=self.cfg["gate3_margin"]),
             gate4=dict(warmup=self.cfg["gate4_warmup"], steps=self.cfg["gate4_steps"],
+                       reps=self.cfg.get("gate4_reps", 3),
                        margin=self.cfg["gate4_margin"]),
             incumbents=incumbents,
             flops_per_sample=self.targets["flops_per_sample"],

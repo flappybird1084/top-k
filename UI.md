@@ -31,7 +31,7 @@ Run cancellation is not exposed because this branch's dispatcher does not yet of
 ## Checks
 
 ```sh
-.venv/bin/python -m unittest discover -s tests -q
+uv run python -m pytest tests -q   # pytest is the only runner: unittest discover silently skips half the suite
 ```
 
 Tests cover Rian's actual SQLite schema, branch URLs, idempotent submission, data handoff, secret omission, and cross-origin rejection. No GPU or paid model run is launched by these tests.

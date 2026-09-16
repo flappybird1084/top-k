@@ -26,9 +26,25 @@ def _unfence(text):
 
 
 def check_login():
+    """Actually checks login, not just installation (audit finding 26): the
+    CLI has no free status command, so this makes one minimal haiku call —
+    an installed-but-signed-out machine fails here instead of at the first
+    candidate. Costs one tiny subscription call per validation."""
     if not shutil.which('claude'):
         raise ValueError('Install Claude Code on the server (npm i -g '
                          '@anthropic-ai/claude-code) and sign in with `claude`.')
+    try:
+        result=subprocess.run(
+            ['claude','-p','--output-format','json','--max-turns','1',
+             '--model','haiku','--system-prompt','Reply with exactly: ok'],
+            input='ok?',capture_output=True,text=True,timeout=90)
+    except subprocess.TimeoutExpired:
+        raise ValueError('Claude Code did not respond within 90s — check the '
+                         'sign-in state with `claude` on the server, then retry.')
+    if result.returncode:
+        raise ValueError('Claude Code is installed but not signed in (or over '
+                         'its usage limit). Run `claude` on the server, sign '
+                         'in, then retry.')
 
 
 RETRY_DELAY_S = 30
@@ -46,10 +62,11 @@ def complete_local(request):
 
 def _complete_once(request):
     # Empty working directory so no repo instructions/CLAUDE.md leak into what
-    # is deliberately a text-only provider invocation; --max-turns 1 plus the
-    # tool denylist keeps print mode from acting like an agent. Headless -p
-    # denies permission prompts by default, so even an attempted tool call
-    # degrades to a plain answer.
+    # is deliberately a text-only provider invocation. Isolation is
+    # prompt-level: there is no --no-tools flag, the denylist below covers
+    # only known tool names, and headless -p denies permission prompts by
+    # default — --max-turns 4 gives a stray denied tool call room to recover
+    # into a text answer instead of dying at the turn limit.
     with tempfile.TemporaryDirectory(prefix='kevo-claude-') as temp:
         system=('You are the text generation provider for a kernel optimization harness. '
                 'You have NO tools available — every tool call fails; respond with plain '

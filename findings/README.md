@@ -12,9 +12,12 @@ credit spent.
 | [03-performance-analysis.md](03-performance-analysis.md) | Why inductor is hard to beat, where wins actually live |
 | [04-agent-behavior.md](04-agent-behavior.md) | How the LLM agents behaved: failure modes, costs, latencies |
 | [05-run-ledger.md](05-run-ledger.md) | Chronological run log with configs, outcomes, spend |
+| [06-audit.md](06-audit.md) | Independent audit (09-15): claims vs. archives, and defects in the perimeter |
 | [kernels/](kernels/) | The two most important agent-written kernels (verbatim) |
 
-**Headline facts:**
+**Headline facts:** — figures below are the results as measured; see
+[06-audit.md](06-audit.md) for context the win statements omit (notably the
+winning recipe model's parameter count, and which baseline is quoted).
 - One agent-written Triton kernel accepted through all four gates: RMSNorm on
   karpathy/nanochat, training step **8.95 → 8.58 ms (−4.1% vs torch.compile,
   −1.7% vs eager)**, gradients verified.

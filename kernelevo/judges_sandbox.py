@@ -4,14 +4,24 @@ import os
 import shutil
 
 
-def user_command(work, argv, uid):
+def user_command(work, argv, uid, relay_dir=None):
     """Separate Unix identity for each run on a containerized GPU host.
 
     The host may deny nested bind mounts. This isolates writable run files and
     process credentials, but is not a replacement for a VM security boundary.
+
+    The LLM relay directory lives OUTSIDE the runner-owned tree (audit finding
+    19: inside `work` it was chowned to the untrusted uid, letting run code
+    read every pending prompt and forge responses). Here it stays root-owned
+    with mode 0733 — the runner can create request files and read a response
+    by its exact (unguessable) name, but cannot list the directory.
     """
     if not shutil.which('setpriv') or uid < 200000:
         raise RuntimeError('Per-run process isolation is unavailable')
+    relay = relay_dir or work + '_relay'
+    os.makedirs(relay, exist_ok=True)
+    os.chown(relay, 0, 0)
+    os.chmod(relay, 0o733)
     for root, dirs, files in os.walk(work):
         os.chown(root, uid, uid)
         for name in files:
@@ -22,7 +32,7 @@ def user_command(work, argv, uid):
     os.chown(home, uid, uid)
     env = {'HOME': home, 'USER': 'runner', 'LOGNAME': 'runner', 'PATH': '/usr/local/bin:/usr/bin:/bin',
            'PYTHONUNBUFFERED': '1', 'TMPDIR': home,
-           'KEVO_RELAY_DIR': work + '/run/search_relay', 'WANDB_MODE': 'disabled'}
+           'KEVO_RELAY_DIR': relay, 'WANDB_MODE': 'disabled'}
     return ['/usr/bin/env', '-i', *[k+'='+v for k, v in env.items()],
             '/usr/bin/setpriv', '--reuid='+str(uid), '--regid='+str(uid),
             '--clear-groups', '--no-new-privs', '--bounding-set=-all', *argv]

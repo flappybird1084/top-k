@@ -202,10 +202,13 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
     results_all = []   # dicts with id, val_loss, phase, code_path, strategy
     gen_index = 0
 
+    last_gen_id = None
+
     def author_and_eval(phase, jobs, parents_by_id):
-        nonlocal gen_index
+        nonlocal gen_index, last_gen_id
         gen_index += 1
         gen_id = archive.start_generation(model_id)
+        last_gen_id = gen_id
         tok_in0, tok_out0 = pool.total_tokens()
         outs = []
         n_acc = 0
@@ -387,6 +390,8 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
         for _ in range(phase["generations"]):
             if time.time() > run_deadline or pool.total_usd() >= cfg["spend_cap_usd"]:
                 print("[recipe] stopping early (deadline or spend cap)")
+                if last_gen_id is not None:
+                    archive.set_stop_reason(last_gen_id, "deadline_or_spend_cap")
                 break
             lessons = archive.lessons_tail(model_id, cfg["lessons_tail"])
             evaluated = [r for r in results_all if r.get("val_loss")]
@@ -456,7 +461,22 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                              phase["kind"] == "hyperparam" else None)
             print(f"[planner] {len(jobs)} job(s): "
                   + "; ".join(j["strategy"][:60] for j in jobs[:3]) + " …")
-            results_all += author_and_eval(phase, jobs, parents_by_id)
+            try:
+                results_all += author_and_eval(phase, jobs, parents_by_id)
+            except Exception as e:
+                # a crashed generation must still close its archive row —
+                # NULL n_candidates rows were audit finding 17's second half
+                try:
+                    row = archive.db.execute(
+                        "SELECT finished_at FROM generations WHERE id=?",
+                        (last_gen_id,)).fetchone()
+                    if row and row["finished_at"] is None:
+                        archive.finish_generation(
+                            last_gen_id, 0, 0, pool.total_usd(),
+                            stop_reason=f"crashed: {e}"[:200])
+                except Exception:  # noqa: BLE001 — recording must not mask the crash
+                    pass
+                raise
 
     # ---------------------------------------------------------------- finals
     finalists = sorted([r for r in results_all if r.get("val_loss")],
@@ -522,6 +542,10 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                 data=[list(r.values()) for r in rows])})
         except Exception:  # noqa: BLE001 — mirror is fire-and-forget
             pass
+    # "Every stop writes stop_reason" held for kernel runs only — recipe
+    # archives all had it empty (audit finding 17). SQLite is authoritative.
+    if last_gen_id is not None:
+        archive.set_stop_reason(last_gen_id, "recipe_complete")
     mirror.finish("recipe_complete")
     print(f"[loop] stopped: recipe_complete; total LLM spend "
           f"${pool.total_usd():.2f}; archive at "

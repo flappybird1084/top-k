@@ -11,6 +11,7 @@ Usage: python -m kernelevo.verify_worker <job.json>
 from __future__ import annotations
 
 import json
+import statistics
 import sys
 import traceback
 
@@ -180,8 +181,16 @@ def main():
     incumbent_map = {name: build_incumbent_fn(name, entry)
                      for name, entry in job["incumbents"].items()}
     candidate_map = {**incumbent_map, job["op"]: kernel}
-    inc_ms = measure_in_model(adapter, incumbent_map, job["gate4"], device, seed)
-    cand_ms = measure_in_model(adapter, candidate_map, job["gate4"], device, seed)
+    # Interleaved A/B: alternate incumbent/candidate measurements so thermal
+    # drift or background load hits both sides, and take medians — a single
+    # one-shot pair made the objective-producing gate the least rigorous one.
+    reps = max(1, int(job["gate4"].get("reps", 3)))
+    inc_runs, cand_runs = [], []
+    for _ in range(reps):
+        inc_runs.append(measure_in_model(adapter, incumbent_map, job["gate4"], device, seed))
+        cand_runs.append(measure_in_model(adapter, candidate_map, job["gate4"], device, seed))
+    inc_ms = statistics.median(inc_runs)
+    cand_ms = statistics.median(cand_runs)
     res.update(step_time_ms=cand_ms, incumbent_step_time_ms=inc_ms)
     sps = job["samples_per_batch"] / (cand_ms / 1000.0)
     res["samples_per_s"] = sps

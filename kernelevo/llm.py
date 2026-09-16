@@ -267,7 +267,16 @@ class LLMPool:
 
 
 def extract_code(text: str) -> str:
-    blocks = re.findall(r"```(?:python)?\s*\n(.*?)```", text, re.DOTALL)
+    """The answer block, not the biggest block. Prompts say 'respond with one
+    Python code block'; when a response also quotes reference code, longest-wins
+    returned the reference (audit finding 27). Preference order: last
+    python-tagged block, else last fenced block (single-line fences included),
+    else the raw text with stray fences stripped."""
+    tagged = re.findall(r"```python[ \t]*\r?\n(.*?)```", text, re.DOTALL)
+    blocks = tagged or re.findall(r"```[\w+-]*[ \t]*\r?\n(.*?)```", text, re.DOTALL)
+    if not blocks:
+        # single-line fences carry no language tag to strip
+        blocks = re.findall(r"```(.+?)```", text, re.DOTALL)
     if blocks:
-        return max(blocks, key=len).strip() + "\n"
-    return text.strip() + "\n"
+        return blocks[-1].strip() + "\n"
+    return text.strip().strip("`").strip() + "\n"
