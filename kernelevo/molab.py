@@ -375,7 +375,7 @@ class MolabTarget:
         write_line(f"[molab] {out.strip().splitlines()[0]} — streaming remote log")
 
         from kernelevo.claude_oauth import Relay as ClaudeRelay
-        from kernelevo.codex_oauth import Relay
+        from kernelevo.codex_oauth import Relay, RELAY_STALE_S
         oauth_relay = Relay()
         claude_relay = ClaudeRelay()
         offset, misses = 0, 0
@@ -389,7 +389,7 @@ class MolabTarget:
                     pass
                 last_archive_sync = time.time()
             poll = (
-                "import os, json\n"
+                "import os, json, time\n"
                 f"_w = {work!r}\n"
                 f"_off = {offset}\n"
                 "_p = os.path.join(_w, 'run', 'job.log')\n"
@@ -403,8 +403,19 @@ class MolabTarget:
                 "    _ex = int(open(_xp).read().strip() or 1)\n"
                 "_relay = []\n"
                 f"_rd = {relay_dir!r}\n"
+                f"_stale = {RELAY_STALE_S}\n"
                 "if os.path.isdir(_rd):\n"
                 "    for _f2 in os.listdir(_rd):\n"
+                # A worker killed mid-request leaves its .req.json behind. Without
+                # this sweep the dispatcher keeps re-listing it after the pending
+                # slot expires and re-bills the local OAuth session forever.
+                "        if _f2.endswith(('.req.json', '.res.json', '.tmp')):\n"
+                "            try:\n"
+                "                if time.time() - os.path.getmtime(os.path.join(_rd, _f2)) > _stale:\n"
+                "                    os.unlink(os.path.join(_rd, _f2))\n"
+                "                    continue\n"
+                "            except OSError:\n"
+                "                continue\n"
                 "        if _f2.endswith('.req.json'):\n"
                 "            _rid = _f2[:-len('.req.json')]\n"
                 "            if not os.path.exists(os.path.join(_rd, _rid + '.res.json')):\n"

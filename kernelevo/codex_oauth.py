@@ -9,6 +9,78 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
+RELAY_WAIT_S = 900      # sandbox-side wait for a dispatcher answer
+RELAY_STALE_S = 2 * RELAY_WAIT_S
+
+
+class TransientError(RuntimeError):
+    """A failure worth one retry: rate windows, stream hiccups, overload."""
+
+
+def token_count(value):
+    """CLI usage blocks report `null` for a field they did not measure;
+    `dict.get(key, 0)` returns that None and poisons the token ledger."""
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
+def sweep_relay(root, max_age=RELAY_STALE_S):
+    """Drop request/response files abandoned by a killed worker. Without this
+    the dispatcher re-lists a dead `.req.json` forever and re-bills the local
+    OAuth session for an answer nobody is waiting for."""
+    cutoff = time.time() - max_age
+    try:
+        entries = list(Path(root).iterdir())
+    except OSError:      # judge runs deny listing to the sandbox uid by design
+        return
+    for path in entries:
+        if not path.name.endswith(('.req.json', '.res.json', '.tmp')):
+            continue
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def relay_answer(raw):
+    """Validate what the dispatcher wrote before it becomes a completion:
+    anything else is a truncated or foreign file, not a model response."""
+    if not isinstance(raw, dict):
+        raise RuntimeError('Malformed relay response.')
+    if raw.get('error'):
+        raise RuntimeError(str(raw['error'])[:300])
+    text = raw.get('text')
+    if not isinstance(text, str) or not text.strip():
+        raise RuntimeError('Relay response carried no completion text.')
+    return dict(text=text, input_tokens=token_count(raw.get('input_tokens')),
+                output_tokens=token_count(raw.get('output_tokens')))
+
+
+def relay_complete(request, kind, label):
+    relay = os.getenv('KEVO_RELAY_DIR')
+    root = Path(relay)
+    root.mkdir(parents=True, exist_ok=True)
+    sweep_relay(root)
+    rid = uuid.uuid4().hex
+    req, res = root / (rid + '.req.json'), root / (rid + '.res.json')
+    temporary = req.with_suffix('.tmp')
+    temporary.write_text(json.dumps(dict(request, kind=kind)))
+    temporary.replace(req)
+    try:
+        deadline = time.monotonic() + RELAY_WAIT_S
+        while time.monotonic() < deadline:
+            if res.exists():
+                try:
+                    raw = json.loads(res.read_text())
+                except ValueError as e:
+                    raise RuntimeError(f'{label} relay response was unreadable.') from e
+                return relay_answer(raw)
+            time.sleep(1)
+        raise TimeoutError(f'{label} OAuth dispatcher did not respond within 15 minutes.')
+    finally:
+        req.unlink(missing_ok=True)
+        res.unlink(missing_ok=True)
+
 
 def check_login():
     if not shutil.which('codex'):
@@ -37,35 +109,22 @@ def complete_local(request):
         result=subprocess.run(command+['-'],input=prompt,capture_output=True,text=True,timeout=300)
         if result.returncode:
             # CLI diagnostics can include prompt text; do not expose it through the UI.
-            raise RuntimeError('Codex OAuth request failed. Check Codex login and account usage limits.')
+            raise TransientError('Codex OAuth request failed. Check Codex login and account usage limits.')
         text=output.read_text() if output.exists() else ''
-        if not text.strip():raise RuntimeError('Codex returned an empty response.')
+        if not text.strip():raise TransientError('Codex returned an empty response.')
         usage={}
         for line in result.stdout.splitlines():
             try:
                 event=json.loads(line)
                 if event.get('type')=='turn.completed':usage=event.get('usage',{})
             except ValueError:pass
-        return dict(text=text,input_tokens=usage.get('input_tokens',0),output_tokens=usage.get('output_tokens',0))
+        return dict(text=text,input_tokens=token_count(usage.get('input_tokens')),
+                    output_tokens=token_count(usage.get('output_tokens')))
 
 
 def complete(request):
-    relay=os.getenv('KEVO_RELAY_DIR')
-    if not relay:return complete_local(request)
-    root=Path(relay);root.mkdir(parents=True,exist_ok=True)
-    rid=uuid.uuid4().hex;req=root/(rid+'.req.json');res=root/(rid+'.res.json')
-    temporary=req.with_suffix('.tmp');temporary.write_text(json.dumps(dict(request,kind='codex_oauth')));temporary.replace(req)
-    try:
-        deadline=time.monotonic()+900
-        while time.monotonic()<deadline:
-            if res.exists():
-                answer=json.loads(res.read_text())
-                if answer.get('error'):raise RuntimeError(answer['error'])
-                return answer
-            time.sleep(1)
-        raise TimeoutError('Codex OAuth dispatcher did not respond within 15 minutes.')
-    finally:
-        req.unlink(missing_ok=True);res.unlink(missing_ok=True)
+    if not os.getenv('KEVO_RELAY_DIR'):return complete_local(request)
+    return relay_complete(request,'codex_oauth','Codex')
 
 
 class Relay:
@@ -73,7 +132,7 @@ class Relay:
     worker=staticmethod(complete_local)
     MAX_PENDING=8
     MAX_DELIVERY_FAILS=3
-    EXPIRY_S=900   # matches the sandbox-side complete() wait
+    EXPIRY_S=RELAY_WAIT_S   # matches the sandbox-side complete() wait
 
     def __init__(self):
         self.pool=ThreadPoolExecutor(max_workers=2)

@@ -342,7 +342,11 @@ def submit_data(jid):
         # user-settings > KEVO_UI_* env > default precedence; no re-override here
         validate_provider(job)
         if job['execution_target']=='molab':
-            if job.get('molab_connection'):
+            if (job.get('molab') or {}).get('connection'):
+                # Already carries its owner's notebook (public gateway runs):
+                # never replace it with the operator's connection file.
+                pass
+            elif job.get('molab_connection'):
                 # per-job pasted "Pair with agent" prompt from the Settings dialog
                 job['molab']={'notebook_url':'','connection':job.pop('molab_connection')}
             else:

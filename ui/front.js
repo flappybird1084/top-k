@@ -28,9 +28,20 @@ dataInput.addEventListener('input',()=>{selectedDataset=null});
 let runId=null,timer=null,posting=false,lastState=null,requestKey=crypto.randomUUID();
 document.querySelector('#search-mode').addEventListener('change',()=>{requestKey=crypto.randomUUID()});
 input.addEventListener('input',()=>{if(!runId)requestKey=crypto.randomUUID()});
+// AbortSignal.timeout() is absent on older Firefox, where it throws instead of
+// aborting; an AbortController plus a timer behaves the same everywhere.
+function deadline(ms){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),ms);
+  return {signal:controller.signal,done:()=>clearTimeout(timer)};
+}
 async function api(path,options={}) {
-  const response=await fetch(path,{...options,headers:{'Content-Type':'application/json',...options.headers},signal:AbortSignal.timeout(15000)});
-  if(response.status===401){location.href='/login.html';throw Error('Sign in required')}
+  const limit=deadline(15000);
+  let response;
+  try{response=await fetch(path,{...options,headers:{'Content-Type':'application/json',...options.headers},signal:limit.signal});}
+  finally{limit.done();}
+  if(response.status===401)throw Error('Sign in with GitHub to continue.');
+  if(response.status===428)throw Error('Connect your notebook and W&B account to start a run.');
   const result=await response.json();if(!response.ok)throw Error(result.error||'Request failed');return result;
 }
 function message(text){note.textContent=text;note.classList.toggle('error',!!text)}

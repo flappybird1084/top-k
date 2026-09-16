@@ -1,0 +1,36 @@
+html.topk-auth-pending body>*,html.topk-auth-locked body>*{visibility:hidden!important}
+html.topk-auth-pending body>.github-gate,html.topk-auth-locked body>.github-gate{visibility:visible!important}
+.github-gate{position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;padding:24px;background:#f7f8f3;color:#263126;font-family:"DM Sans",Arial,sans-serif}
+.github-gate-card{width:min(440px,100%);padding:42px 38px;border:1px solid #dce3d6;border-radius:20px;background:#fff;box-shadow:0 24px 80px rgba(38,49,38,.09);text-align:center}
+.github-gate-mark{display:grid;width:48px;height:48px;margin:0 auto 25px;place-items:center;border-radius:14px;background:#263d30;color:#fff;font:600 24px Georgia,serif}
+.github-gate-kicker{margin:0 0 9px;color:#6d7968;font-size:14px;letter-spacing:.08em;text-transform:uppercase}
+.github-gate h1{margin:0;color:#263126;font:500 clamp(34px,7vw,48px)/1.05 Georgia,serif}
+.github-gate-copy{max-width:340px;margin:19px auto 28px;color:#687465;font-size:16px;line-height:1.55}
+.github-gate button,.github-account button{border:1px solid #263d30;border-radius:10px;background:#263d30;color:#fff;font:600 15px "DM Sans",Arial,sans-serif;cursor:pointer}
+.github-gate button{width:100%;min-height:48px;padding:12px 18px}
+.github-gate button:disabled{border-color:#cfd7ca;background:#e4e9df;color:#7d8778;cursor:not-allowed}
+.github-gate button:not(:disabled):hover,.github-account button:hover{background:#365342}
+.github-gate button:focus-visible,.github-account button:focus-visible{outline:3px solid #8db7a1;outline-offset:3px}
+.github-gate-status{min-height:21px;margin:15px 0 0;color:#7a8476;font-size:13px;line-height:1.45}
+.github-account{position:relative;display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;padding:20px 28px;font:13px "DM Sans",Arial,sans-serif;color:#737e6d;z-index:5}
+.github-account button{padding:10px 15px}
+.github-account span{max-width:320px;font-size:12px}
+html:not(.topk-authenticated) .github-account{display:none}
+@media(max-width:600px){.github-gate-card{padding:34px 24px}.github-account{padding:14px 18px;justify-content:center}}
+.topk-setup .setup-card{width:min(560px,100%);text-align:left}
+.topk-setup h1{font:500 clamp(28px,5vw,38px)/1.08 Georgia,serif}
+.topk-setup .github-gate-copy{max-width:none;margin:16px 0 22px}
+.setup-steps{margin:0 0 24px;padding-left:20px;color:#5c6857;font-size:14px;line-height:1.65}
+.setup-steps li{margin:0 0 7px}
+.setup-steps a{color:#263d30}
+.setup-form{display:grid;gap:16px}
+.setup-form label{display:grid;gap:5px}
+.setup-label{color:#263126;font:600 14px "DM Sans",Arial,sans-serif}
+.setup-form small{color:#7a8476;font-size:12px;line-height:1.45}
+.setup-form input,.setup-form textarea{width:100%;padding:11px 13px;border:1px solid #dce3d6;border-radius:10px;background:#fbfcf9;color:#263126;font:14px "DM Sans",Arial,sans-serif;resize:vertical}
+.setup-form input:focus-visible,.setup-form textarea:focus-visible{outline:3px solid #8db7a1;outline-offset:2px}
+.setup-names{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.setup-form button{width:100%;min-height:48px;padding:12px 18px}
+.github-account button.ghost{border-color:#dce3d6;background:#fff;color:#3d4a3b}
+.github-account button.ghost:hover{background:#eef2ea}
+@media(max-width:600px){.setup-names{grid-template-columns:1fr}}

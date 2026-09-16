@@ -1,4 +1,10 @@
-"""One queue per GPU notebook; connection secrets remain outside the checkout."""
+"""GPU run queue.
+
+Two shapes: an operator deployment passes a connection file and gets one queue
+per operator notebook, and the public deployment passes None, where every run
+carries the notebook its own signed-in user connected. Operator notebook
+credentials are never attached to a public user's job.
+"""
 from __future__ import annotations
 
 import json
@@ -10,16 +16,19 @@ from pathlib import Path
 
 class NotebookPool:
     def __init__(self, connection_file, run_job, load_job, save_job, expires_at):
-        connections = json.loads(Path(connection_file).read_text())
-        if not connections or any(not c.get('url') or not c.get('token') for c in connections):
-            raise ValueError('Configure at least one GPU notebook')
-        if len({c['url'].rstrip('/') for c in connections}) != len(connections):
-            raise ValueError('Each worker needs a different notebook')
+        if connection_file is None:
+            connections = []      # bring-your-own-notebook deployment
+        else:
+            connections = json.loads(Path(connection_file).read_text())
+            if not connections or any(not c.get('url') or not c.get('token') for c in connections):
+                raise ValueError('Configure at least one GPU notebook')
+            if len({c['url'].rstrip('/') for c in connections}) != len(connections):
+                raise ValueError('Each worker needs a different notebook')
         self.connections = connections
-        self.queues = [queue.Queue() for _ in connections]
+        self.queues = [queue.Queue() for _ in connections or [None]]
         self.run_job, self.load_job, self.save_job = run_job, load_job, save_job
         self.expires_at = float(expires_at)
-        self.active = [None] * len(connections)
+        self.active = [None] * len(self.queues)
         self.lock = threading.Lock()
         import web
         self.next_uid = max([200000]+[j.get('judge_uid',200000) for j in web.list_jobs()])+1
@@ -29,13 +38,17 @@ class NotebookPool:
             job = self.load_job(jid)
             # Keep the architecture and kernel siblings on different GPUs.
             slot = 1 if job.get('mode') == 'kernel' and len(self.queues) > 1 else 0
-            c = self.connections[slot]
-            job['molab'] = {'notebook_url': c['url'], 'connection': '--token ' + c['token']}
+            if self.connections:
+                c = self.connections[slot]
+                job['molab'] = {'notebook_url': c['url'], 'connection': '--token ' + c['token']}
+            elif not (job.get('molab') or {}).get('connection'):
+                raise ValueError('This run has no notebook connected.')
             job['judge_expires_at'] = self.expires_at
             job['judge_uid'] = self.next_uid
             self.next_uid += 1
             job['recipe'] = {'phases':[{'kind':'architecture','generations':2,'candidates':2,'train_seconds':60},{'kind':'hyperparam','generations':1,'candidates':2,'train_seconds':60}], 'finals_top_k':1,'finals_train_seconds':120,'subagent_parallelism':2}
-            job['stage'] = 'Queued for GPU ' + str(slot + 1)
+            job['stage'] = ('Queued for GPU ' + str(slot + 1) if self.connections
+                            else 'Queued for your notebook GPU')
             self.save_job(job)
             self.queues[slot].put(jid)
 

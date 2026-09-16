@@ -100,8 +100,11 @@ PASS_ENV = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "WANDB_API_KEY", "WANDB_ENTIT
             "WANDB_INFERENCE_BASE_URL", "WANDB_INFERENCE_PROJECT", "SEARXNG_URL")
 
 
-def _job_env(job):
-    env = {k: os.environ[k] for k in PASS_ENV if os.environ.get(k)}
+def _job_env(job, own_only=False):
+    """Environment for a run. `own_only` drops the operator's server-wide keys
+    and passes just what this job's owner supplied — the public deployment
+    must never hand a visitor's sandbox our credentials."""
+    env = {} if own_only else {k: os.environ[k] for k in PASS_ENV if os.environ.get(k)}
     for key, envname in (("api_key", "WANDB_API_KEY"), ("entity", "WANDB_ENTITY"),
                          ("project", "WANDB_PROJECT")):
         if job.get("wandb", {}).get(key):
@@ -144,7 +147,8 @@ def _run_job(jid):
             # subprocess so each job runs the CURRENT dispatch code from disk,
             # even if this server process has been up for days
             env = dict(os.environ)
-            env["KEVO_REMOTE_ENV"] = json.dumps({} if job.get("judge_expires_at") else _job_env(job))
+            env["KEVO_REMOTE_ENV"] = json.dumps(
+                _job_env(job, own_only=bool(job.get("judge_expires_at"))))
             proc = subprocess.Popen(
                 [sys.executable, "-u", "-m", "kernelevo.molab_dispatch",
                  _job_path(jid), ROOT, os.path.join(JOBS_DIR, jid, "run")],
