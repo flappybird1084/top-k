@@ -6,10 +6,6 @@
   "workers_dev": false,
   "routes": [
     {
-      "pattern": "top-k.dev",
-      "custom_domain": true
-    },
-    {
       "pattern": "api.top-k.dev",
       "custom_domain": true
     },

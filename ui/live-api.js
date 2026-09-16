@@ -2,10 +2,13 @@
 (() => {
  const backend='https://api.top-k.dev';
  const original=window.fetch.bind(window), key='top-k-github-session-v1';
+ const isLanding=/\/(?:index\.html)?$/.test(location.pathname);
  let user=null, popup=null, config=null, setup=null;
  let accountButton, accountStatus, accountSetup, gate, gateButton, gateStatus, setupPanel, setupStatus;
  const criticalStyle=document.createElement('style');
- criticalStyle.textContent='html.topk-auth-pending body>*,html.topk-auth-locked body>*{visibility:hidden!important}html.topk-auth-pending body>.github-gate,html.topk-auth-locked body>.github-gate{visibility:visible!important}';
+ criticalStyle.textContent=isLanding
+  ? 'html.topk-auth-pending body>.github-account,html.topk-auth-locked body>.github-account{visibility:hidden!important}'
+  : 'html.topk-auth-pending body>*,html.topk-auth-locked body>*{visibility:hidden!important}html.topk-auth-pending body>.github-gate,html.topk-auth-locked body>.github-gate{visibility:visible!important}';
  document.head.append(criticalStyle);
  document.documentElement.classList.add('topk-auth-pending');
 
@@ -157,9 +160,10 @@
  }
 
  document.addEventListener('DOMContentLoaded',()=>{
-  const style=document.createElement('link');style.rel='stylesheet';style.href='/github-auth.css?v=3';document.head.append(style);
+  const style=document.createElement('link');style.rel='stylesheet';style.href='/github-auth.css?v=4';document.head.append(style);
   gate=document.createElement('section');gate.className='github-gate';gate.setAttribute('aria-labelledby','github-gate-title');
-  gate.innerHTML='<div class="github-gate-card"><span class="github-gate-mark" aria-hidden="true">K</span><p class="github-gate-kicker">Top-Kernel</p><h1 id="github-gate-title">Sign in to continue</h1><p class="github-gate-copy">Repository analysis, agent traces, and performance results are private.</p></div>';
+  gate.classList.toggle('landing-gate',isLanding);
+  gate.innerHTML='<div class="github-gate-card"><p class="github-gate-kicker">Top-Kernel</p><h1 id="github-gate-title">Sign in to continue</h1><p class="github-gate-copy">Repository analysis, agent traces, and performance results are private.</p></div>';
   gateButton=document.createElement('button');gateButton.type='button';gateButton.textContent='Checking GitHub sign-in…';gateButton.disabled=true;
   gateStatus=document.createElement('p');gateStatus.className='github-gate-status';gateStatus.setAttribute('role','status');
   gate.querySelector('.github-gate-card').append(gateButton,gateStatus);document.body.prepend(gate);
