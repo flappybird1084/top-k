@@ -1,0 +1,24 @@
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y ca-certificates git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY requirements-gateway.txt ./
+RUN pip install --no-cache-dir -r requirements-gateway.txt
+
+COPY . ./
+RUN groupadd --gid 10001 topk \
+    && useradd --uid 10001 --gid topk --home-dir /var/lib/top-k --create-home topk \
+    && mkdir -p /app/jobs /var/lib/top-k/auth /var/lib/top-k/integrations /var/lib/top-k/relay \
+    && chown -R topk:topk /app/jobs /var/lib/top-k
+
+USER topk
+EXPOSE 8768
+
+CMD ["python", "judges_server.py"]

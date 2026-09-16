@@ -308,4 +308,8 @@ if __name__ == '__main__':
     from starlette.middleware.wsgi import WSGIMiddleware
     application = create_app()
     application.extensions['notebook_pool'].start()
-    uvicorn.run(WSGIMiddleware(application), host='127.0.0.1', port=8768)
+    uvicorn.run(
+        WSGIMiddleware(application),
+        host=os.getenv('JUDGES_HOST', '127.0.0.1'),
+        port=int(os.getenv('JUDGES_PORT', '8768')),
+    )
