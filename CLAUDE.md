@@ -88,3 +88,22 @@ diff, never the strategy prose.
 - The loop requires a CUDA GPU (it runs on molab via `notebooks/molab_run.py`). On a CPU box you can still test most of the harness: gate 2 logic, the compile/verify subprocess ladder, adapters, archive, stub LLM, and prompts all work with `cfg["device"]="cpu"` — see the invariant that gates 3–4 (CUDA-event timing) and profiling are the only CUDA-hard parts.
 - Viewer: `marimo run notebooks/viewer.py -- --archive runs/latest/archive.sqlite` (three cells, reads sqlite, no state).
 - Tests: `uv run python -m pytest tests/ -q` (~44 tests: gates/architecture, claude/codex OAuth providers, recipe-audit helpers, UI settings, discovery, dispatch). Run it after any harness or ui_server change. Deeper verification is still the stub-mode run plus targeted `uv run python - <<EOF` scripts against modules.
+
+## Writing status and audit reports
+
+Assume the reader has no knowledge of this codebase's internals or its private
+vocabulary. Do not expect module names, gate numbers, or internal shorthand to
+carry meaning on their own — translate before naming.
+
+- Lead with the plain-language conclusion and what it means. Mechanism comes
+  after, if at all.
+- Describe what a thing *does*, not what it is called: "the check that rotates
+  inputs so a kernel can't memorize answers" rather than "gate 3's
+  anti-memoization rotation"; "the queue thread that runs submitted jobs" rather
+  than "`judges_pool._worker`".
+- Prefer user-visible consequences — a run aborts, a reported number is wrong, a
+  submitted job never starts — over implementation detail.
+- File paths, function names, and finding numbers are good *supporting* evidence
+  once the point is already made, not a substitute for making it.
+- Concise means translated, not padded. Shorter and clearer, never longer and
+  vaguer.
