@@ -11,6 +11,7 @@
   : 'html.topk-auth-pending body>*,html.topk-auth-locked body>*{visibility:hidden!important}html.topk-auth-pending body>.github-gate,html.topk-auth-locked body>.github-gate{visibility:visible!important}';
  document.head.append(criticalStyle);
  document.documentElement.classList.add('topk-auth-pending');
+ document.documentElement.classList.toggle('topk-landing',isLanding);
 
  // AbortSignal.timeout() is missing on older Firefox (and on any browser that
  // ships AbortController without it), which turns every call into an
