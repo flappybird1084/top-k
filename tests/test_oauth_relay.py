@@ -132,6 +132,10 @@ def test_a_build_without_the_isolation_switches_is_refused(monkeypatch):
     full tool suite, on prompts full of untrusted repository text."""
     from kernelevo import claude_oauth
     monkeypatch.setattr(claude_oauth, 'cli_flags', lambda: frozenset({'--print'}))
+    # The CLI being installed is not what this test is about; without this,
+    # check_login() short-circuits on `which('claude')` wherever the CLI is
+    # absent (e.g. CI) and never reaches the capability check under test.
+    monkeypatch.setattr(claude_oauth.shutil, 'which', lambda _cmd: '/usr/bin/claude')
     with pytest.raises(claude_oauth.CapabilityError):
         claude_oauth.isolation_flags()
     with pytest.raises(ValueError, match='does not support'):
