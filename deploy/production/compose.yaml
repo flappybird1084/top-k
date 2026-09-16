@@ -15,6 +15,7 @@ services:
       JUDGES_INTEGRATION_DIR: /var/lib/top-k/integrations
       KEVO_RELAY_LEDGER: /var/lib/top-k/relay/usage.json
       KEVO_UI_TARGET: molab
+      KEVO_UI_LLM: wandb
     volumes:
       - ${TOPK_DATA_ROOT:-/srv/top-k-data}/state:/var/lib/top-k
       - ${TOPK_DATA_ROOT:-/srv/top-k-data}/jobs:/app/jobs
