@@ -167,8 +167,8 @@ class Relay:
         for rid,stamped in list(self.done.items()):
             if now-stamped>self.TOMBSTONE_S:
                 del self.done[rid]
-        for rid,(future,started,_f) in list(self.pending.items()):
-            if now-started>self.EXPIRY_S:
+        for rid,pend in list(self.pending.items()):
+            if now-pend[1]>self.EXPIRY_S:
                 del self.pending[rid]
                 self.done[rid]=now
                 write_line(f'[agent] {self.label} request {rid[:8]} expired after '
@@ -192,7 +192,7 @@ class Relay:
                     write_line(f'[agent] {self.label} relay saturated '
                                f'({len(self.pending)} pending); request {rid[:8]} deferred.')
                     continue
-                self.pending[rid]=[self.pool.submit(self.worker,request),now,0]
+                self.pending[rid]=[self.pool.submit(self.worker,request),now,0,False]
                 write_line(f'[agent] Request sent through local {self.label} OAuth session.')
             entry=self.pending[rid]
             future=entry[0]
@@ -204,7 +204,13 @@ class Relay:
                 write_line(f'[agent] {self.label} request {rid[:8]} failed: '
                            f'{type(e).__name__}: {str(e)[:120]}')
             else:
-                if policy is not None:policy.record_usage(answer)
+                # Bill exactly once: a failed delivery keeps the entry pending, so
+                # the next poll re-enters this branch with the SAME completed
+                # future — without this guard record_usage() charged the owner
+                # ledger again on every delivery retry.
+                if policy is not None and not entry[3]:
+                    policy.record_usage(answer)
+                    entry[3]=True
             if self._deliver(client,relay,rid,answer,write_line):
                 del self.pending[rid]
                 self.done[rid]=now

@@ -197,6 +197,19 @@ def discover_repository(jid):
         with lock:
             job=read_json(job_path(jid)/'job.json')
             if not job or job['status']!='exploring':return
+            if os.getenv('JUDGES_EXPIRES_AT') or job.get('visitor'):
+                # Public deployment: never spend the operator's Codex OAuth session
+                # or live web search on a visitor's arbitrary repository. That path
+                # runs before the job reaches the visitor's notebook and bypasses
+                # the relay opt-in, active-run token, model allowlist, and per-owner
+                # budget. Ask the visitor for the data link directly instead.
+                job.update(status='awaiting_data',
+                           stage='Add your training data link to continue.',
+                           dataset_options=[],
+                           discovery_summary='Add the Hugging Face or dataset URL this run should use.')
+                job['discovery_activity']=[{'message':job['stage'],'created_at':time.time()}]
+                web.save_job(job)
+                return
             job['stage']='Inspecting repository training code and searching for dataset sources…'
             job['discovery_activity']=[{'message':job['stage'],'created_at':time.time()}]
             web.save_job(job)

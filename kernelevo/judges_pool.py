@@ -67,6 +67,11 @@ class NotebookPool:
                 job['molab'] = {'notebook_url': c['url'], 'connection': '--token ' + c['token']}
             elif not self.owner_notebook(job):
                 raise ValueError('This run has no notebook connected.')
+            # Gateway invariant: a public run always executes on the visitor's
+            # own notebook. web._run_job already refuses local execution for a
+            # visitor/judged job, but force molab here so a stray
+            # KEVO_UI_TARGET=local makes the run proceed rather than error.
+            job['execution_target'] = 'molab'
             job['judge_expires_at'] = self.expires_at
             job['judge_uid'] = self.next_uid
             self.next_uid += 1

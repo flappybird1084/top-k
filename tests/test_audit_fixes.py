@@ -236,3 +236,94 @@ def test_visitor_job_refuses_local_execution(tmp_path, monkeypatch):
     assert refusal and "local execution is not available" in refusal
     popen.assert_not_called()
     assert web.load_job(jid)["status"] != "running"
+
+
+# ============ PR #5 Copilot review findings ============
+
+def test_relay_bills_usage_once_across_delivery_retries(tmp_path, monkeypatch):
+    """codex_oauth finding: a failed delivery keeps the request pending, so the
+    next poll re-enters the completed branch with the same future. Usage must be
+    billed once, not once per delivery attempt."""
+    monkeypatch.setenv("KEVO_ALLOW_OPERATOR_LLM_RELAY", "1")
+    from kernelevo.relay_policy import RelayPolicy, OwnerLedger
+
+    class _Flaky:
+        def __init__(self, fail):
+            self.fail, self.calls = fail, 0
+
+        def run(self, code):
+            self.calls += 1
+            return (False, "", "boom") if self.calls <= self.fail else (True, "OAUTH-OK", "")
+
+    relay = _make_relay(lambda req: dict(text="hi", input_tokens=3, output_tokens=4))
+    client = _Flaky(fail=2)   # two failed deliveries, then success (< MAX_DELIVERY_FAILS)
+    policy = RelayPolicy({"id": "c" * 32, "visitor": "github:7"}, "relay-secret",
+                         OwnerLedger(tmp_path / "ledger.json"))
+    req = [dict(id="c" * 32, kind="test", relay_token="relay-secret",
+                messages=[{"role": "user", "content": "hi"}])]
+    lines = []
+    deadline = time.time() + 2
+    while client.calls < 3 and time.time() < deadline:
+        relay.service(client, "/tmp/w", req, lines.append, policy=policy)
+        time.sleep(0.02)
+    assert client.calls >= 3, "delivery never retried through to success"
+    assert policy.tokens == 7, f"usage billed {policy.tokens}, expected 7 (billed once)"
+
+
+def test_relay_fails_closed_when_the_owner_ledger_cannot_persist(tmp_path, monkeypatch):
+    """relay_policy finding: a filesystem failure writing the per-owner ledger
+    must stop the relay, not be read as 'no cap crossed' — which would silently
+    disable the rolling per-account budget (a fail-open)."""
+    monkeypatch.setenv("KEVO_ALLOW_OPERATOR_LLM_RELAY", "1")
+    monkeypatch.setenv("KEVO_ALLOW_OPERATOR_SEARCH_RELAY", "1")
+    from kernelevo.relay_policy import RelayPolicy, OwnerLedger, LEDGER_UNAVAILABLE
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a directory")     # its child path can never be created
+    ledger = OwnerLedger(blocker / "ledger.json")
+    assert ledger.charge("github:7", requests=1) == LEDGER_UNAVAILABLE
+    ask = dict(relay_token="relay-secret", messages=[{"role": "user", "content": "x"}])
+    p = RelayPolicy({"id": "a" * 32, "visitor": "github:7"}, "relay-secret", ledger)
+    assert "accounting is unavailable" in (p.check_llm(ask) or "")
+    p2 = RelayPolicy({"id": "b" * 32, "visitor": "github:7"}, "relay-secret", ledger)
+    assert "accounting is unavailable" in (
+        p2.check_search(dict(relay_token="relay-secret", query="triton")) or "")
+
+
+def test_public_discovery_skips_the_operator_oauth_session(tmp_path, monkeypatch):
+    """ui_server finding: a visitor's repo must never trigger the operator's
+    Codex OAuth + live web search discovery. That runs before the job reaches
+    the visitor's notebook and bypasses every relay cap; a public job should go
+    straight to awaiting_data instead."""
+    import web
+    import ui_server
+    from kernelevo import repo_discovery
+    monkeypatch.setattr(web, "JOBS_DIR", str(tmp_path))
+    jid = "d" * 32
+    (tmp_path / jid).mkdir()
+    (tmp_path / jid / "job.json").write_text(json.dumps(
+        {"id": jid, "status": "exploring", "repo": "https://github.com/x/y",
+         "visitor": "github:7"}))
+
+    def _boom(repo):
+        raise AssertionError("operator discovery ran for a visitor job")
+    monkeypatch.setattr(repo_discovery, "discover", _boom)
+    ui_server.discover_repository(jid)
+    job = json.loads((tmp_path / jid / "job.json").read_text())
+    assert job["status"] == "awaiting_data"
+
+
+def test_public_pool_forces_molab_execution_target(monkeypatch):
+    """judges_pool finding: a queued public run always targets the visitor's own
+    notebook, even if a stray KEVO_UI_TARGET=local leaked into the job."""
+    import web
+    from kernelevo.judges_pool import NotebookPool
+    monkeypatch.setattr(web, "list_jobs", lambda: [])
+    store = {"j" * 32: {"id": "j" * 32, "mode": "recipe", "execution_target": "local",
+                        "molab": {"connection": "--token t",
+                                  "notebook_url": "https://n.sb.molab.run"}}}
+    pool = NotebookPool(None, run_job=lambda jid: None,
+                        load_job=lambda jid: dict(store[jid]),
+                        save_job=lambda job: store.__setitem__(job["id"], job),
+                        expires_at=time.time() + 3600, concurrency=1)
+    pool.put("j" * 32)
+    assert store["j" * 32]["execution_target"] == "molab"

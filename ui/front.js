@@ -136,13 +136,17 @@ function gatherSettings(){
 }
 try{
   const saved=JSON.parse(localStorage.getItem('topk-settings')||'{}');
-  for(const[key,sel]of Object.entries(S_FIELDS))if(saved[key]!=null&&saved[key]!=='')document.querySelector(sel).value=saved[key];
+  for(const[key,sel]of Object.entries(S_FIELDS))if(key!=='molab_connection'&&saved[key]!=null&&saved[key]!=='')document.querySelector(sel).value=saved[key];
 }catch{}
 document.querySelector('#open-settings').addEventListener('click',()=>settingsDialog.showModal());
 document.querySelector('#close-settings').addEventListener('click',()=>settingsDialog.close());
 document.querySelector('#settings-form').addEventListener('submit',e=>{
   e.preventDefault();
-  localStorage.setItem('topk-settings',JSON.stringify(gatherSettings()));
+  // Persist everything EXCEPT the pasted "Pair with agent" prompt: it carries
+  // the marimo bearer token and must never live in browser storage. It is still
+  // submitted for the current run via gatherSettings() at POST time.
+  const persist=gatherSettings();delete persist.molab_connection;
+  localStorage.setItem('topk-settings',JSON.stringify(persist));
   settingsDialog.close();
 });
 document.querySelector('#reset-settings').addEventListener('click',()=>{

@@ -74,6 +74,12 @@ def allowed_models():
     return DEFAULT_MODELS
 
 
+# Distinct from a field name (a crossed cap) and from None (nothing crossed):
+# the ledger could not be persisted, so usage is unknown and the relay must fail
+# CLOSED rather than silently stop enforcing the per-owner budget.
+LEDGER_UNAVAILABLE = 'ledger-unavailable'
+
+
 class OwnerLedger:
     """Usage carried across the runs of one account.
 
@@ -90,10 +96,10 @@ class OwnerLedger:
         self.limits = dict(limits or OWNER_LIMITS)
 
     def _locked(self, mutate):
-        try:
-            self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        except OSError:
-            return None
+        # Let an I/O failure (mkdir/open/read/write) propagate: charge() turns it
+        # into LEDGER_UNAVAILABLE so callers fail closed, instead of a bare None
+        # that the callers read as "no cap crossed".
+        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o600)
         try:
             try:
@@ -135,7 +141,7 @@ class OwnerLedger:
         try:
             return self._locked(mutate)
         except OSError:
-            return None
+            return LEDGER_UNAVAILABLE
 
 
 class RelayPolicy:
@@ -216,6 +222,8 @@ class RelayPolicy:
             return self._stop('this run reached its relay request budget')
         self.requests += 1
         crossed = self.ledger.charge(self.owner, requests=1)
+        if crossed == LEDGER_UNAVAILABLE:
+            return self._stop('relay usage accounting is unavailable')
         if crossed:
             return self._stop(f'this account reached its relay {crossed} budget')
         return None
@@ -229,7 +237,9 @@ class RelayPolicy:
                    if isinstance(v, int) and v > 0)
         self.tokens += used
         crossed = self.ledger.charge(self.owner, tokens=used)
-        if crossed:
+        if crossed == LEDGER_UNAVAILABLE:
+            self._stop('relay usage accounting is unavailable')
+        elif crossed:
             self._stop(f'this account reached its relay {crossed} budget')
         elif self.tokens > self.limits['max_tokens']:
             self._stop('this run reached its relay token budget')
@@ -249,6 +259,8 @@ class RelayPolicy:
             return self._stop('this run reached its relay search budget')
         self.searches += 1
         crossed = self.ledger.charge(self.owner, searches=1)
+        if crossed == LEDGER_UNAVAILABLE:
+            return self._stop('relay usage accounting is unavailable')
         if crossed:
             return self._stop(f'this account reached its relay {crossed} budget')
         return None

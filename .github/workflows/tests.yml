@@ -1,0 +1,40 @@
+name: tests
+
+# CPU unit tests. The whole pytest suite is CPU-runnable by design (gates 3–4
+# CUDA timing and profiling are the only GPU-hard parts and are not unit-tested
+# here); so this runs on an ordinary GitHub runner with no GPU.
+
+on:
+  push:
+    branches: [main, codex/opus-review-fixes]
+  pull_request:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies (CPU torch)
+        run: |
+          uv venv --python 3.13
+          . .venv/bin/activate
+          # CPU wheel so CI does not pull the multi-GB CUDA build.
+          uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+          uv pip install -r requirements.txt
+          uv pip install pytest
+
+      - name: Run unit tests
+        run: |
+          . .venv/bin/activate
+          python -m pytest -q
