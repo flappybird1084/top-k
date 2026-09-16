@@ -25,14 +25,31 @@ def _unfence(text):
     return m.group(1).strip() if m else text.strip()
 
 
-def check_login():
-    """Actually checks login, not just installation (audit finding 26): the
-    CLI has no free status command, so this makes one minimal haiku call —
-    an installed-but-signed-out machine fails here instead of at the first
-    candidate. Costs one tiny subscription call per validation."""
+class CapabilityError(RuntimeError):
+    """The local Claude Code build could not be shown to support the isolation
+    switches this provider depends on. Fatal: every prompt this provider sends
+    quotes untrusted repository text, so a build that might hand that text a
+    tool is not one we run."""
+
+
+def check_login(live=False):
+    """Fast by default: is Claude Code installed and does it advertise the
+    isolation switches we require? That is a local, free, sub-second check,
+    which is what a web request can afford.
+
+    `live=True` additionally spends one tiny model call to prove the machine is
+    signed in. It belongs in a background preflight, never in the handling of a
+    user request — it can block for 90 seconds and it bills the subscription
+    (audit finding 7)."""
     if not shutil.which('claude'):
         raise ValueError('Install Claude Code on the server (npm i -g '
                          '@anthropic-ai/claude-code) and sign in with `claude`.')
+    try:
+        isolation_flags()
+    except CapabilityError as e:
+        raise ValueError(str(e)) from e
+    if not live:
+        return
     try:
         result=subprocess.run(
             ['claude','-p','--output-format','json','--max-turns','1',
@@ -81,20 +98,41 @@ def _flags_for(executable):
     try:
         result = subprocess.run([executable, '--help'], capture_output=True,
                                 text=True, timeout=30)
-    except (OSError, subprocess.SubprocessError):
-        return frozenset()
-    return frozenset(re.findall(r'--[a-zA-Z0-9][a-zA-Z0-9-]*',
-                                result.stdout + result.stderr))
+    except (OSError, subprocess.SubprocessError) as e:
+        raise CapabilityError(
+            'Could not ask Claude Code which isolation switches it supports '
+            f'(`{executable} --help` failed: {type(e).__name__}). Refusing to '
+            'send untrusted prompts to a build whose tool access is unknown.') from e
+    if result.returncode:
+        raise CapabilityError(
+            f'`{executable} --help` exited {result.returncode}; the build\'s tool '
+            'access could not be determined, so this provider will not run.')
+    flags = frozenset(re.findall(r'--[a-zA-Z0-9][a-zA-Z0-9-]*',
+                                 result.stdout + result.stderr))
+    if not flags:
+        raise CapabilityError(
+            f'`{executable} --help` listed no options; the build\'s tool access '
+            'could not be determined, so this provider will not run.')
+    return flags
 
 
 def cli_flags():
     """Which isolation switches this Claude Code build actually has.
 
-    The flag set moves between releases; passing an unknown one aborts the
-    call. Probing --help once per executable lets the hard isolation (no
-    tools, no MCP, no user-level settings) be applied wherever it is supported
-    and skipped — rather than fatal — where it is not."""
+    The flag set moves between releases, so it is probed from --help once per
+    executable rather than assumed. A probe that fails, or a build missing a
+    switch the isolation depends on, is fatal (audit finding 3): the old
+    behaviour was to fall back to an empty flag set, which silently launched
+    the CLI with its full tool suite enabled on prompts full of untrusted
+    repository text."""
     return _flags_for(shutil.which('claude') or 'claude')
+
+
+def _first(flags, names):
+    for name in names:
+        if name in flags:
+            return name
+    return None
 
 
 def isolation_flags():
@@ -102,20 +140,29 @@ def isolation_flags():
     added by a future release is denied by default instead of being missed by
     a name denylist. The denylist stays as a second layer, and MCP servers and
     user-level settings — both of which can introduce tools this process never
-    configured — are switched off where the build supports it.
+    configured — are switched off.
+
+    Every one of those is required. If this build cannot express one, the call
+    does not happen; there is no degraded mode.
 
     Nothing here touches the credential store, so the subscription login the
     provider depends on keeps working."""
     flags, command = cli_flags(), []
-    for name in ('--allowedTools', '--allowed-tools'):
-        if name in flags:
-            command += [name, '']
-            break
-    for name in ('--disallowedTools', '--disallowed-tools'):
-        if name in flags:
-            command += [name, 'Bash,Edit,Write,Read,Grep,Glob,WebSearch,WebFetch,'
-                              'Task,NotebookEdit,ToolSearch,TodoWrite,Skill,SlashCommand']
-            break
+    allow = _first(flags, ('--allowedTools', '--allowed-tools'))
+    deny = _first(flags, ('--disallowedTools', '--disallowed-tools'))
+    mcp = _first(flags, ('--strict-mcp-config', '--mcp-config'))
+    missing = [name for name, found in (('a tool allowlist', allow),
+                                        ('a tool denylist', deny),
+                                        ('an MCP override', mcp)) if not found]
+    if missing:
+        raise CapabilityError(
+            'This Claude Code build does not support ' + ', '.join(missing) +
+            '. Update Claude Code (npm i -g @anthropic-ai/claude-code); this '
+            'provider will not send untrusted prompts to a CLI it cannot '
+            'isolate.')
+    command += [allow, '']
+    command += [deny, 'Bash,Edit,Write,Read,Grep,Glob,WebSearch,WebFetch,'
+                      'Task,NotebookEdit,ToolSearch,TodoWrite,Skill,SlashCommand']
     if '--strict-mcp-config' in flags:
         command.append('--strict-mcp-config')
     if '--mcp-config' in flags:

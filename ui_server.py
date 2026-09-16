@@ -7,6 +7,7 @@ import json
 import math
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import threading
@@ -123,6 +124,55 @@ def sanitize_settings(payload):
     return out
 
 
+# A signed-in run must not wait on the server's own CLI logins. The live
+# checks — `codex login status`, and for Claude Code a real (billed) one-token
+# completion — took up to 90 seconds inside the request that starts a run
+# (audit finding 7). Now the request does only the free local check and reads
+# the last background result; the live probe runs on its own thread.
+PROVIDER_PROBE_TTL = 900
+PROVIDER_BINARIES = {
+    'codex_oauth': ('codex', 'Install Codex CLI on the server and sign in with ChatGPT.'),
+    'claude_oauth': ('claude', 'Install Claude Code on the server (npm i -g '
+                               '@anthropic-ai/claude-code) and sign in with `claude`.')}
+_provider_probe = {}        # provider -> (checked_at, error message or None)
+_probe_lock = threading.Lock()
+
+
+def _live_probe(provider):
+    try:
+        if provider == 'codex_oauth':
+            from kernelevo.codex_oauth import check_login
+            check_login()
+        else:
+            from kernelevo.claude_oauth import check_login
+            check_login(live=True)
+        error = None
+    except Exception as e:  # noqa: BLE001 — any failure is a readiness answer
+        error = str(e)
+    with _probe_lock:
+        _provider_probe[provider] = (time.time(), error)
+
+
+def provider_ready(provider):
+    """Fast readiness for an OAuth CLI provider: is it installed, and did the
+    last background probe find it usable? Never blocks on the model."""
+    binary, message = PROVIDER_BINARIES[provider]
+    if not shutil.which(binary):
+        raise ValueError(message)
+    with _probe_lock:
+        entry = _provider_probe.get(provider)
+        stale = not entry or time.time() - entry[0] > PROVIDER_PROBE_TTL
+        if stale:
+            # Stamp before launching so a burst of requests starts one probe,
+            # not one per request.
+            _provider_probe[provider] = (time.time(), None)
+    if stale:
+        threading.Thread(target=_live_probe, args=(provider,), daemon=True).start()
+        return
+    if entry[1]:
+        raise ValueError(entry[1])
+
+
 def validate_provider(job):
     import config
     cfg=config.load(job['profile'])
@@ -135,12 +185,8 @@ def validate_provider(job):
         for value in (spec if isinstance(spec,list) else [spec]):
             if not value:continue
             provider=value.partition(':')[0]
-            if provider=='codex_oauth':
-                from kernelevo.codex_oauth import check_login
-                check_login()
-            if provider=='claude_oauth':
-                from kernelevo.claude_oauth import check_login
-                check_login()
+            if provider in PROVIDER_BINARIES:
+                provider_ready(provider)
             keys={'anthropic':('ANTHROPIC_API_KEY',),'openai':('OPENAI_API_KEY',),'wandb':('WANDB_INFERENCE_API_KEY','WANDB_API_KEY')}.get(provider,())
             if keys and not any(env.get(key) for key in keys):
                 raise ValueError('Training is not configured yet. Set '+ ' or '.join(keys)+' on the server, then retry. Your links are saved.')
@@ -342,9 +388,10 @@ def submit_data(jid):
         # user-settings > KEVO_UI_* env > default precedence; no re-override here
         validate_provider(job)
         if job['execution_target']=='molab':
-            if (job.get('molab') or {}).get('connection'):
-                # Already carries its owner's notebook (public gateway runs):
-                # never replace it with the operator's connection file.
+            if (job.get('molab') or {}).get('connection') or job.get('visitor'):
+                # Already tied to its owner's own notebook (public gateway
+                # runs, whose token is resolved from the integration store at
+                # launch): never replace it with the operator's connection file.
                 pass
             elif job.get('molab_connection'):
                 # per-job pasted "Pair with agent" prompt from the Settings dialog
@@ -382,7 +429,11 @@ def runtime(jid):
     try:
         if job.get('execution_target')=='molab':
             from kernelevo.molab import MolabClient,parse_connection
-            ok,out,_=MolabClient(*parse_connection(job['molab'])).run(code)
+            connection=job.get('molab') or {}
+            if job.get('visitor') and not connection.get('connection'):
+                from kernelevo.integrations import notebook_connection
+                connection=notebook_connection(job['visitor']) or connection
+            ok,out,_=MolabClient(*parse_connection(connection)).run(code)
         else:out=subprocess.check_output([os.sys.executable,'-c',code],text=True,timeout=6)
         raw=json.loads(next(line[9:] for line in out.splitlines() if line.startswith('GPU_JSON:')))
         gpus=[]
@@ -400,7 +451,18 @@ def wandb_metrics(jid):
     if key in cache and time.time()-cache[key]['sampled_at']<30:return cache[key]
     try:
         import wandb
-        parts=urlsplit(url).path.strip('/').split('/');run=wandb.Api(timeout=10).run('/'.join([parts[0],parts[1],parts[3]]))
+        # Public runs report to the visitor's W&B account. Read the resulting
+        # run with that same account instead of silently falling back to the
+        # gateway operator's ambient WANDB_API_KEY.
+        job=read_json(job_path(jid)/'job.json',{})
+        api_key=None
+        if job.get('visitor'):
+            from kernelevo.integrations import wandb_env
+            api_key=wandb_env(job['visitor']).get('WANDB_API_KEY')
+            if not api_key:return {'metrics':[]},503
+        parts=urlsplit(url).path.strip('/').split('/')
+        api=wandb.Api(api_key=api_key,timeout=10) if api_key else wandb.Api(timeout=10)
+        run=api.run('/'.join([parts[0],parts[1],parts[3]]))
         metrics=[dict(name=k,value=v) for k,v in dict(run.summary).items() if not k.startswith('_') and isinstance(v,(int,float)) and not isinstance(v,bool) and math.isfinite(v)]
         prefix='recipe/' if state.get('mode')=='recipe' else None
         if prefix:metrics=[m for m in metrics if m['name'].startswith(prefix)]

@@ -64,7 +64,10 @@ def relay_complete(request, kind, label):
     rid = uuid.uuid4().hex
     req, res = root / (rid + '.req.json'), root / (rid + '.res.json')
     temporary = req.with_suffix('.tmp')
-    temporary.write_text(json.dumps(dict(request, kind=kind)))
+    # The launch environment's relay secret is what makes a request
+    # attributable to this run; the dispatcher refuses anything without it.
+    payload = dict(request, kind=kind, relay_token=os.getenv('KEVO_RELAY_TOKEN', ''))
+    temporary.write_text(json.dumps(payload))
     temporary.replace(req)
     try:
         deadline = time.monotonic() + RELAY_WAIT_S
@@ -133,25 +136,58 @@ class Relay:
     MAX_PENDING=8
     MAX_DELIVERY_FAILS=3
     EXPIRY_S=RELAY_WAIT_S   # matches the sandbox-side complete() wait
+    # How long a finished/refused request id stays un-servable. The sandbox
+    # deletes its own request file when its wait ends, but until then the
+    # dispatcher keeps seeing it — without a tombstone every dropped request
+    # was submitted again, and billed again, on the next poll.
+    TOMBSTONE_S=RELAY_STALE_S
 
     def __init__(self):
         self.pool=ThreadPoolExecutor(max_workers=2)
         self.pending={}   # rid -> [future, started_ts, delivery_fails]
+        self.done={}      # rid -> tombstone timestamp
 
-    def service(self,client,work,requests,write_line,relay_dir=None):
+    def _deliver(self, client, relay, rid, answer, write_line):
+        """Write one answer (a completion or a refusal) back to the sandbox."""
+        path=relay+'/'+rid+'.res.json'
+        code=(f'from pathlib import Path\n_p=Path({path!r})\n'
+              f'_t=_p.with_suffix(".tmp"); _t.write_text({json.dumps(answer)!r}); _t.replace(_p)\nprint("OAUTH-OK")\n')
+        try:
+            ok,out,_=client.run(code)
+        except Exception as e:  # noqa: BLE001 — delivery failure must not leak the slot
+            ok,out=False,str(e)
+        return bool(ok and 'OAUTH-OK' in out)
+
+    def service(self,client,work,requests,write_line,relay_dir=None,policy=None):
         # Every path must release its slot: the original success-only
         # `del self.pending[rid]` wedged the provider permanently after ~8
         # transient delivery errors (audit finding 24).
         now=time.monotonic()
+        relay=relay_dir or work+'/run/search_relay'
+        for rid,stamped in list(self.done.items()):
+            if now-stamped>self.TOMBSTONE_S:
+                del self.done[rid]
         for rid,(future,started,_f) in list(self.pending.items()):
             if now-started>self.EXPIRY_S:
                 del self.pending[rid]
+                self.done[rid]=now
                 write_line(f'[agent] {self.label} request {rid[:8]} expired after '
                            f'{self.EXPIRY_S}s; slot released.')
+                self._deliver(client,relay,rid,
+                              {'error':f'{self.label} relay request expired before it was answered.'},
+                              write_line)
         for request in requests:
             rid=request.get('id','')
             if len(rid)!=32 or any(c not in '0123456789abcdef' for c in rid):continue
+            if rid in self.done:continue       # already answered, refused or dropped
             if rid not in self.pending:
+                refusal=policy.check_llm(request) if policy is not None else None
+                if refusal:
+                    # Refused before any credential is touched: nothing is billed.
+                    self.done[rid]=now
+                    write_line(f'[agent] {self.label} request {rid[:8]} refused: {refusal}')
+                    self._deliver(client,relay,rid,{'error':refusal},write_line)
+                    continue
                 if len(self.pending)>=self.MAX_PENDING:
                     write_line(f'[agent] {self.label} relay saturated '
                                f'({len(self.pending)} pending); request {rid[:8]} deferred.')
@@ -167,19 +203,16 @@ class Relay:
                         'Check server login and usage limits.'}
                 write_line(f'[agent] {self.label} request {rid[:8]} failed: '
                            f'{type(e).__name__}: {str(e)[:120]}')
-            path=(relay_dir or work+'/run/search_relay')+'/'+rid+'.res.json'
-            code=(f'from pathlib import Path\n_p=Path({path!r})\n'
-                  f'_t=_p.with_suffix(".tmp"); _t.write_text({json.dumps(answer)!r}); _t.replace(_p)\nprint("OAUTH-OK")\n')
-            try:
-                ok,out,_=client.run(code)
-            except Exception as e:  # noqa: BLE001 — delivery failure must not leak the slot
-                ok,out=False,str(e)
-            if ok and 'OAUTH-OK' in out:
+            else:
+                if policy is not None:policy.record_usage(answer)
+            if self._deliver(client,relay,rid,answer,write_line):
                 del self.pending[rid]
+                self.done[rid]=now
                 write_line(f'[agent] {self.label} response delivered to GPU worker.')
             else:
                 entry[2]+=1
                 if entry[2]>=self.MAX_DELIVERY_FAILS:
                     del self.pending[rid]
+                    self.done[rid]=now
                     write_line(f'[agent] {self.label} response for {rid[:8]} undeliverable '
                                f'after {entry[2]} attempts; dropped (sandbox will time out).')

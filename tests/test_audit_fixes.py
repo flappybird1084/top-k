@@ -56,9 +56,10 @@ def _make_relay(answers):
 
 
 def test_relay_releases_slot_after_delivery_failures():
-    """The wedge held the slot forever: no drop, no re-submission, relay dead
-    at 8 pending. Fixed behavior: the slot is dropped after MAX_DELIVERY_FAILS
-    and a still-pending remote request can be re-submitted afterwards."""
+    """The wedge held the slot forever: no drop, relay dead at 8 pending. The
+    slot is dropped after MAX_DELIVERY_FAILS — and the dropped request is NOT
+    picked up again, because re-serving it would pay the provider a second
+    time for an answer nobody collected (finding 8)."""
     relay = _make_relay(lambda req: dict(text="hi", input_tokens=1, output_tokens=1))
     client = _FailingClient(fail=True)
     lines = []
@@ -67,8 +68,36 @@ def test_relay_releases_slot_after_delivery_failures():
         relay.service(client, "/tmp/w", req, lines.append)
         time.sleep(0.05)  # let the worker future resolve
     assert any("undeliverable" in l for l in lines), "slot never dropped"
-    submits = [l for l in lines if "Request sent" in l]
-    assert len(submits) >= 2, "dropped request could not be re-submitted"
+    assert relay.pending == {}, "slot never released"
+    assert [l for l in lines if "Request sent" in l] == [
+        "[agent] Request sent through local Test OAuth session."], "request was re-billed"
+    # a different request id still gets served: the relay is not wedged
+    relay.service(client, "/tmp/w", [dict(id="f" * 32, kind="test", messages=[])],
+                  lines.append)
+    assert len([l for l in lines if "Request sent" in l]) == 2
+
+
+def test_relay_does_not_reserve_the_same_request_twice(tmp_path):
+    """The sandbox's request file stays on the notebook until its own wait
+    ends. Answering it once and then seeing it again must not re-run it."""
+    calls = []
+
+    def answer(request):
+        calls.append(request)
+        return dict(text="hi", input_tokens=1, output_tokens=1)
+
+    relay = _make_relay(answer)
+    client = _FailingClient(fail=False)
+    req = [dict(id="e" * 32, kind="test", messages=[])]
+    lines = []
+    deadline = time.time() + 2
+    while not any("delivered" in l for l in lines) and time.time() < deadline:
+        relay.service(client, "/tmp/w", req, lines.append)
+        time.sleep(0.02)
+    assert any("delivered" in l for l in lines)
+    for _ in range(3):
+        relay.service(client, "/tmp/w", req, lines.append)
+    assert len(calls) == 1
 
 
 def test_relay_releases_slot_on_worker_exception_then_delivers_error():

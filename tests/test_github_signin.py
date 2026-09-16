@@ -63,18 +63,31 @@ class GitHubAuthTest(unittest.TestCase):
         with patch.object(self.auth,'github',side_effect=RuntimeError('secret diagnostics')):
             r=self.client.get('/auth/github/callback',query_string={'state':state,'code':'code'},base_url='https://auth.example.com')
         self.assertEqual(r.status_code,502);self.assertNotIn('secret diagnostics',r.text)
-    def test_token_rotates_and_strict_bearer(self):
-        r,_=self.finish(self.begin());first=self.token(r)
-        rotated=self.client.get('/api/auth/me',headers={'Authorization':'Bearer '+first})
-        self.assertEqual(rotated.status_code,200)
-        second=rotated.json['token']
-        self.assertNotEqual(first,second)
-        # the presented token is revoked by the rotation that replaced it
-        self.assertEqual(self.client.get('/api/auth/me',headers={'Authorization':'Bearer '+first}).status_code,401)
-        self.assertEqual(self.client.get('/api/auth/me',headers={'Authorization':'Bearer '+second}).status_code,200)
-        for header in ('Bearer','Bearer  '+second,'bearer '+second,'Bearer'+second,'Bearer '+second+' '):
+    def test_session_survives_checks_and_rejects_malformed_bearers(self):
+        """Finding 4: /api/auth/me used to mint a new token and revoke the one
+        presented, so a second tab — or a status poll racing a run request —
+        logged the user out mid-run."""
+        r,_=self.finish(self.begin());token=self.token(r)
+        first=self.client.get('/api/auth/me',headers={'Authorization':'Bearer '+token})
+        self.assertEqual(first.status_code,200)
+        self.assertNotIn('token',first.json)
+        # the same credential keeps working, from as many tabs as you like
+        for _ in range(3):
+            self.assertEqual(self.client.get('/api/auth/me',headers={'Authorization':'Bearer '+token}).status_code,200)
+        for header in ('Bearer','Bearer  '+token,'bearer '+token,'Bearer'+token,'Bearer '+token+' '):
             self.assertEqual(self.client.get('/api/auth/me',headers={'Authorization':header}).status_code,401,header)
-    def test_rotation_cannot_outlive_the_absolute_session_age(self):
+    def test_activity_slides_the_idle_window_forward(self):
+        """A run watched for an hour must not expire out from under its owner:
+        authenticated activity extends the session."""
+        import github_signin
+        r,_=self.finish(self.begin());token=self.token(r)
+        with self.auth.db() as db:
+            db.execute('UPDATE sessions SET expires=?',(time.time()+30,))
+        self.assertEqual(self.client.get('/api/auth/me',headers={'Authorization':'Bearer '+token}).status_code,200)
+        with self.auth.db() as db:
+            expires=db.execute('SELECT expires FROM sessions').fetchone()[0]
+        self.assertGreater(expires,time.time()+github_signin.SESSION_IDLE_S-60)
+    def test_activity_cannot_outlive_the_absolute_session_age(self):
         import github_signin
         r,_=self.finish(self.begin());token=self.token(r)
         with self.auth.db() as db:

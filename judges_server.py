@@ -20,6 +20,7 @@ from flask import Flask, jsonify, request, g, send_from_directory
 import ui_server
 import web
 from github_signin import GitHubSignIn, RateLimiter
+from kernelevo.integrations import IntegrationStore, store_dir
 from kernelevo.judges_pool import NotebookPool
 
 DEFAULT_ORIGIN = 'https://top-kernel-demo.andre520395.chatgpt.site'
@@ -31,46 +32,20 @@ AUTH_PATHS = ('/auth/github/login', '/auth/github/callback')
 PUBLIC_API = ('/api/auth/config',)
 
 
-class IntegrationStore:
-    """Per-user notebook and W&B settings, kept out of the job store and out of
-    every API response. Files are private to the gateway user and named by a
-    hash of the GitHub user id, so the directory listing names no accounts."""
+# The gateway itself connects to whatever notebook address a visitor pastes in
+# — to check the GPU, to run their job. An arbitrary address therefore turns
+# this server into a request forwarder for anything it can reach, including its
+# own private network and cloud metadata. Only marimo's notebook hosting is
+# accepted; molab currently issues sb-<id>.sb.molab.run.
+NOTEBOOK_HOST_SUFFIXES = ('.molab.run', '.marimo.io', '.marimo.app')
+NOTEBOOK_PATH = re.compile(r'(/[A-Za-z0-9._~-]+)*/?')
 
-    def __init__(self, directory):
-        self.root = Path(directory)
-        self.root.mkdir(parents=True, exist_ok=True)
-        self.root.chmod(0o700)
-        self.lock = threading.Lock()
 
-    def _path(self, user_id):
-        return self.root / (hashlib.sha256(user_id.encode()).hexdigest() + '.json')
-
-    def load(self, user_id):
-        try:
-            return json.loads(self._path(user_id).read_text())
-        except (OSError, ValueError):
-            return {}
-
-    def save(self, user_id, record):
-        path = self._path(user_id)
-        with self.lock:
-            temporary = path.with_suffix('.tmp')
-            temporary.write_text(json.dumps(record))
-            temporary.chmod(0o600)
-            temporary.replace(path)
-
-    @staticmethod
-    def public(record):
-        """What the browser is allowed to see: whether each integration is
-        connected, plus the non-secret labels needed to confirm the right one.
-        Notebook tokens and W&B API keys never appear here."""
-        notebook = record.get('molab') or {}
-        wandb = record.get('wandb') or {}
-        return dict(
-            notebook=dict(configured=bool(notebook.get('url') and notebook.get('token')),
-                          url=notebook.get('url', '')),
-            wandb=dict(configured=bool(wandb.get('api_key')),
-                       entity=wandb.get('entity', ''), project=wandb.get('project', '')))
+def notebook_hosts():
+    configured = os.getenv('JUDGES_NOTEBOOK_HOSTS', '').strip()
+    if configured:
+        return tuple(h.strip().lower() for h in configured.split(',') if h.strip())
+    return NOTEBOOK_HOST_SUFFIXES
 
 
 def parse_notebook(pair_prompt):
@@ -78,12 +53,29 @@ def parse_notebook(pair_prompt):
     from urllib.parse import urlsplit
     url, token = parse_connection({'connection': pair_prompt})
     parts = urlsplit(url)
-    if parts.scheme != 'https' or not parts.hostname or parts.username or parts.password:
+    host = (parts.hostname or '').lower()
+    if parts.scheme != 'https' or not host or parts.username or parts.password:
         raise ValueError('The notebook URL must be an HTTPS address without credentials.')
+    try:
+        port = parts.port
+    except ValueError:
+        raise ValueError('That notebook URL names an invalid port.')
+    if port not in (None, 443):
+        raise ValueError('The notebook URL must use the standard HTTPS port.')
+    if parts.query or parts.fragment:
+        raise ValueError('The notebook URL must not carry a query string or #fragment.')
+    if not any(host == suffix.lstrip('.') or host.endswith(suffix)
+               for suffix in notebook_hosts()):
+        raise ValueError('That is not a marimo notebook address. Paste the "Pair with '
+                         'agent" prompt from a notebook hosted on '
+                         + ' or '.join(s.lstrip('.') for s in notebook_hosts()) + '.')
+    path = parts.path
+    if '..' in path or not NOTEBOOK_PATH.fullmatch(path):
+        raise ValueError('That notebook URL has an unexpected path.')
     if not token:
         raise ValueError('That prompt has no access token. Copy the whole "Pair with agent" '
                          'prompt — the token on screen is masked, only the copied text has it.')
-    return {'url': url, 'token': token}
+    return {'url': 'https://' + host + path.rstrip('/'), 'token': token}
 
 
 def create_app():
@@ -100,9 +92,7 @@ def create_app():
                       SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax')
     admission_lock = threading.Lock()
     max_jobs = int(os.getenv('JUDGES_MAX_RUNS', '12'))
-    integrations = IntegrationStore(
-        os.getenv('JUDGES_INTEGRATION_DIR',
-                  str(Path.home() / '.local/state/kernel-evolution/integrations')))
+    integrations = IntegrationStore(store_dir())
     # Public runs never touch an operator notebook: the queue uses whichever
     # notebook the signed-in user connected.
     pool = NotebookPool(None, web._run_job, web.load_job, web.save_job, expires_at)
@@ -253,9 +243,13 @@ def create_app():
                 jid = response.get_json()['id']
                 job = web.load_job(jid)
                 job['visitor'] = g.visitor
-                job['molab'] = {'notebook_url': notebook['url'],
-                                'connection': '--token ' + notebook['token']}
-                job['wandb'] = dict(record.get('wandb') or {})
+                # Only labels here. The notebook token and the W&B API key stay
+                # in the integration store and are read at launch, straight
+                # into the child process environment — a job file is long-lived
+                # on disk and is read by code that has no business with either.
+                job['molab'] = {'notebook_url': notebook['url']}
+                job['wandb'] = {k: v for k, v in (record.get('wandb') or {}).items()
+                                if k in ('entity', 'project')}
                 web.save_job(job)
             return response
 

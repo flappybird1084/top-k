@@ -70,8 +70,9 @@
     const me=await endpoint('/api/auth/me',{headers:headers()});
     if(me.ok){
      const body=await me.json();
-     // Sessions are short and rotate on every check; keep the newest one.
-     if(typeof body.token==='string')localStorage.setItem(key,body.token);
+     // The check extends the session server-side; the token itself is only
+     // replaced by a fresh GitHub sign-in, so two open tabs cannot revoke
+     // each other's credential.
      user=body.user;paint();await gateOnSetup();return;
     }
     if(me.status===401)localStorage.removeItem(key);

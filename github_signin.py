@@ -19,7 +19,11 @@ from flask import Blueprint, Response, jsonify, redirect, request
 TOKEN = re.compile(r'[A-Za-z0-9_-]{32,256}')
 
 # Idle lifetime of a browser session, and the absolute ceiling no amount of
-# activity extends past. Short + rotated limits what a stolen token is worth.
+# activity extends past. Authenticated API activity slides the idle window
+# forward; only a fresh GitHub sign-in mints a new token. Rotating on every
+# identity check used to log people out mid-run — two tabs, or a status poll
+# racing a run request, each revoked the token the other was still holding
+# (audit finding 4).
 SESSION_IDLE_S = 3600
 SESSION_MAX_S = 6 * 3600
 
@@ -170,8 +174,9 @@ class GitHubSignIn:
         return self.result({'token': self.issue(identity), 'user': identity})
 
     def issue(self, identity, issued=None):
-        """Mint a session. `issued` carries the original sign-in time through a
-        rotation so rotating cannot push a session past SESSION_MAX_S."""
+        """Mint a session. Called on a completed GitHub sign-in and nowhere
+        else. `issued` carries the original sign-in time so a future rotation
+        could not push a session past SESSION_MAX_S."""
         token, now = secrets.token_urlsafe(48), time.time()
         issued = issued or now
         expires = min(now + SESSION_IDLE_S, issued + SESSION_MAX_S)
@@ -197,28 +202,34 @@ if(window.opener){{window.opener.postMessage(result,{json.dumps(self.origin)});i
         return response
 
     def identity(self):
+        """Look up the presented session and, if it is live, slide its idle
+        window forward. One statement, so concurrent requests on the same
+        session cannot race each other into a logout."""
         token = bearer(request.headers.get('Authorization', ''))
         if not token:
             return None
+        now, digest = time.time(), self.digest(token)
         with self.db() as db:
             row = db.execute('SELECT user_id,login,issued FROM sessions WHERE id=? AND expires>?',
-                             (self.digest(token), time.time())).fetchone()
-        return {'id': row[0], 'login': row[1], 'issued': row[2] or time.time()} if row else None
+                             (digest, now)).fetchone()
+            if not row:
+                return None
+            issued = row[2] or now
+            if issued + SESSION_MAX_S <= now:
+                db.execute('DELETE FROM sessions WHERE id=?', (digest,))
+                return None
+            db.execute('UPDATE sessions SET expires=?, issued=? WHERE id=?',
+                       (min(now + SESSION_IDLE_S, issued + SESSION_MAX_S), issued, digest))
+        return {'id': row[0], 'login': row[1], 'issued': issued}
 
     def me(self):
-        """Also rotates: each check hands back a fresh token and revokes the one
-        presented, so a session identifier is short-lived even while in use."""
+        """Who is signed in. Answering this is activity, so it extends the
+        session (in identity()) — but it hands back no new token: a long run
+        monitored from two tabs must not log itself out."""
         user = self.identity()
         if not user:
             return jsonify(error='Sign in with GitHub to continue.'), 401
-        identity = {'id': user['id'], 'login': user['login']}
-        issued = user['issued']
-        if issued + SESSION_MAX_S <= time.time():
-            self.revoke()
-            return jsonify(error='Session expired. Sign in with GitHub again.'), 401
-        token = self.issue(identity, issued)
-        self.revoke()
-        return jsonify(user=identity, token=token), 200
+        return jsonify(user={'id': user['id'], 'login': user['login']}), 200
 
     def revoke(self):
         token = bearer(request.headers.get('Authorization', ''))

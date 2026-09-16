@@ -102,7 +102,8 @@ def test_claude_permanent_failure_is_not_retried(tmp_path, monkeypatch):
     exe = tmp_path / 'claude'
     # --help is the one-off flag probe, not a completion attempt
     exe.write_text("#!/bin/sh\n"
-                   'if [ "$1" = "--help" ]; then echo "usage"; exit 0; fi\n'
+                   'if [ "$1" = "--help" ]; then echo "--allowedTools --disallowedTools '
+                   '--strict-mcp-config --mcp-config --setting-sources"; exit 0; fi\n'
                    "cat > /dev/null\n"
                    f"echo x >> {marker}\necho '{payload}'\nexit 3\n")
     exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
@@ -115,8 +116,6 @@ def test_claude_permanent_failure_is_not_retried(tmp_path, monkeypatch):
 
 def test_claude_isolation_flags_follow_what_the_cli_supports(monkeypatch):
     from kernelevo import claude_oauth
-    monkeypatch.setattr(claude_oauth, 'cli_flags', lambda: frozenset())
-    assert claude_oauth.isolation_flags() == []
     monkeypatch.setattr(claude_oauth, 'cli_flags', lambda: frozenset(
         {'--allowedTools', '--disallowedTools', '--strict-mcp-config', '--mcp-config',
          '--setting-sources'}))
@@ -126,3 +125,30 @@ def test_claude_isolation_flags_follow_what_the_cli_supports(monkeypatch):
     assert '--strict-mcp-config' in flags
     assert flags[flags.index('--mcp-config') + 1] == '{"mcpServers":{}}'
     assert flags[flags.index('--setting-sources') + 1] == 'project'
+
+
+def test_a_build_without_the_isolation_switches_is_refused(monkeypatch):
+    """Finding 3: an unknown-capability CLI used to be run anyway, with its
+    full tool suite, on prompts full of untrusted repository text."""
+    from kernelevo import claude_oauth
+    monkeypatch.setattr(claude_oauth, 'cli_flags', lambda: frozenset({'--print'}))
+    with pytest.raises(claude_oauth.CapabilityError):
+        claude_oauth.isolation_flags()
+    with pytest.raises(ValueError, match='does not support'):
+        claude_oauth.check_login()
+
+
+def test_a_failed_capability_probe_is_fatal(tmp_path, monkeypatch):
+    import stat
+    from kernelevo import claude_oauth
+    exe = tmp_path / 'claude'
+    exe.write_text('#!/bin/sh\nexit 9\n')
+    exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
+    monkeypatch.setenv('PATH', str(tmp_path) + os.pathsep + os.environ.get('PATH', ''))
+    claude_oauth._flags_for.cache_clear()
+    with pytest.raises(claude_oauth.CapabilityError):
+        claude_oauth.cli_flags()
+    claude_oauth._flags_for.cache_clear()
+    with pytest.raises(RuntimeError):
+        claude_oauth.complete_local({'messages': [{'role': 'user', 'content': 'x'}]})
+    claude_oauth._flags_for.cache_clear()

@@ -26,6 +26,8 @@ import time
 import urllib.error
 import urllib.request
 
+from kernelevo import relay_policy
+
 REMOTE_DEPS = ["triton", "numpy", "pandas", "python-dotenv", "wandb", "weave",
                "anthropic", "openai", "datasets", "tiktoken"]
 UPLOAD_CHUNK = 400_000  # base64 chars per execute call
@@ -136,24 +138,44 @@ def _project_tarball(root: str) -> bytes:
     return buf.getvalue()
 
 
+RELAY_TOMBSTONE_S = 1800
+
 ARTIFACT_EXTS = (".py", ".json", ".sqlite", ".txt")
 ARTIFACT_SKIP_DIRS = ("repo", "inductor-cache", "wandb", "__pycache__",
                       "compile_cache", "search_relay")
 
 
 def _service_relay(client: MolabClient, work: str, pending: list, write_line,
-                   relay_dir: str | None = None):
+                   relay_dir: str | None = None, policy=None, served=None):
     """Serve remote search requests locally: the notebook can't reach the
-    (tailnet-private) SearXNG, but this dispatcher can."""
+    (tailnet-private) SearXNG, but this dispatcher can.
+
+    `policy` decides whether this run may use the operator's search service at
+    all, and how much; `served` tombstones request ids so a query the sandbox
+    has not yet collected is never run — or billed — twice."""
     from kernelevo import websearch
     relay = relay_dir or work + "/run/search_relay"
+    served = {} if served is None else served
+    now = time.monotonic()
+    for rid, stamped in list(served.items()):
+        if now - stamped > RELAY_TOMBSTONE_S:
+            del served[rid]
     for req in pending[:4]:
         rid, query, n = req.get("id"), req.get("query", ""), req.get("n", 5)
-        try:
-            results = websearch.direct_search(query, n)
-        except Exception as e:  # noqa: BLE001 — report the failure to the requester
-            results = [{"error": f"relay search failed: {e}"}]
-        write_line(f"[research-relay] {query[:70]} -> {len(results)} result(s)")
+        if rid in served:
+            continue
+        refusal = policy.check_search(req) if policy is not None else None
+        if refusal:
+            served[rid] = now
+            write_line(f"[research-relay] request refused: {refusal}")
+            results = [{"error": refusal}]
+        else:
+            try:
+                results = websearch.direct_search(query, n)
+            except Exception as e:  # noqa: BLE001 — report the failure to the requester
+                results = [{"error": f"relay search failed: {e}"}]
+            write_line(f"[research-relay] {query[:70]} -> {len(results)} result(s)")
+        served[rid] = now
         payload = json.dumps(results)
         client.run(
             "import os\n"
@@ -335,7 +357,16 @@ class MolabTarget:
         # sandbox chowns all of `work` to the untrusted uid — audit finding 19)
         relay_dir = (work + "_relay") if job.get('judge_expires_at') \
             else work + "/run/search_relay"
-        env_updates = dict(env_updates, KEVO_RELAY_DIR=relay_dir)
+        # Secret stamped into this run's launch environment. Every relay
+        # request must carry it back, so work the dispatcher answers is
+        # attributable to the job it is currently dispatching and to no other.
+        relay_token = relay_policy.new_token()
+        policy = relay_policy.RelayPolicy(job, relay_token)
+        for note in (policy.operator_llm_allowed(), policy.operator_search_allowed()):
+            if note:
+                write_line("[relay] " + note)
+        env_updates = dict(env_updates, KEVO_RELAY_DIR=relay_dir,
+                           KEVO_RELAY_TOKEN=relay_token)
         sandbox_setup = ''
         if job.get('judge_expires_at'):
             remaining = min(1800, int(float(job['judge_expires_at']) - time.time()))
@@ -347,7 +378,7 @@ class MolabTarget:
                 "_sandbox_ns = {}\n"
                 "exec(compile(open(_w + '/kernelevo/judges_sandbox.py').read(), _w + '/kernelevo/judges_sandbox.py', 'exec'), _sandbox_ns)\n"
                 "_sandbox_command = _sandbox_ns['user_command']\n"
-                f"_cmd = _sandbox_command(_w, _cmd, {int(job.get('judge_uid',0))}, {relay_dir!r})\n"
+                f"_cmd = _sandbox_command(_w, _cmd, {int(job.get('judge_uid',0))}, {relay_dir!r}, {relay_token!r})\n"
                 f"_cmd = ['/usr/bin/timeout', '--signal=TERM', '--kill-after=10', {str(remaining)!r}] + _cmd\n"
             )
         ok, out, err = client.run(
@@ -378,6 +409,7 @@ class MolabTarget:
         from kernelevo.codex_oauth import Relay, RELAY_STALE_S
         oauth_relay = Relay()
         claude_relay = ClaudeRelay()
+        served_searches: dict = {}
         offset, misses = 0, 0
         last_archive_sync = 0.0
         while True:
@@ -447,12 +479,15 @@ class MolabTarget:
                 write_line(line)
             if status.get("relay"):
                 try:
-                    oauth_relay.service(client, work, [r for r in status["relay"] if r.get("kind")=="codex_oauth"], write_line, relay_dir=relay_dir)
-                    claude_relay.service(client, work, [r for r in status["relay"] if r.get("kind")=="claude_oauth"], write_line, relay_dir=relay_dir)
-                    _service_relay(client, work, [r for r in status["relay"] if r.get("kind") not in ("codex_oauth", "claude_oauth")], write_line, relay_dir=relay_dir)
+                    oauth_relay.service(client, work, [r for r in status["relay"] if r.get("kind")=="codex_oauth"], write_line, relay_dir=relay_dir, policy=policy)
+                    claude_relay.service(client, work, [r for r in status["relay"] if r.get("kind")=="claude_oauth"], write_line, relay_dir=relay_dir, policy=policy)
+                    _service_relay(client, work, [r for r in status["relay"] if r.get("kind") not in ("codex_oauth", "claude_oauth")], write_line, relay_dir=relay_dir, policy=policy, served=served_searches)
                 except Exception as e:  # noqa: BLE001 — relay is best-effort
                     write_line(f"[research-relay] servicing failed: {e}")
             if status["exit"] is not None:
+                # Nothing left in the relay directory is attributable to a run
+                # that has exited, so stop answering for it.
+                policy.finished()
                 write_line(f"[molab] remote run finished with exit {status['exit']}")
                 if artifacts_dir:
                     try:

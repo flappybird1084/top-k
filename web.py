@@ -103,12 +103,24 @@ PASS_ENV = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "WANDB_API_KEY", "WANDB_ENTIT
 def _job_env(job, own_only=False):
     """Environment for a run. `own_only` drops the operator's server-wide keys
     and passes just what this job's owner supplied — the public deployment
-    must never hand a visitor's sandbox our credentials."""
+    must never hand a visitor's sandbox our credentials.
+
+    A job owned by a signed-in visitor keeps no secret in its job file: the
+    W&B key is read from that owner's integration record here, on the way into
+    the child process environment."""
     env = {} if own_only else {k: os.environ[k] for k in PASS_ENV if os.environ.get(k)}
     for key, envname in (("api_key", "WANDB_API_KEY"), ("entity", "WANDB_ENTITY"),
                          ("project", "WANDB_PROJECT")):
         if job.get("wandb", {}).get(key):
             env[envname] = job["wandb"][key]
+    if job.get("visitor"):
+        from kernelevo.integrations import wandb_env
+        owner = wandb_env(job["visitor"])
+        env.update(owner)
+        if own_only and not owner.get("WANDB_API_KEY"):
+            # No key of their own: report nowhere rather than into ours.
+            for name in ("WANDB_API_KEY", "WANDB_ENTITY", "WANDB_PROJECT"):
+                env.pop(name, None)
     return env
 
 
@@ -149,6 +161,14 @@ def _run_job(jid):
             env = dict(os.environ)
             env["KEVO_REMOTE_ENV"] = json.dumps(
                 _job_env(job, own_only=bool(job.get("judge_expires_at"))))
+            if job.get("visitor"):
+                # The notebook token lives in the owner's integration record,
+                # not in job.json; hand it to the dispatcher in its environment.
+                from kernelevo.integrations import notebook_connection
+                connection = notebook_connection(job["visitor"])
+                if not connection:
+                    raise RuntimeError("This run has no notebook connected.")
+                env["KEVO_MOLAB_CONNECTION"] = json.dumps(connection)
             proc = subprocess.Popen(
                 [sys.executable, "-u", "-m", "kernelevo.molab_dispatch",
                  _job_path(jid), ROOT, os.path.join(JOBS_DIR, jid, "run")],
