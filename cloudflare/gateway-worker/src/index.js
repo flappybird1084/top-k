@@ -38,7 +38,13 @@ export default {
     const url = new URL(request.url);
     const cors = corsHeaders(request);
 
-    if (!allowedPath(url.pathname)) return json({ error: "Not found" }, 404, cors);
+    // The two gateway hostnames are also human-facing entry points. Keep the
+    // submitted Sites URL canonical, but send ordinary browser navigation
+    // there instead of showing an API 404 at the bare domain.
+    if (!allowedPath(url.pathname)) {
+      const destination = new URL(url.pathname + url.search, SITE_ORIGIN);
+      return Response.redirect(destination.toString(), 302);
+    }
 
     if (url.pathname.startsWith("/api/") && request.headers.get("origin") !== SITE_ORIGIN) {
       return json({ error: "Origin rejected" }, 403);
