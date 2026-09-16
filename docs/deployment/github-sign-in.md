@@ -30,10 +30,10 @@ has the edge secret and sees it on the request.
 2. Create a GitHub OAuth App at https://github.com/settings/applications/new:
    - Application name: Top-Kernel
    - Homepage URL: https://top-kernel-demo.andre520395.chatgpt.site/
-   - Authorization callback URL: https://top-k.andredlcruz.com/auth/github/callback
+   - Authorization callback URL: https://api.top-k.dev/auth/github/callback
 3. Set these in the gateway's private environment only (see `.env.example`):
    `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`,
-   `GITHUB_AUTH_ORIGIN=https://top-k.andredlcruz.com`, `GITHUB_AUTH_DB`,
+   `GITHUB_AUTH_ORIGIN=https://api.top-k.dev`, `GITHUB_AUTH_DB`,
    `JUDGES_EXPIRES_AT`, `JUDGES_INTEGRATION_DIR`, and a freshly generated
    `JUDGES_EDGE_SECRET` (`python -c "import secrets;print(secrets.token_urlsafe(48))"`).
 4. Give the Worker the same secret and the compute origin:

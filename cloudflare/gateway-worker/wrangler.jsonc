@@ -6,6 +6,10 @@
   "workers_dev": false,
   "routes": [
     {
+      "pattern": "api.top-k.dev",
+      "custom_domain": true
+    },
+    {
       "pattern": "top-k.andredlcruz.com",
       "custom_domain": true
     }

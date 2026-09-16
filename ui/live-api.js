@@ -1,6 +1,6 @@
 'use strict';
 (() => {
- const backend='https://top-k.andredlcruz.com';
+ const backend='https://api.top-k.dev';
  const original=window.fetch.bind(window), key='top-k-github-session-v1';
  let user=null, popup=null, config=null, setup=null;
  let accountButton, accountStatus, accountSetup, gate, gateButton, gateStatus, setupPanel, setupStatus;

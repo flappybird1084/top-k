@@ -1,8 +1,10 @@
 # Top-K stable gateway
 
-This Worker owns `https://top-k.andredlcruz.com`. It exposes only Top-K health,
-API, and GitHub OAuth routes. Keeping the compute address at the edge lets the
-public hostname and the GitHub callback stay stable when compute moves.
+This Worker owns `https://api.top-k.dev`, with
+`https://top-k.andredlcruz.com` retained as a compatibility alias. It exposes
+only Top-K health, API, and GitHub OAuth routes. Keeping the compute address at
+the edge lets the public hostname and the GitHub callback stay stable when
+compute moves.
 
 Two secrets, both server-side:
 
