@@ -93,7 +93,7 @@ form.addEventListener('submit',async e=>{
   if(runId&&lastState?.status==='awaiting_data'){dataDialog.showModal();return}
   posting=true;submit.disabled=true;message('');
   try{
-    const result=await api('/api/runs',{method:'POST',headers:{'Idempotency-Key':requestKey},body:JSON.stringify({repo:input.value.trim(),mode:document.querySelector('#search-mode').value})});
+    const result=await api('/api/runs',{method:'POST',headers:{'Idempotency-Key':requestKey},body:JSON.stringify({repo:input.value.trim(),mode:document.querySelector('#search-mode').value,settings:gatherSettings()})});
     runId=result.id;history.replaceState(null,'','?intake='+runId);submit.textContent='···';poll();
   }catch(err){message(err.message);submit.disabled=false}finally{posting=false}
 });
@@ -109,3 +109,39 @@ stop.addEventListener('click',async()=>{try{await api('/api/runs/'+runId+'/cance
 const resume=new URLSearchParams(location.search).get('intake');
 if(resume&&/^[a-f0-9]{32}$/.test(resume)){runId=resume;submit.disabled=true;poll()}
 window.addEventListener('pagehide',()=>clearTimeout(timer));
+
+// Settings dialog: optional per-run overrides; blank fields defer to the
+// server's KEVO_UI_* defaults. Persisted locally so choices survive reloads.
+const settingsDialog=document.querySelector('#settings-dialog');
+const S_FIELDS={llm:'#s-llm',profile:'#s-profile',spend_cap:'#s-spend',max_debug_turns:'#s-debug',molab_connection:'#s-molab',arch_gens:'#s-arch-gens',arch_cands:'#s-arch-cands',arch_secs:'#s-arch-secs',hp_gens:'#s-hp-gens',hp_cands:'#s-hp-cands',hp_secs:'#s-hp-secs',finals_k:'#s-finals-k',finals_secs:'#s-finals-secs',parallelism:'#s-par',parent_pool:'#s-pool',eval_batches:'#s-evalb',loss_margin:'#s-margin'};
+const TEXT_KEYS=new Set(['llm','profile','molab_connection']);
+function gatherSettings(){
+  const out={};
+  for(const[key,sel]of Object.entries(S_FIELDS)){
+    const v=document.querySelector(sel).value.trim();
+    if(v)out[key]=TEXT_KEYS.has(key)?v:Number(v);
+  }
+  return out;
+}
+try{
+  const saved=JSON.parse(localStorage.getItem('topk-settings')||'{}');
+  for(const[key,sel]of Object.entries(S_FIELDS))if(saved[key]!=null&&saved[key]!=='')document.querySelector(sel).value=saved[key];
+}catch{}
+document.querySelector('#open-settings').addEventListener('click',()=>settingsDialog.showModal());
+document.querySelector('#close-settings').addEventListener('click',()=>settingsDialog.close());
+document.querySelector('#settings-form').addEventListener('submit',e=>{
+  e.preventDefault();
+  localStorage.setItem('topk-settings',JSON.stringify(gatherSettings()));
+  settingsDialog.close();
+});
+document.querySelector('#reset-settings').addEventListener('click',()=>{
+  localStorage.removeItem('topk-settings');
+  for(const sel of Object.values(S_FIELDS))document.querySelector(sel).value='';
+});
+api('/api/settings').then(d=>{
+  document.querySelector('#settings-conn-note').textContent=d.connection_file
+    ?'Server connection file: configured ✓'
+    :'No server connection file — paste the pair prompt above before launching on molab.';
+  document.querySelector('#s-llm').options[0].textContent='server default ('+d.llm+')';
+  document.querySelector('#s-profile').options[0].textContent='server default ('+d.profile+')';
+}).catch(()=>{});

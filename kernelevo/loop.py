@@ -179,6 +179,7 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, only_lineage: str | None = N
 
         gen_id = archive.start_generation(model_id)
         gen_start = time.time()
+        tok_in0, tok_out0 = pool.total_tokens()
         lessons = archive.lessons_tail(model_id, cfg["lessons_tail"])
         active_targets = dict(targets)
         active_targets["lineages"] = [l for l in targets["lineages"] if l["op"] in active]
@@ -253,7 +254,8 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, only_lineage: str | None = N
                 incumbent_step_time_ms=res.get("incumbent_step_time_ms"),
                 samples_per_s=res.get("samples_per_s"), mfu=res.get("mfu"),
                 accepted=int(bool(res.get("accepted"))),
-                failure_note=res.get("failure_note"), flags=res.get("flags"))
+                failure_note=res.get("failure_note"), flags=res.get("flags"),
+                tokens_in=res.get("tokens_in", 0), tokens_out=res.get("tokens_out", 0))
             mirror.log_candidate(op, res)
             if res.get("accepted"):
                 n_accepted += 1
@@ -298,13 +300,21 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, only_lineage: str | None = N
                 archive.add_lesson(gen_id, model_id, line)
             mirror.log_lessons(archive.lessons_tail(model_id, cfg["lessons_tail"]))
 
-        archive.finish_generation(gen_id, len(results), n_accepted, pool.total_usd())
+        tok_in, tok_out = pool.total_tokens()
+        gen_tok_in, gen_tok_out = tok_in - tok_in0, tok_out - tok_out0
+        archive.finish_generation(gen_id, len(results), n_accepted, pool.total_usd(),
+                                  tokens_in=gen_tok_in, tokens_out=gen_tok_out)
+        print(f"[generation] g{gen} done: {len(results)} candidate(s), "
+              f"{n_accepted} accepted — {gen_tok_in:,} tokens in / "
+              f"{gen_tok_out:,} out")
         best = {}
         for lin in archive.lineages(model_id):
             inc = archive.candidate(lin["incumbent_id"]) if lin["incumbent_id"] else None
             best[lin["op_name"]] = inc.get("step_time_ms") if inc else None
         mirror.log_generation(gen, dict(n_candidates=len(results), n_accepted=n_accepted,
-                                        llm_usd=round(pool.total_usd(), 2)), best)
+                                        llm_usd=round(pool.total_usd(), 2),
+                                        tokens_in=gen_tok_in, tokens_out=gen_tok_out),
+                              best)
 
         if systemic_fail_gens >= cfg["systemic_halt_after"]:
             stop_reason = "systemic_halt"

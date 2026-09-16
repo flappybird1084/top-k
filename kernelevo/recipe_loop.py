@@ -66,11 +66,21 @@ def _execute_worker(job: dict, path_hint: str, timeout: int):
 
 @weave_op
 def _run_worker(job: dict, path_hint: str, timeout: int):
+    # authoring load-checks are plumbing, not evaluations — no event, or the
+    # diagram fills with dozens of 'Checking recipe' bubbles per generation
+    if job.get('check_only'):
+        result = _execute_worker(job, path_hint, timeout)
+        result['weave_trace_url'] = current_trace_url()
+        return result
     import uuid
-    eid=uuid.uuid4().hex
-    event=dict(id=eid,kind='architecture',kernel=os.path.basename(job['candidate_path']),
-               stage='Checking recipe' if job.get('check_only') else 'Training and evaluating held-out data',
-               strategy=str(job['train_seconds'])+'s training budget',started_at=time.time())
+    wcfg = (job.get('wandb') or {}).get('config') or {}
+    eid = uuid.uuid4().hex
+    event = dict(id=eid, kind=wcfg.get('phase') or 'architecture',
+                 kernel=os.path.basename(job['candidate_path']),
+                 stage='Training and evaluating held-out data',
+                 strategy=wcfg.get('strategy')
+                 or str(job['train_seconds']) + 's training budget',
+                 started_at=time.time())
     print('[evaluation] '+json.dumps(event),flush=True)
     try:
         result=_execute_worker(job,path_hint,timeout)
@@ -124,6 +134,21 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
     param_cap = int(info["n_params"] * rc["param_budget_ratio"])
     base_source = _base_source(adapter_spec, adapter)
     loss_source = _loss_source(adapter)
+    precision = rc.get("precision", "bf16")
+
+    # ground-truth model report for the planner/subagents + baseline module
+    # inventory for the label-vs-diff line (audit: run ef48abdf spent two
+    # generations "introducing" features the repo already shipped, sight unseen)
+    try:
+        _m = adapter.build_model()
+        model_report = recipes.model_report(_m)
+        base_modules = recipes.module_inventory(_m)
+        del _m
+        import gc
+        gc.collect()
+    except Exception as e:  # noqa: BLE001 — the report is an aid, never a blocker
+        print(f"[recipe] model report unavailable ({e}); prompts go without it")
+        model_report, base_modules = None, {}
 
     model_id = archive.add_model(
         name=model_name, adapter_path=adapter_spec, n_params=info["n_params"],
@@ -153,6 +178,7 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
         job = dict(base_adapter=adapter_name, candidate_path="BASELINE",
                    train_seconds=secs, eval_batches=rc["eval_batches"],
                    seed=cfg["seed"], device=cfg["device"], param_cap=None,
+                   precision=precision,
                    wandb=wmeta(f"baseline-{secs}s", "baseline",
                                "baseline", secs))
         r = _run_worker(job, os.path.join(cand_dir, f"baseline_{secs}s"),
@@ -176,10 +202,14 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
     results_all = []   # dicts with id, val_loss, phase, code_path, strategy
     gen_index = 0
 
+    last_gen_id = None
+
     def author_and_eval(phase, jobs, parents_by_id):
-        nonlocal gen_index
+        nonlocal gen_index, last_gen_id
         gen_index += 1
         gen_id = archive.start_generation(model_id)
+        last_gen_id = gen_id
+        tok_in0, tok_out0 = pool.total_tokens()
         outs = []
         n_acc = 0
         # authoring runs 8-wide; each candidate's (serial, GPU-exclusive)
@@ -210,7 +240,7 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                     base_adapter=adapter_name, candidate_path=path,
                     train_seconds=0, eval_batches=1, seed=cfg["seed"],
                     device=cfg["device"], param_cap=param_cap,
-                    check_only=True), path, 240)
+                    precision=precision, check_only=True), path, 240)
                 return bool(r.get("ok")), (r.get("note") or r.get("gate") or "")
 
             llm = pool.subagent_for(i)
@@ -219,7 +249,8 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                 recipes.author_recipe, llm, phase, job, base_source,
                 parent_src, loss_source, param_cap, lessons,
                 rc["recipe_max_repairs"], save_fn, check_fn,
-                recipes.baseline_recipe_source(adapter_name))
+                recipes.baseline_recipe_source(adapter_name),
+                model_report)
             fut_to_job[fut] = job
 
         authored = []
@@ -244,6 +275,8 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                        phase=phase["kind"], train_secs=phase["train_seconds"],
                        compile_ok=int(a.get("load_ok", False)), correct_ok=0,
                        gate_reached=0, accepted=0,
+                       tokens_in=a.get("tokens_in", 0),
+                       tokens_out=a.get("tokens_out", 0),
                        failure_note=a.get("failure_note"))
             if a.get("load_ok"):
                 parent = parents_by_id.get(job.get("parent"))
@@ -254,7 +287,7 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                     train_seconds=phase["train_seconds"],
                     eval_batches=rc["eval_batches"], seed=cfg["seed"],
                     device=cfg["device"], param_cap=param_cap,
-                    expected_arch_fp=expected_fp,
+                    precision=precision, expected_arch_fp=expected_fp,
                     wandb=wmeta(f"g{gen_index}-s{job.get('_idx', 0)}",
                                 phase["kind"], a["strategy"],
                                 phase["train_seconds"])), a["code_path"],
@@ -275,6 +308,23 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                           f"{baseline[phase['train_seconds']]:.4f} ({delta:+.2f}%)"
                           f"{' ACCEPTED' if accepted else ''} — "
                           f"{a['strategy'][:70]}")
+                    # mechanical label-vs-diff line: what ACTUALLY changed,
+                    # independent of the strategy prose
+                    dparams = r["n_params"] - info["n_params"]
+                    bits = [f"params {dparams / 1e6:+.1f}M" if dparams else
+                            "params unchanged"]
+                    mod_d = recipes.inventory_diff(base_modules,
+                                                   r.get("modules") or {})
+                    bits.append(f"modules: {mod_d}" if mod_d
+                                else "modules unchanged")
+                    if r.get("has_lr_schedule"):
+                        bits.append("+lr_schedule")
+                    if r.get("hints"):
+                        bits.append(f"hints={r['hints']}")
+                    if r.get("steps") is not None:
+                        bits.append(f"{r['steps']} steps")
+                    row["diff"] = " | ".join(bits)
+                    print(f"[recipe-diff] #{job.get('_idx', 0)}: {row['diff']}")
                 else:
                     note = r.get("note") or r.get("gate")
                     row.update(gate_reached=1, correct_ok=0,
@@ -286,7 +336,8 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                     wmeta(f"g{gen_index}-s{job.get('_idx', 0)}", phase["kind"],
                           a["strategy"], phase["train_seconds"]),
                     "author_failed", a.get("failure_note"))
-            cid = archive.add_candidate(**row)
+            cid = archive.add_candidate(**{k: v for k, v in row.items()
+                                           if k != "diff"})
             row["id"] = cid
             outs.append(row)
             base_v = baseline[phase["train_seconds"]]
@@ -310,7 +361,15 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                                      default=None),
             })
         ex.shutdown(wait=True)
-        archive.finish_generation(gen_id, len(outs), n_acc, pool.total_usd())
+        tok_in, tok_out = pool.total_tokens()
+        gen_tok_in, gen_tok_out = tok_in - tok_in0, tok_out - tok_out0
+        archive.finish_generation(gen_id, len(outs), n_acc, pool.total_usd(),
+                                  tokens_in=gen_tok_in, tokens_out=gen_tok_out)
+        print(f"[generation] g{gen_index} done: {len(outs)} candidate(s), "
+              f"{n_acc} accepted — {gen_tok_in:,} tokens in / "
+              f"{gen_tok_out:,} out")
+        mirror._log({"gen/tokens_in": gen_tok_in, "gen/tokens_out": gen_tok_out,
+                     "generation": gen_index})
 
         # curator lessons
         if pool.total_usd() < cfg["spend_cap_usd"]:
@@ -331,6 +390,8 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
         for _ in range(phase["generations"]):
             if time.time() > run_deadline or pool.total_usd() >= cfg["spend_cap_usd"]:
                 print("[recipe] stopping early (deadline or spend cap)")
+                if last_gen_id is not None:
+                    archive.set_stop_reason(last_gen_id, "deadline_or_spend_cap")
                 break
             lessons = archive.lessons_tail(model_id, cfg["lessons_tail"])
             evaluated = [r for r in results_all if r.get("val_loss")]
@@ -340,8 +401,10 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                 model=model_name, params=info["n_params"], param_cap=param_cap,
                 baseline_val_loss_by_budget=baseline,
                 batch=info["samples_per_batch"])
+            # 'diff' is the mechanical record of what each candidate actually
+            # changed — the planner reasons from it, not from strategy prose
             outcomes = [{k: r.get(k) for k in ("phase", "strategy", "val_loss",
-                                               "failure_note")}
+                                               "failure_note", "diff")}
                         for r in results_all[-16:]]
             print(f"\n=== recipe {phase['kind']} generation {gen_index + 1} — "
                   f"spend ${pool.total_usd():.2f} ===")
@@ -351,7 +414,8 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
             msgs = recipes.recipe_planner_prompt(phase, base_summary, outcomes,
                                                  lessons, phase["candidates"],
                                                  parents,
-                                                 research_enabled=can_research)
+                                                 research_enabled=can_research,
+                                                 model_report=model_report)
             jobs, research_used, empty_retry = [], 0, False
             for _ in range(5):
                 resp = pool.planner.complete(
@@ -397,7 +461,22 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                              phase["kind"] == "hyperparam" else None)
             print(f"[planner] {len(jobs)} job(s): "
                   + "; ".join(j["strategy"][:60] for j in jobs[:3]) + " …")
-            results_all += author_and_eval(phase, jobs, parents_by_id)
+            try:
+                results_all += author_and_eval(phase, jobs, parents_by_id)
+            except Exception as e:
+                # a crashed generation must still close its archive row —
+                # NULL n_candidates rows were audit finding 17's second half
+                try:
+                    row = archive.db.execute(
+                        "SELECT finished_at FROM generations WHERE id=?",
+                        (last_gen_id,)).fetchone()
+                    if row and row["finished_at"] is None:
+                        archive.finish_generation(
+                            last_gen_id, 0, 0, pool.total_usd(),
+                            stop_reason=f"crashed: {e}"[:200])
+                except Exception:  # noqa: BLE001 — recording must not mask the crash
+                    pass
+                raise
 
     # ---------------------------------------------------------------- finals
     finalists = sorted([r for r in results_all if r.get("val_loss")],
@@ -410,6 +489,7 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
             base_adapter=adapter_name, candidate_path=fr["code_path"],
             train_seconds=fsecs, eval_batches=rc["eval_batches"],
             seed=cfg["seed"], device=cfg["device"], param_cap=param_cap,
+            precision=precision,
             wandb=wmeta(f"final-s{fi}", "finals", fr["strategy"], fsecs)),
             fr["code_path"], fsecs + rc["eval_timeout_grace_s"])
         if not r.get("ok"):
@@ -462,6 +542,10 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                 data=[list(r.values()) for r in rows])})
         except Exception:  # noqa: BLE001 — mirror is fire-and-forget
             pass
+    # "Every stop writes stop_reason" held for kernel runs only — recipe
+    # archives all had it empty (audit finding 17). SQLite is authoritative.
+    if last_gen_id is not None:
+        archive.set_stop_reason(last_gen_id, "recipe_complete")
     mirror.finish("recipe_complete")
     print(f"[loop] stopped: recipe_complete; total LLM spend "
           f"${pool.total_usd():.2f}; archive at "

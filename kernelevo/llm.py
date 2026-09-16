@@ -65,6 +65,21 @@ class CodexOAuthLLM(BaseLLM):
         return 0.0
 
 
+class ClaudeOAuthLLM(BaseLLM):
+    """Claude via the local Claude Code / Agent SDK session (subscription
+    OAuth); rides the dispatcher relay on remote sandboxes, same as codex."""
+    provider = "claude_oauth"
+
+    def complete(self, messages, *, json_mode=False, tools=None, meta=None):
+        from kernelevo.claude_oauth import complete
+        answer=complete(dict(messages=messages,json_mode=json_mode,model=self.model))
+        return self._track(Response(**answer))
+
+    def usage_usd(self):
+        # Subscription usage is counted in tokens; it is not API dollar billing.
+        return 0.0
+
+
 class AnthropicLLM(BaseLLM):
     provider = "anthropic"
     supports_search = True
@@ -222,6 +237,8 @@ class LLMPool:
             llm = StubLLM(role)
         elif provider == "codex_oauth":
             llm = CodexOAuthLLM(model, self.cfg["max_llm_tokens"])
+        elif provider == "claude_oauth":
+            llm = ClaudeOAuthLLM(model, self.cfg["max_llm_tokens"])
         elif provider == "anthropic":
             default = (self.cfg["anthropic_subagent_model"] if role == "subagent"
                        else self.cfg["anthropic_model"])
@@ -242,9 +259,24 @@ class LLMPool:
     def total_usd(self) -> float:
         return sum(llm.usage_usd() for llm in self._instances)
 
+    def total_tokens(self) -> tuple[int, int]:
+        """(input, output) tokens summed across all role providers — snapshot
+        at generation start, diff at finish for per-generation accounting."""
+        return (sum(llm._in_tokens for llm in self._instances),
+                sum(llm._out_tokens for llm in self._instances))
+
 
 def extract_code(text: str) -> str:
-    blocks = re.findall(r"```(?:python)?\s*\n(.*?)```", text, re.DOTALL)
+    """The answer block, not the biggest block. Prompts say 'respond with one
+    Python code block'; when a response also quotes reference code, longest-wins
+    returned the reference (audit finding 27). Preference order: last
+    python-tagged block, else last fenced block (single-line fences included),
+    else the raw text with stray fences stripped."""
+    tagged = re.findall(r"```python[ \t]*\r?\n(.*?)```", text, re.DOTALL)
+    blocks = tagged or re.findall(r"```[\w+-]*[ \t]*\r?\n(.*?)```", text, re.DOTALL)
+    if not blocks:
+        # single-line fences carry no language tag to strip
+        blocks = re.findall(r"```(.+?)```", text, re.DOTALL)
     if blocks:
-        return max(blocks, key=len).strip() + "\n"
-    return text.strip() + "\n"
+        return blocks[-1].strip() + "\n"
+    return text.strip().strip("`").strip() + "\n"

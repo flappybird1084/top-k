@@ -25,6 +25,16 @@ from kernelevo.procstream import HEARTBEAT_PREFIX as HEARTBEAT
 from kernelevo.recipes import arch_fingerprint
 
 
+def _apply_precision(model, job, device):
+    """HARNESS-OWNED precision policy: the same dtype for baseline and every
+    candidate, so throughput levers are equal. Run ef48abdf's Muon lineage won
+    largely by autocasting bf16 against an fp32 baseline — with a uniform cast,
+    candidate-side dtype games are moot (casting bf16 twice is a no-op)."""
+    if job.get("precision", "bf16") == "bf16" and device.startswith("cuda"):
+        model = model.bfloat16()
+    return model
+
+
 def _load_recipe(path):
     spec = importlib.util.spec_from_file_location("recipe_candidate", path)
     mod = importlib.util.module_from_spec(spec)
@@ -109,14 +119,14 @@ def main():
     torch.manual_seed(seed)
     try:
         if job["candidate_path"] == "BASELINE":
-            model = adapter.build_model().to(device)
+            model = _apply_precision(adapter.build_model(), job, device).to(device)
             opt = torch.optim.AdamW(
                 (p for p in model.parameters() if p.requires_grad),
                 lr=3e-4, betas=(0.9, 0.95), weight_decay=0.01)
             lr_schedule, hints = None, {}
         else:
             recipe = _load_recipe(job["candidate_path"])
-            model = recipe.build_model().to(device)
+            model = _apply_precision(recipe.build_model(), job, device).to(device)
             opt = recipe.make_optimizer(model)
             lr_schedule = getattr(recipe, "lr_schedule", None)
             hints = getattr(recipe, "TRAIN_HINTS", {}) or {}
@@ -128,6 +138,12 @@ def main():
 
     res["n_params"] = sum(p.numel() for p in model.parameters())
     res["arch_fp"] = arch_fingerprint(model)
+    # mechanical label-vs-diff record: what this candidate is actually made of
+    from kernelevo.recipes import module_inventory
+    res["modules"] = module_inventory(model)
+    res["has_lr_schedule"] = lr_schedule is not None
+    res["hints"] = {k: (v if isinstance(v, (int, float, str, bool)) else str(v))
+                    for k, v in hints.items()}
     if job.get("param_cap") and res["n_params"] > job["param_cap"]:
         res.update(gate="param_cap",
                    note=f"{res['n_params']:,} params exceeds cap "

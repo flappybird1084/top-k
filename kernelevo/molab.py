@@ -141,11 +141,12 @@ ARTIFACT_SKIP_DIRS = ("repo", "inductor-cache", "wandb", "__pycache__",
                       "compile_cache", "search_relay")
 
 
-def _service_relay(client: MolabClient, work: str, pending: list, write_line):
+def _service_relay(client: MolabClient, work: str, pending: list, write_line,
+                   relay_dir: str | None = None):
     """Serve remote search requests locally: the notebook can't reach the
     (tailnet-private) SearXNG, but this dispatcher can."""
     from kernelevo import websearch
-    relay = work + "/run/search_relay"
+    relay = relay_dir or work + "/run/search_relay"
     for req in pending[:4]:
         rid, query, n = req.get("id"), req.get("query", ""), req.get("n", 5)
         try:
@@ -330,8 +331,11 @@ class MolabTarget:
             if job.get("recipe"):
                 args += ["--recipe-json", json.dumps(job["recipe"])]
 
-        env_updates = dict(env_updates,
-                           KEVO_RELAY_DIR=work + "/run/search_relay")
+        # Judge runs get a relay dir OUTSIDE the runner-owned work tree (the
+        # sandbox chowns all of `work` to the untrusted uid — audit finding 19)
+        relay_dir = (work + "_relay") if job.get('judge_expires_at') \
+            else work + "/run/search_relay"
+        env_updates = dict(env_updates, KEVO_RELAY_DIR=relay_dir)
         sandbox_setup = ''
         if job.get('judge_expires_at'):
             remaining = min(1800, int(float(job['judge_expires_at']) - time.time()))
@@ -343,7 +347,7 @@ class MolabTarget:
                 "_sandbox_ns = {}\n"
                 "exec(compile(open(_w + '/kernelevo/judges_sandbox.py').read(), _w + '/kernelevo/judges_sandbox.py', 'exec'), _sandbox_ns)\n"
                 "_sandbox_command = _sandbox_ns['user_command']\n"
-                f"_cmd = _sandbox_command(_w, _cmd, {int(job.get('judge_uid',0))})\n"
+                f"_cmd = _sandbox_command(_w, _cmd, {int(job.get('judge_uid',0))}, {relay_dir!r})\n"
                 f"_cmd = ['/usr/bin/timeout', '--signal=TERM', '--kill-after=10', {str(remaining)!r}] + _cmd\n"
             )
         ok, out, err = client.run(
@@ -370,8 +374,10 @@ class MolabTarget:
             return 1
         write_line(f"[molab] {out.strip().splitlines()[0]} — streaming remote log")
 
+        from kernelevo.claude_oauth import Relay as ClaudeRelay
         from kernelevo.codex_oauth import Relay
         oauth_relay = Relay()
+        claude_relay = ClaudeRelay()
         offset, misses = 0, 0
         last_archive_sync = 0.0
         while True:
@@ -396,7 +402,7 @@ class MolabTarget:
                 "if os.path.exists(_xp) and len(_data) == 0:\n"
                 "    _ex = int(open(_xp).read().strip() or 1)\n"
                 "_relay = []\n"
-                "_rd = os.path.join(_w, 'run', 'search_relay')\n"
+                f"_rd = {relay_dir!r}\n"
                 "if os.path.isdir(_rd):\n"
                 "    for _f2 in os.listdir(_rd):\n"
                 "        if _f2.endswith('.req.json'):\n"
@@ -430,8 +436,9 @@ class MolabTarget:
                 write_line(line)
             if status.get("relay"):
                 try:
-                    oauth_relay.service(client, work, [r for r in status["relay"] if r.get("kind")=="codex_oauth"], write_line)
-                    _service_relay(client, work, [r for r in status["relay"] if r.get("kind")!="codex_oauth"], write_line)
+                    oauth_relay.service(client, work, [r for r in status["relay"] if r.get("kind")=="codex_oauth"], write_line, relay_dir=relay_dir)
+                    claude_relay.service(client, work, [r for r in status["relay"] if r.get("kind")=="claude_oauth"], write_line, relay_dir=relay_dir)
+                    _service_relay(client, work, [r for r in status["relay"] if r.get("kind") not in ("codex_oauth", "claude_oauth")], write_line, relay_dir=relay_dir)
                 except Exception as e:  # noqa: BLE001 — relay is best-effort
                     write_line(f"[research-relay] servicing failed: {e}")
             if status["exit"] is not None:

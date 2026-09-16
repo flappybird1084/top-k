@@ -69,26 +69,58 @@ def complete(request):
 
 
 class Relay:
+    label='Codex'
+    worker=staticmethod(complete_local)
+    MAX_PENDING=8
+    MAX_DELIVERY_FAILS=3
+    EXPIRY_S=900   # matches the sandbox-side complete() wait
+
     def __init__(self):
         self.pool=ThreadPoolExecutor(max_workers=2)
-        self.pending={}
+        self.pending={}   # rid -> [future, started_ts, delivery_fails]
 
-    def service(self,client,work,requests,write_line):
+    def service(self,client,work,requests,write_line,relay_dir=None):
+        # Every path must release its slot: the original success-only
+        # `del self.pending[rid]` wedged the provider permanently after ~8
+        # transient delivery errors (audit finding 24).
+        now=time.monotonic()
+        for rid,(future,started,_f) in list(self.pending.items()):
+            if now-started>self.EXPIRY_S:
+                del self.pending[rid]
+                write_line(f'[agent] {self.label} request {rid[:8]} expired after '
+                           f'{self.EXPIRY_S}s; slot released.')
         for request in requests:
             rid=request.get('id','')
             if len(rid)!=32 or any(c not in '0123456789abcdef' for c in rid):continue
             if rid not in self.pending:
-                if len(self.pending)>=8:continue
-                self.pending[rid]=self.pool.submit(complete_local,request)
-                write_line('[agent] Request sent through local Codex OAuth session.')
-            future=self.pending[rid]
+                if len(self.pending)>=self.MAX_PENDING:
+                    write_line(f'[agent] {self.label} relay saturated '
+                               f'({len(self.pending)} pending); request {rid[:8]} deferred.')
+                    continue
+                self.pending[rid]=[self.pool.submit(self.worker,request),now,0]
+                write_line(f'[agent] Request sent through local {self.label} OAuth session.')
+            entry=self.pending[rid]
+            future=entry[0]
             if not future.done():continue
             try:answer=future.result()
-            except Exception:answer={'error':'Codex OAuth request failed. Check server login and usage limits.'}
-            path=work+'/run/search_relay/'+rid+'.res.json'
+            except Exception as e:
+                answer={'error':f'{self.label} OAuth request failed ({type(e).__name__}). '
+                        'Check server login and usage limits.'}
+                write_line(f'[agent] {self.label} request {rid[:8]} failed: '
+                           f'{type(e).__name__}: {str(e)[:120]}')
+            path=(relay_dir or work+'/run/search_relay')+'/'+rid+'.res.json'
             code=(f'from pathlib import Path\n_p=Path({path!r})\n'
                   f'_t=_p.with_suffix(".tmp"); _t.write_text({json.dumps(answer)!r}); _t.replace(_p)\nprint("OAUTH-OK")\n')
-            ok,out,_=client.run(code)
+            try:
+                ok,out,_=client.run(code)
+            except Exception as e:  # noqa: BLE001 — delivery failure must not leak the slot
+                ok,out=False,str(e)
             if ok and 'OAUTH-OK' in out:
                 del self.pending[rid]
-                write_line('[agent] Codex response delivered to GPU worker.')
+                write_line(f'[agent] {self.label} response delivered to GPU worker.')
+            else:
+                entry[2]+=1
+                if entry[2]>=self.MAX_DELIVERY_FAILS:
+                    del self.pending[rid]
+                    write_line(f'[agent] {self.label} response for {rid[:8]} undeliverable '
+                               f'after {entry[2]} attempts; dropped (sandbox will time out).')

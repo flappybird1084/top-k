@@ -34,10 +34,10 @@ objective.
 
 | Workload | Mode | Result | Evidence |
 |---|---|---|---|
-| modern-lm (481M, FineWeb-Edu) | Recipe | **−7.21% val loss** at matched 300s (5.848 → 5.426) | run `75890bd0` |
-| modern-lm (481M, FineWeb-Edu) | Recipe | **−4.85% val loss** at matched 300s (5.522 → 5.255, ≈23% perplexity), $24.39 total LLM spend | run `b3c7b7aa` |
-| karpathy/nanochat | Kernel | Agent-written Triton RMSNorm: training step **8.95 ms → 8.58 ms** vs the `torch.compile` incumbent (RTX PRO 6000) | run `29b07762` |
-| Verifier self-test | Both | Two planted cheating kernels (output-caching, shape-hardcoded) rejected at gate 2 in **every** calibration; the run aborts if either slips through | all archives |
+| modern-lm (481M baseline, FineWeb-Edu) | Recipe | **−7.21% val loss** at matched 300s wall-clock (5.848 → 5.426). Winner is a **298M-param** recipe — shrinking within the param cap is legal and buys more optimizer steps at fixed wall-clock, so this is a *recipe* win at this horizon, not a like-for-like architecture win | run `75890bd0` |
+| modern-lm (481M baseline, FineWeb-Edu) | Recipe | **−4.85% val loss** at matched 300s (5.522 → 5.255, ≈23% perplexity), $24.39 total LLM spend; winner **481M params — same parameter count as the baseline** (like-for-like) | run `b3c7b7aa` |
+| karpathy/nanochat | Kernel | Agent-written Triton RMSNorm: training step **8.95 → 8.58 ms** vs the `torch.compile` incumbent = **−4.1%**; vs eager (8.73 ms, faster than inductor on this launch-bound step) = **−1.7%** (RTX PRO 6000) | run `29b07762` |
+| Verifier self-test | Kernel | Two planted cheating kernels (output-caching, shape-hardcoded) rejected at gate 2 in **every** kernel-mode calibration (9/9 rows); the run aborts if either slips through. Recipe mode uses different gates (load / param cap / arch-lock / sanity) with no calibration step | kernel archives |
 
 Per-candidate training curves stream to W&B — every candidate is its own run,
 grouped by job, so the whole generation is inspectable live (see the chart

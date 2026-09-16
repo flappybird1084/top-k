@@ -57,6 +57,72 @@ def data_url(value):
     if u.scheme!='https' or not u.hostname or u.username or u.password or u.port:raise ValueError('Use an HTTPS dataset link without credentials')
     return value.strip()
 
+SETTINGS_PROVIDERS = {'stub', 'anthropic', 'openai', 'wandb', 'codex_oauth', 'claude_oauth'}
+
+
+def sanitize_settings(payload):
+    """Validated per-job overrides from the front page's Settings dialog.
+    Everything is optional; server env (KEVO_UI_*) is the fallback. In the
+    public judging deployment, server policy is absolute — client settings
+    are ignored wholesale."""
+    s = payload.get('settings') or {}
+    if not isinstance(s, dict) or os.getenv('JUDGES_EXPIRES_AT'):
+        return {}
+    out = {}
+    llm = str(s.get('llm') or '').strip()
+    if llm and len(llm) < 80 and llm.partition(':')[0] in SETTINGS_PROVIDERS:
+        out['llm'] = llm
+    if s.get('profile') in ('DEV', 'RUN'):
+        out['profile'] = s['profile']
+
+    def num(key, lo, hi, cast):
+        try:
+            v = cast(s[key])
+        except (KeyError, TypeError, ValueError):
+            return None
+        return v if lo <= v <= hi else None
+
+    for key, lo, hi, cast in (('spend_cap', 1, 500, float),
+                              ('max_debug_turns', 1, 10, int),
+                              ('max_generations', 1, 50, int)):
+        v = num(key, lo, hi, cast)
+        if v is not None:
+            out[key] = v
+    conn = str(s.get('molab_connection') or '').strip()
+    if conn and len(conn) < 4000:
+        out['molab_connection'] = conn
+    recipe = {}
+    for key, lo, hi, cast in (('arch_gens', 0, 10, int), ('arch_cands', 1, 16, int),
+                              ('arch_secs', 10, 3600, int),
+                              ('hp_gens', 0, 10, int), ('hp_cands', 1, 16, int),
+                              ('hp_secs', 10, 3600, int),
+                              ('finals_k', 1, 8, int), ('finals_secs', 10, 7200, int),
+                              ('parallelism', 1, 16, int), ('parent_pool', 1, 16, int),
+                              ('eval_batches', 1, 64, int),
+                              ('loss_margin', 0.0, 0.2, float),
+                              ('param_ratio', 1.0, 3.0, float)):
+        v = num(key, lo, hi, cast)
+        if v is not None:
+            recipe[key] = v
+    if recipe:
+        out['recipe'] = dict(
+            phases=[dict(kind='architecture', generations=recipe.get('arch_gens', 2),
+                         candidates=recipe.get('arch_cands', 8),
+                         train_seconds=recipe.get('arch_secs', 60)),
+                    dict(kind='mixed', generations=0, candidates=8, train_seconds=180),
+                    dict(kind='hyperparam', generations=recipe.get('hp_gens', 1),
+                         candidates=recipe.get('hp_cands', 8),
+                         train_seconds=recipe.get('hp_secs', 120))],
+            finals_top_k=recipe.get('finals_k', 2),
+            finals_train_seconds=recipe.get('finals_secs', 300),
+            param_budget_ratio=recipe.get('param_ratio', 1.10),
+            loss_margin_rel=recipe.get('loss_margin', 0.003),
+            eval_batches=recipe.get('eval_batches', 8),
+            subagent_parallelism=recipe.get('parallelism', 8),
+            parent_pool=recipe.get('parent_pool', 4))
+    return out
+
+
 def validate_provider(job):
     import config
     cfg=config.load(job['profile'])
@@ -71,6 +137,9 @@ def validate_provider(job):
             provider=value.partition(':')[0]
             if provider=='codex_oauth':
                 from kernelevo.codex_oauth import check_login
+                check_login()
+            if provider=='claude_oauth':
+                from kernelevo.claude_oauth import check_login
                 check_login()
             keys={'anthropic':('ANTHROPIC_API_KEY',),'openai':('OPENAI_API_KEY',),'wandb':('WANDB_INFERENCE_API_KEY','WANDB_API_KEY')}.get(provider,())
             if keys and not any(env.get(key) for key in keys):
@@ -142,7 +211,9 @@ def snapshot(jid):
             db.row_factory=sqlite3.Row
             rows=[dict(r) for r in db.execute('SELECT c.*,l.op_name FROM candidates c JOIN lineages l ON c.lineage_id=l.id WHERE l.model_id=(SELECT MAX(id) FROM models) ORDER BY c.generation,c.id')]
             for row in rows:
-                candidate={k:row.get(k) for k in ('id','generation','strategy','accepted','gate_reached','step_time_ms','incumbent_step_time_ms','created_at','val_loss','phase','train_secs','model_params','parent_id','parents_json','model_name','failure_note','correct_ok')}
+                candidate={k:row.get(k) for k in ('id','generation','strategy','accepted','gate_reached','step_time_ms','incumbent_step_time_ms','created_at','val_loss','phase','train_secs','model_params','parent_id','parents_json','model_name','failure_note','correct_ok','repairs_used','tokens_in','tokens_out')}
+                # basename only: evaluation-event dedupe key, never a full path
+                candidate['code_file']=str(row.get('code_path') or '').rsplit('/',1)[-1] or None
                 candidate['lineage_id']=row['op_name'];result['candidates'].append(candidate)
                 if row.get('weave_trace_url'):result['traces'].append(dict(id=str(row['id']),name=row['op_name'],url=row['weave_trace_url'],ended_at=0,error=None))
             result['architecture']={'candidates':[r for r in result['candidates'] if r.get('phase')]}
@@ -152,6 +223,15 @@ def snapshot(jid):
             if baseline:result['baseline_ms']=baseline
             gens=db.execute('SELECT id,stop_reason FROM generations WHERE model_id=(SELECT MAX(id) FROM models) ORDER BY id DESC LIMIT 1').fetchone()
             if gens:result.update(generation=gens['id'],stop_reason=gens['stop_reason'])
+            try:  # per-generation metadata (older archives lack the token columns)
+                result['generations']=[
+                    dict(n=i+1,n_candidates=g['n_candidates'],n_accepted=g['n_accepted'],
+                         llm_usd=g['llm_usd'],tokens_in=g['tokens_in'],tokens_out=g['tokens_out'])
+                    for i,g in enumerate(db.execute(
+                        'SELECT n_candidates,n_accepted,llm_usd,tokens_in,tokens_out '
+                        'FROM generations WHERE model_id=(SELECT MAX(id) FROM models) ORDER BY id'))]
+            except sqlite3.Error:
+                result['generations']=[]
     urls=re.findall(r'https://wandb.ai/[\w.-]+/[\w.-]+/runs/[\w]+',log)
     if urls:result['integrations']['wandb_url']=urls[-1]
     weave=re.findall(r'https://wandb.ai/[\w.-]+/[\w.-]+/weave',log)
@@ -170,9 +250,19 @@ def snapshot(jid):
     archived=result.get('candidates',[])+result.get('architecture',{}).get('candidates',[])
     pending=[]
     for event in evaluation_history(root):
+        # authoring load-checks are plumbing, never diagram nodes (older runs'
+        # logs still contain their events)
+        if event.get('stage')=='Checking recipe':continue
+        kernel=str(event.get('kernel') or '')
+        # baselines are archived as generation-0 rows the moment they finish
+        if kernel=='BASELINE' and event.get('finished'):continue
         match=re.match(r'^(\d+)-',event['id'])
         generation=event.get('generation',int(match[1]) if match else None)
         if any(r.get('strategy')==event.get('strategy') and (generation is None or r.get('generation')==generation) for r in archived):continue
+        # recipe events name the candidate FILE; older ones carried a generic
+        # 'Ns training budget' strategy that never matched an archived row, so
+        # every evaluation lingered as a phantom bubble — dedupe by code_path
+        if kernel.endswith('.py') and any(r.get('code_file')==kernel for r in archived):continue
         event['generation']=generation
         event['state']='disconnected' if disconnected else 'awaiting_sync' if event.get('finished') else 'running' if status=='running' else 'interrupted'
         pending.append(event)
@@ -220,9 +310,21 @@ def create():
         if old and (old.get('repo')!=repo or old.get('requested_mode',old.get('mode','kernel'))!=mode):raise ValueError('Request identifier already used')
         if not old:
             job=dict(id=jid,created_at=time.time(),status='exploring',mode=mode,requested_mode=mode,stage='Repository agent queued for dataset discovery.',repo=repo,adapter=None,comments='',max_debug_turns=5,profile=os.getenv('KEVO_UI_PROFILE','RUN'),llm=os.getenv('KEVO_UI_LLM') or None,execution_target=os.getenv('KEVO_UI_TARGET','molab'),molab={},wandb={})
+            if os.getenv('KEVO_UI_MAX_GENERATIONS'):job['max_generations']=int(os.environ['KEVO_UI_MAX_GENERATIONS'])
+            job.update(sanitize_settings(payload))  # user settings win over env
             web.save_job(job)
             start_discovery(jid)
     return {'id':jid},202
+
+
+@app.get('/api/settings')
+def settings_defaults():
+    """Server-side defaults the Settings dialog shows as placeholders."""
+    connection=read_json(os.getenv('KEVO_MOLAB_CONNECTION_FILE',str(Path.home()/'.local/state/kernel-evolution/molab.json')), {})
+    return dict(llm=os.getenv('KEVO_UI_LLM') or '(config profile default)',
+                profile=os.getenv('KEVO_UI_PROFILE','RUN'),
+                execution_target=os.getenv('KEVO_UI_TARGET','molab'),
+                connection_file=bool(connection.get('url') and connection.get('token')))
 
 @app.post('/api/runs/<jid>/data')
 def submit_data(jid):
@@ -236,14 +338,17 @@ def submit_data(jid):
             return jsonify(error='Run is no longer waiting for data'),409
         job['data']=url
         web.save_job(job)
-        if os.getenv('KEVO_UI_LLM'):job['llm']=os.environ['KEVO_UI_LLM']
-        if os.getenv('KEVO_UI_PROFILE'):job['profile']=os.environ['KEVO_UI_PROFILE']
-        if os.getenv('KEVO_UI_MAX_GENERATIONS'):job['max_generations']=int(os.environ['KEVO_UI_MAX_GENERATIONS'])
+        # llm/profile/max_generations were resolved at create time with
+        # user-settings > KEVO_UI_* env > default precedence; no re-override here
         validate_provider(job)
         if job['execution_target']=='molab':
-            connection=read_json(os.getenv('KEVO_MOLAB_CONNECTION_FILE',str(Path.home()/'.local/state/kernel-evolution/molab.json')), {})
-            if not connection.get('url') or not connection.get('token'):raise ValueError('Configure KEVO_MOLAB_CONNECTION_FILE on the server before launching')
-            job['molab']={'notebook_url':connection['url'],'connection':'--token '+connection['token']}
+            if job.get('molab_connection'):
+                # per-job pasted "Pair with agent" prompt from the Settings dialog
+                job['molab']={'notebook_url':'','connection':job.pop('molab_connection')}
+            else:
+                connection=read_json(os.getenv('KEVO_MOLAB_CONNECTION_FILE',str(Path.home()/'.local/state/kernel-evolution/molab.json')), {})
+                if not connection.get('url') or not connection.get('token'):raise ValueError('No molab connection: paste the notebook’s "Pair with agent" prompt in Settings, or configure KEVO_MOLAB_CONNECTION_FILE on the server')
+                job['molab']={'notebook_url':connection['url'],'connection':'--token '+connection['token']}
         job.update(data=url,comments='Use this training data link, preserving its revision and split: '+url+'. Verify data compatibility before optimization. Do not substitute synthetic data.',status='queued',stage='Queued for repository inspection and data verification.')
         choice=(request.get_json() or {}).get('dataset_choice')
         selected=next((o for o in job.get('dataset_options',[]) if o['name']==choice and o['url']==url),None)

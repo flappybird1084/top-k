@@ -40,10 +40,28 @@ def ingest(adapter, cfg) -> dict:
     from kernelevo import patch
     torch.manual_seed(cfg["seed"])
     model = adapter.build_model().to(cfg["device"])
+    batch = next(iter(adapter.get_dataloader("train")))
+    # Routing-fidelity reference: loss on the UNROUTED model, same weights and
+    # batch. auto_route replaces module forwards one-way; without this check a
+    # misroute silently changes the model's math and no gate can see it
+    # (incumbent and candidate both run on the changed model). Grad stays
+    # ENABLED (adapters legitimately assert loss.requires_grad in loss_fn);
+    # detach immediately, never backward.
+    torch.manual_seed(cfg["seed"])  # identical dropout masks for both calls
+    loss_unrouted = float(adapter.loss_fn(model, batch).detach())
     routed = patch.auto_route(model)
     if routed:
         print(f"[ingest] auto-routed onto registry: {routed}")
-    batch = next(iter(adapter.get_dataloader("train")))
+        torch.manual_seed(cfg["seed"])
+        loss_routed = float(adapter.loss_fn(model, batch).detach())
+        drift = abs(loss_routed - loss_unrouted)
+        tol = max(2e-2 * abs(loss_unrouted), 1e-3)
+        if not (drift <= tol):
+            raise SystemExit(
+                f"[ingest] ROUTING FIDELITY FAILURE: loss {loss_unrouted:.6f} "
+                f"(unrouted) vs {loss_routed:.6f} (routed), |Δ|={drift:.3g} > "
+                f"tol {tol:.3g} — auto_route changed the model's math; aborting")
+        print(f"[ingest] routing fidelity: |Δloss|={drift:.3g} (tol {tol:.3g}) ok")
     loss = adapter.loss_fn(model, batch)
     assert isinstance(loss, torch.Tensor) and loss.dim() == 0, "loss_fn must return a scalar tensor"
     assert torch.isfinite(loss).item(), "loss is not finite on the first batch"

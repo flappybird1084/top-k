@@ -44,28 +44,46 @@ class NotebookPool:
             threading.Thread(target=self._worker, args=(slot,), daemon=True).start()
 
     def _worker(self, slot):
+        # The worker thread must outlive any single bad job: the original
+        # handler re-called load_job inside `except`, so one corrupt job.json
+        # killed the thread and silently orphaned its queue (audit finding 25).
         while True:
             jid = self.queues[slot].get()
             try:
-                job = self.load_job(jid)
-                if time.time() >= self.expires_at:
-                    job.update(status='cancelled', stage='The judging window has ended.')
-                    self.save_job(job)
-                    continue
-                self.active[slot] = jid
-                import os, subprocess, sys
-                if os.environ.get('WANDB_API_KEY'):
-                    with open(Path(__file__).parents[1]/'jobs'/jid/'observer.log','a') as log:
-                        subprocess.Popen([sys.executable,'judges_observer.py',jid],stdout=log,stderr=log)
-                self.run_job(jid)
-            except Exception:
-                job = self.load_job(jid)
-                job.update(status='failed', stage='GPU worker failed. See the run log.')
-                self.save_job(job)
+                try:
+                    self._run_one(slot, jid)
+                except Exception:
+                    import traceback
+                    traceback.print_exc()
+                    try:
+                        job = self.load_job(jid)
+                        job.update(status='failed', stage='GPU worker failed. See the run log.')
+                        self.save_job(job)
+                    except Exception:  # noqa: BLE001 — job file itself unreadable
+                        print(f'[judges] job {jid} unreadable after failure; skipped', flush=True)
             finally:
-                self.active[slot] = None
+                with self.lock:
+                    self.active[slot] = None
                 self.queues[slot].task_done()
 
+    def _run_one(self, slot, jid):
+        import web
+        job = self.load_job(jid)
+        if time.time() >= self.expires_at:
+            job.update(status='cancelled', stage='The judging window has ended.')
+            self.save_job(job)
+            return
+        with self.lock:
+            self.active[slot] = jid
+        import os, subprocess, sys
+        if os.environ.get('WANDB_API_KEY'):
+            with open(Path(web.JOBS_DIR) / jid / 'observer.log', 'a') as log:
+                subprocess.Popen([sys.executable, 'judges_observer.py', jid],
+                                 stdout=log, stderr=log)
+        self.run_job(jid)
+
     def status(self):
+        with self.lock:
+            active = list(self.active)
         return [{'worker': i + 1, 'busy': jid is not None, 'queued': self.queues[i].qsize()}
-                for i, jid in enumerate(self.active)]
+                for i, jid in enumerate(active)]

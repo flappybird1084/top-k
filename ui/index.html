@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en">
-<head><script src="live-api.js?v=1"></script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Top-Kernel</title><meta name="description" content="Start with your repository. Evolve faster training kernels."><link rel="stylesheet" href="front.css?v=local-fonts-1"><script src="front.js?v=20" defer></script></head>
+<head><script src="live-api.js?v=1"></script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Top-Kernel</title><meta name="description" content="Start with your repository. Evolve faster training kernels."><link rel="stylesheet" href="front.css?v=settings-1"><script src="front.js?v=21" defer></script></head>
 <body>
 
 <main>
@@ -20,7 +20,7 @@
 <ol id="agent-events" aria-live="polite" aria-relevant="additions text"></ol>
 
 </section>
-<label class="mode-choice"><span>Optimize</span><select id="search-mode" aria-label="Optimization mode"><option value="recipe">Architecture</option><option value="kernel" selected>Kernels</option><option value="both">Both</option></select></label></form>
+<label class="mode-choice"><span>Optimize</span><select id="search-mode" aria-label="Optimization mode"><option value="recipe">Architecture</option><option value="kernel" selected>Kernels</option><option value="both">Both</option></select><button type="button" id="open-settings">Settings</button></label></form>
 </main>
 <footer><a href="pitch.html" style="color:inherit;text-decoration:none">Pitch walkthrough ↗</a><span>CoreWeave Hacks</span></footer>
 <dialog id="data-dialog" aria-labelledby="data-title" aria-describedby="data-caption">
@@ -34,5 +34,36 @@
 <p id="data-error" role="alert"></p>
 </form>
 <div id="data-check" hidden><span class="spinner" aria-hidden="true"></span><p id="data-check-text" role="status"></p></div>
+</dialog>
+<dialog id="settings-dialog" aria-labelledby="settings-title">
+<button id="close-settings" type="button" aria-label="Close settings">×</button>
+<h2 id="settings-title">Settings</h2>
+<p class="settings-caption">All optional — blank fields use the server defaults.</p>
+<form id="settings-form" novalidate>
+<div class="settings-grid">
+<label>LLM provider<select id="s-llm"><option value="">server default</option><option>claude_oauth:sonnet</option><option>claude_oauth:opus</option><option>claude_oauth:haiku</option><option>codex_oauth</option><option>wandb</option><option>anthropic</option><option>openai</option><option>stub</option></select></label>
+<label>Profile<select id="s-profile"><option value="">server default</option><option>DEV</option><option>RUN</option></select></label>
+<label>Spend cap ($)<input id="s-spend" type="number" min="1" max="500" step="0.5" placeholder="profile default"></label>
+<label>Adapter debug turns<input id="s-debug" type="number" min="1" max="10" placeholder="5"></label>
+</div>
+<label class="settings-wide">Molab connection — paste the notebook’s “Pair with agent” prompt<textarea id="s-molab" rows="3" placeholder="blank = server connection file"></textarea></label>
+<p id="settings-conn-note"></p>
+<details class="settings-recipe"><summary>Recipe schedule (architecture mode)</summary>
+<div class="settings-grid three">
+<label>Arch generations<input id="s-arch-gens" type="number" min="0" max="10" placeholder="2"></label>
+<label>× candidates<input id="s-arch-cands" type="number" min="1" max="16" placeholder="8"></label>
+<label>× train secs<input id="s-arch-secs" type="number" min="10" max="3600" placeholder="60"></label>
+<label>HP generations<input id="s-hp-gens" type="number" min="0" max="10" placeholder="1"></label>
+<label>× candidates<input id="s-hp-cands" type="number" min="1" max="16" placeholder="8"></label>
+<label>× train secs<input id="s-hp-secs" type="number" min="10" max="3600" placeholder="120"></label>
+<label>Finals top-k<input id="s-finals-k" type="number" min="1" max="8" placeholder="2"></label>
+<label>Finals secs<input id="s-finals-secs" type="number" min="10" max="7200" placeholder="300"></label>
+<label>Parallel agents<input id="s-par" type="number" min="1" max="16" placeholder="8"></label>
+<label>Parent pool<input id="s-pool" type="number" min="1" max="16" placeholder="4"></label>
+<label>Eval batches<input id="s-evalb" type="number" min="1" max="64" placeholder="8"></label>
+<label>Loss margin<input id="s-margin" type="number" min="0" max="0.2" step="0.001" placeholder="0.003"></label>
+</div></details>
+<div class="settings-actions"><button type="button" id="reset-settings">Reset</button><button type="submit">Done</button></div>
+</form>
 </dialog>
 </body></html>

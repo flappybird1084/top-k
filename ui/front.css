@@ -87,3 +87,26 @@ form{position:relative}#agent-flow{position:absolute;top:100%;left:0;width:100%;
 .mode-choice>span,.mode-choice>select{font-family:'DM Sans',Arial,sans-serif;font-size:12px;font-weight:400;font-style:normal;font-variation-settings:normal;line-height:20px;letter-spacing:0;color:#808777;text-transform:none;-webkit-font-smoothing:antialiased}
 
 #discovery-summary{font-size:13px;line-height:1.55;color:#7c8574;margin:12px 0}#dataset-options>div{display:flex;gap:12px;align-items:center;border-top:1px solid #e5e9df;padding:10px 0}#dataset-options a{font-size:11px;white-space:nowrap;color:#417d64}.dataset-option{flex:1;text-align:left;border:0;background:none;color:inherit;cursor:pointer;padding:6px;font:inherit}.dataset-option strong{font-size:13px;font-weight:500;display:block}.dataset-option span{display:block;font-size:12px;line-height:1.5;color:#808777;margin-top:4px}#dataset-options{max-height:240px;overflow:auto}.dataset-option:hover{background:#f1f4ed}.dataset-option:focus-visible{outline:2px solid #417d64}
+
+/* Settings dialog: optional per-run overrides behind the front page's Settings button. */
+#open-settings{border:0;background:none;color:#808777;font:12px 'DM Sans',Arial,sans-serif;cursor:pointer;padding:0 0 0 14px;text-decoration:underline;text-underline-offset:3px}
+#open-settings:hover{color:#167b63}
+#settings-dialog{width:min(560px,calc(100vw - 40px));padding:35px;border:1px solid #dfe5d8;border-radius:12px;background:#fdfefb;color:#293326;box-shadow:0 24px 100px #1e302326}
+#settings-dialog::backdrop{background:#21332338;backdrop-filter:blur(5px)}
+#settings-dialog h2{font:400 32px/1.1 'Source Serif 4',Georgia,serif;letter-spacing:-1px;margin:0 0 6px}
+.settings-caption{font-size:13px;color:#77806e;margin:0 0 20px}
+#close-settings{position:absolute;right:15px;top:12px;background:none;border:0;font-size:23px;color:#8a9380;cursor:pointer;padding:6px}
+.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 18px;margin-bottom:16px}
+.settings-grid.three{grid-template-columns:1fr 1fr 1fr;margin-top:14px}
+#settings-dialog label{display:flex;flex-direction:column;gap:5px;font-size:11px;color:#77806e}
+#settings-dialog input,#settings-dialog select,#settings-dialog textarea{border:1px solid var(--line);border-radius:6px;background:#fff;font:13px 'DM Sans',Arial,sans-serif;color:var(--ink);padding:8px 10px;width:100%;box-sizing:border-box}
+#settings-dialog textarea{resize:vertical;font:12px ui-monospace,monospace}
+.settings-wide{margin-bottom:6px}
+#settings-conn-note{font-size:11px;color:#8a9084;margin:4px 0 14px}
+.settings-recipe summary{font-size:12px;color:#417d64;cursor:pointer;margin-bottom:4px}
+.settings-actions{display:flex;justify-content:space-between;margin-top:20px}
+.settings-actions button{border:0;border-radius:6px;font:13px 'DM Sans',Arial,sans-serif;cursor:pointer;padding:9px 18px}
+#reset-settings{background:none;color:#8a9380}
+.settings-actions button[type=submit]{background:#26362b;color:#fff}
+.settings-actions button[type=submit]:hover{background:#147662}
+@media(max-width:600px){#settings-dialog{padding:29px 24px}.settings-grid,.settings-grid.three{grid-template-columns:1fr 1fr}}
