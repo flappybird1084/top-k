@@ -33,15 +33,28 @@ function allowedPath(pathname) {
   );
 }
 
+async function siteResponse(request, url) {
+  const target = new URL(url.pathname + url.search, SITE_ORIGIN);
+  const headers = new Headers(request.headers);
+  headers.delete("host");
+  return fetch(target, {
+    method: request.method,
+    headers,
+    body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
+    redirect: "manual",
+  });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const cors = corsHeaders(request);
 
     // The two gateway hostnames are also human-facing entry points. Keep the
-    // submitted Sites URL canonical, but send ordinary browser navigation
-    // there instead of showing an API 404 at the bare domain.
+    // submitted Sites URL canonical for the compatibility aliases. The new
+    // project domain serves that same site through this Worker.
     if (!allowedPath(url.pathname)) {
+      if (url.hostname === "top-k.dev") return siteResponse(request, url);
       const destination = new URL(url.pathname + url.search, SITE_ORIGIN);
       return Response.redirect(destination.toString(), 302);
     }

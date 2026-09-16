@@ -1,10 +1,11 @@
 # Top-K stable gateway
 
-This Worker owns `https://api.top-k.dev`, with
-`https://top-k.andredlcruz.com` retained as a compatibility alias. It exposes
-only Top-K health, API, and GitHub OAuth routes. Keeping the compute address at
-the edge lets the public hostname and the GitHub callback stay stable when
-compute moves.
+This Worker owns the project site at `https://top-k.dev`, the backend at
+`https://api.top-k.dev`, and keeps `https://top-k.andredlcruz.com` as a
+compatibility alias. The project domain serves the submitted site through the
+Worker; the API domain exposes Top-K health, API, and GitHub OAuth routes.
+Keeping the compute address at the edge lets both public hostnames and the
+GitHub callback stay stable when compute moves.
 
 Two secrets, both server-side:
 
