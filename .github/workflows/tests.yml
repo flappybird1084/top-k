@@ -6,7 +6,7 @@ name: tests
 
 on:
   push:
-    branches: [main, codex/opus-review-fixes]
+    branches: [main, codex/opus-review-fixes, Production]
   pull_request:
 
 concurrency:
