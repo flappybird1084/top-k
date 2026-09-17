@@ -41,7 +41,6 @@ jobs:
     outputs:
       backend: ${{ steps.check.outputs.backend }}
       cloudflare: ${{ steps.check.outputs.cloudflare }}
-      frontend: ${{ steps.check.outputs.frontend }}
     env:
       EC2_HOST: ${{ secrets.EC2_HOST }}
       EC2_USER: ${{ secrets.EC2_USER }}
@@ -49,7 +48,6 @@ jobs:
       EC2_KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CF_PAGES_PROJECT: ${{ vars.CF_PAGES_PROJECT }}
     steps:
       - id: check
         name: Check deployment configuration
@@ -63,11 +61,6 @@ jobs:
             echo 'cloudflare=true' >> "$GITHUB_OUTPUT"
           else
             echo 'cloudflare=false' >> "$GITHUB_OUTPUT"
-          fi
-          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ] && [ -n "$CF_PAGES_PROJECT" ]; then
-            echo 'frontend=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'frontend=false' >> "$GITHUB_OUTPUT"
           fi
 
   deploy_backend:
@@ -145,7 +138,7 @@ jobs:
 
   deploy_frontend:
     needs: [deployment_readiness, deploy_edge]
-    if: ${{ needs.deployment_readiness.outputs.frontend == 'true' && needs.deploy_edge.result == 'success' }}
+    if: ${{ needs.deployment_readiness.outputs.cloudflare == 'true' && needs.deploy_edge.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
@@ -154,15 +147,13 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CF_PAGES_PROJECT: ${{ vars.CF_PAGES_PROJECT }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify Pages configuration
+      - name: Verify Cloudflare deployment secrets
         run: |
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$CLOUDFLARE_ACCOUNT_ID"
-          test -n "$CF_PAGES_PROJECT"
 
       - name: Deploy the static frontend
-        run: npx wrangler pages deploy ui --project-name "$CF_PAGES_PROJECT" --branch Production
+        run: npx wrangler deploy --config cloudflare/frontend-worker/wrangler.jsonc
