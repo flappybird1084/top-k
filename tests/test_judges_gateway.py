@@ -21,6 +21,7 @@ def gateway(tmp_path, monkeypatch):
                        ('GITHUB_SIGNIN_RATE', '50'),
                        ('JUDGES_EXPIRES_AT', str(time.time() + 3600)),
                        ('JUDGES_EDGE_SECRET', EDGE),
+                       ('JUDGES_ALLOWED_GITHUB_LOGINS', 'tester,other,flappybird1084,andred1729'),
                        ('JUDGES_INTEGRATION_DIR', str(tmp_path / 'integrations')),
                        ('JUDGES_ORIGIN', ORIGIN)):
         monkeypatch.setenv(key, value)
@@ -85,6 +86,15 @@ def test_every_route_needs_a_signed_in_user(gateway):
         assert client.get(path, headers=headers()).status_code == 401, path
     # the legacy anonymous-session endpoint is gone for signed-in users too
     assert client.post('/api/session', headers=headers(sign_in(gateway))).status_code == 404
+
+
+def test_unlisted_github_session_cannot_use_any_protected_route(gateway):
+    client = gateway.test_client()
+    token = sign_in(gateway, 99, 'not-approved')
+    assert client.get('/api/auth/me', headers=headers(token)).status_code == 403
+    assert client.get('/api/health', headers=headers(token)).status_code == 403
+    allowed = sign_in(gateway, 100, 'andred1729')
+    assert client.get('/api/health', headers=headers(allowed)).status_code == 200
 
 
 def test_integration_secrets_never_come_back(gateway):

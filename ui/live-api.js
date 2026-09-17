@@ -79,7 +79,8 @@
      // each other's credential.
      user=body.user;paint();await gateOnSetup();return;
     }
-    if(me.status===401)localStorage.removeItem(key);
+    if(me.status===401||me.status===403)localStorage.removeItem(key);
+    if(me.status===403){lock('This GitHub account is not on the current access list.');return;}
    }
    lock('Sign in with GitHub to use Top-Kernel.');
   }catch{config=null;lock('Access is protected. The sign-in service is unavailable.');}

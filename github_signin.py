@@ -70,8 +70,9 @@ class RateLimiter:
 
 
 class GitHubSignIn:
-    def __init__(self, app, site_origin):
+    def __init__(self, app, site_origin, allowed_login=None):
         self.origin = site_origin
+        self.allowed_login = allowed_login or (lambda login: True)
         self.client_id = os.getenv('GITHUB_CLIENT_ID', '')
         self.client_secret = os.getenv('GITHUB_CLIENT_SECRET', '')
         self.backend = os.getenv('GITHUB_AUTH_ORIGIN', '').rstrip('/')
@@ -171,7 +172,13 @@ class GitHubSignIn:
         except Exception:
             return self.result({'error': 'GitHub could not complete sign-in. Please try again.'}, 502)
         identity = {'id': 'github:'+str(user['id']), 'login': user['login']}
+        if not self.allowed(identity):
+            return self.result({'error': 'This GitHub account is not approved for Top-Kernel yet.'}, 403)
         return self.result({'token': self.issue(identity), 'user': identity})
+
+    def allowed(self, identity):
+        return bool(identity and isinstance(identity.get('login'), str)
+                    and self.allowed_login(identity['login']))
 
     def issue(self, identity, issued=None):
         """Mint a session. Called on a completed GitHub sign-in and nowhere
@@ -229,6 +236,8 @@ if(window.opener){{window.opener.postMessage(result,{json.dumps(self.origin)});i
         user = self.identity()
         if not user:
             return jsonify(error='Sign in with GitHub to continue.'), 401
+        if not self.allowed(user):
+            return jsonify(error='This GitHub account is not approved for Top-Kernel yet.'), 403
         return jsonify(user={'id': user['id'], 'login': user['login']}), 200
 
     def revoke(self):

@@ -25,6 +25,7 @@ from kernelevo.judges_pool import NotebookPool
 from kernelevo.molab import MolabClient
 
 DEFAULT_ORIGIN = 'https://top-kernel-demo.andre520395.chatgpt.site'
+DEFAULT_ALLOWED_GITHUB_LOGINS = frozenset({'flappybird1084', 'andred1729'})
 # Written by the edge worker; a request that reaches the origin without them
 # did not come through the edge and is refused.
 EDGE_AUTH_HEADER = 'X-TopK-Edge-Auth'
@@ -92,11 +93,26 @@ def validate_notebook_connection(notebook):
         ) from exc
 
 
+def allowed_github_logins():
+    """Return the case-insensitive GitHub login allowlist.
+
+    The production default deliberately admits only the two project owners.
+    Deployments can override it through the private environment file without
+    changing source, which keeps widening access an explicit operation.
+    """
+    value = os.getenv('JUDGES_ALLOWED_GITHUB_LOGINS')
+    if value is None:
+        return DEFAULT_ALLOWED_GITHUB_LOGINS
+    return frozenset(login.strip().casefold() for login in value.split(',') if login.strip())
+
+
 def create_app():
     app = Flask(__name__)
     app.secret_key = os.environ.get('JUDGES_SESSION_SECRET') or secrets.token_hex(32)
     origin = os.environ.get('JUDGES_ORIGIN', DEFAULT_ORIGIN)
-    github = GitHubSignIn(app, origin)
+    allowed_logins = allowed_github_logins()
+    github = GitHubSignIn(app, origin,
+                          allowed_login=lambda login: login.casefold() in allowed_logins)
     # Shared secret installed on the edge worker. Missing means the deployment
     # is half-configured, and the gateway refuses everything rather than
     # accepting requests that bypassed the edge.
@@ -157,6 +173,8 @@ def create_app():
         user = github.identity()
         if not user:
             return jsonify(error='Sign in with GitHub to continue.'), 401
+        if not github.allowed(user):
+            return jsonify(error='This GitHub account is not approved for Top-Kernel yet.'), 403
         g.visitor = user['id']
         if not api_limit.allow(g.visitor):
             return jsonify(error='Too many requests. Slow down and try again shortly.'), 429
