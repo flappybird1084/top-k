@@ -20,6 +20,11 @@ Deployment:
 3. Run `docker compose up -d --build`.
 4. Set the `top-k-gateway` Worker `GPU_ORIGIN` secret to the tunnel hostname.
 
+The gateway process itself runs as an unprivileged user (uid 10001). The two
+bind-mounted directories (`state` and `jobs`) come up owned by root on a fresh
+host, so the container's entrypoint reclaims them for that user at startup
+before dropping privileges — no manual `chown` is needed.
+
 Back up both directories below `TOPK_DATA_ROOT`. `state` contains sign-ins and
 per-user integration credentials; `jobs` contains run state, logs, and
 artifacts.

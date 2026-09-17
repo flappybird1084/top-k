@@ -5,7 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y ca-certificates git \
+    && apt-get install --no-install-recommends -y ca-certificates git gosu \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -16,9 +16,12 @@ COPY . ./
 RUN groupadd --gid 10001 topk \
     && useradd --uid 10001 --gid topk --home-dir /var/lib/top-k --create-home topk \
     && mkdir -p /app/jobs /var/lib/top-k/auth /var/lib/top-k/integrations /var/lib/top-k/relay \
-    && chown -R topk:topk /app/jobs /var/lib/top-k
+    && chown -R topk:topk /app/jobs /var/lib/top-k \
+    && chmod +x deploy/production/gateway-entrypoint.sh
 
-USER topk
+# The entrypoint runs as root only to reclaim the bind-mounted data volumes for
+# `topk`, then drops to that unprivileged user before running the gateway.
 EXPOSE 8768
 
+ENTRYPOINT ["/app/deploy/production/gateway-entrypoint.sh"]
 CMD ["python", "judges_server.py"]
