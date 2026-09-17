@@ -325,6 +325,41 @@ def test_wandb_metrics_are_read_with_the_owners_credentials(monkeypatch):
 
     assert used == [('visitor-key', 10)]
     assert result['metrics'] == [{'name': 'loss', 'value': 1.25}]
+    assert result['series'] == []
+
+
+def test_wandb_metrics_include_bounded_browser_safe_history(monkeypatch):
+    import sys
+    import types
+    import ui_server
+
+    jid = 'e' * 32
+
+    class FakeRun:
+        name = 'run'
+        state = 'finished'
+        summary = {'loss': .25}
+        def history(self, samples=None, pandas=None):
+            assert samples == 240
+            assert pandas is False
+            return [{'_step': 1, 'train/loss': .5, 'unrelated': 9},
+                    {'_step': 2, 'train/loss': .25, 'unrelated': 10}]
+
+    class FakeApi:
+        def __init__(self, api_key=None, timeout=None): pass
+        def run(self, path): return FakeRun()
+
+    monkeypatch.setitem(sys.modules, 'wandb', types.SimpleNamespace(Api=FakeApi))
+    monkeypatch.setattr(ui_server, 'snapshot', lambda _jid: {
+        'mode': 'kernel', 'integrations': {'wandb_url': 'https://wandb.ai/a/b/runs/c'}})
+    monkeypatch.setattr(ui_server, 'read_json', lambda path, default=None: {})
+    ui_server.cache.pop('wandb:' + jid, None)
+
+    with ui_server.app.test_request_context():
+        result = ui_server.wandb_metrics(jid)
+
+    assert result['series'] == [{'name': 'train/loss',
+                                 'points': [{'step': 1, 'value': .5}, {'step': 2, 'value': .25}]}]
 
 
 # ---- finding 5: one visitor's run does not wait behind strangers ----
