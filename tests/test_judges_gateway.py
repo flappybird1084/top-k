@@ -21,6 +21,7 @@ def gateway(tmp_path, monkeypatch):
                        ('GITHUB_SIGNIN_RATE', '50'),
                        ('JUDGES_EXPIRES_AT', str(time.time() + 3600)),
                        ('JUDGES_EDGE_SECRET', EDGE),
+                       ('JUDGES_ALLOWED_GITHUB_LOGINS', 'tester,other,flappybird1084,andred1729'),
                        ('JUDGES_INTEGRATION_DIR', str(tmp_path / 'integrations')),
                        ('JUDGES_ORIGIN', ORIGIN)):
         monkeypatch.setenv(key, value)
@@ -85,6 +86,15 @@ def test_every_route_needs_a_signed_in_user(gateway):
         assert client.get(path, headers=headers()).status_code == 401, path
     # the legacy anonymous-session endpoint is gone for signed-in users too
     assert client.post('/api/session', headers=headers(sign_in(gateway))).status_code == 404
+
+
+def test_unlisted_github_session_cannot_use_any_protected_route(gateway):
+    client = gateway.test_client()
+    token = sign_in(gateway, 99, 'not-approved')
+    assert client.get('/api/auth/me', headers=headers(token)).status_code == 403
+    assert client.get('/api/health', headers=headers(token)).status_code == 403
+    allowed = sign_in(gateway, 100, 'andred1729')
+    assert client.get('/api/health', headers=headers(allowed)).status_code == 200
 
 
 def test_integration_secrets_never_come_back(gateway):
@@ -315,6 +325,41 @@ def test_wandb_metrics_are_read_with_the_owners_credentials(monkeypatch):
 
     assert used == [('visitor-key', 10)]
     assert result['metrics'] == [{'name': 'loss', 'value': 1.25}]
+    assert result['series'] == []
+
+
+def test_wandb_metrics_include_bounded_browser_safe_history(monkeypatch):
+    import sys
+    import types
+    import ui_server
+
+    jid = 'e' * 32
+
+    class FakeRun:
+        name = 'run'
+        state = 'finished'
+        summary = {'loss': .25}
+        def history(self, samples=None, pandas=None):
+            assert samples == 240
+            assert pandas is False
+            return [{'_step': 1, 'train/loss': .5, 'unrelated': 9},
+                    {'_step': 2, 'train/loss': .25, 'unrelated': 10}]
+
+    class FakeApi:
+        def __init__(self, api_key=None, timeout=None): pass
+        def run(self, path): return FakeRun()
+
+    monkeypatch.setitem(sys.modules, 'wandb', types.SimpleNamespace(Api=FakeApi))
+    monkeypatch.setattr(ui_server, 'snapshot', lambda _jid: {
+        'mode': 'kernel', 'integrations': {'wandb_url': 'https://wandb.ai/a/b/runs/c'}})
+    monkeypatch.setattr(ui_server, 'read_json', lambda path, default=None: {})
+    ui_server.cache.pop('wandb:' + jid, None)
+
+    with ui_server.app.test_request_context():
+        result = ui_server.wandb_metrics(jid)
+
+    assert result['series'] == [{'name': 'train/loss',
+                                 'points': [{'step': 1, 'value': .5}, {'step': 2, 'value': .25}]}]
 
 
 # ---- finding 5: one visitor's run does not wait behind strangers ----

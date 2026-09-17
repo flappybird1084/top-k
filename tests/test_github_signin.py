@@ -38,6 +38,12 @@ class GitHubAuthTest(unittest.TestCase):
         token=self.token(r);me=self.client.get('/api/auth/me',headers={'Authorization':'Bearer '+token})
         self.assertEqual(me.json['user'],{'id':'github:42','login':'tester'})
         with self.auth.db() as db:self.assertNotEqual(db.execute('SELECT id FROM sessions').fetchone()[0],token)
+    def test_unapproved_callback_does_not_create_a_session(self):
+        self.auth.allowed_login=lambda login: login == 'approved'
+        state=self.begin();r,_=self.finish(state)
+        self.assertEqual(r.status_code,403)
+        self.assertNotIn('token',r.text)
+        with self.auth.db() as db:self.assertIsNone(db.execute('SELECT id FROM sessions').fetchone())
     def test_wrong_state_rejected_without_exchange(self):
         self.begin();r,api=self.finish('wrong');self.assertEqual(r.status_code,400);api.assert_not_called()
     def test_callback_in_other_browser_rejected(self):

@@ -1,0 +1,159 @@
+name: production deploy
+
+on:
+  push:
+    branches: [Production]
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install CPU test dependencies
+        run: |
+          uv venv --python 3.13
+          . .venv/bin/activate
+          uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+          uv pip install -r requirements.txt pytest
+
+      - name: Run tests
+        run: |
+          . .venv/bin/activate
+          python -m pytest -q
+
+  deployment_readiness:
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.check.outputs.backend }}
+      cloudflare: ${{ steps.check.outputs.cloudflare }}
+    env:
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_USER: ${{ secrets.EC2_USER }}
+      EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+      EC2_KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - id: check
+        name: Check deployment configuration
+        run: |
+          if [ -n "$EC2_HOST" ] && [ -n "$EC2_USER" ] && [ -n "$EC2_SSH_PRIVATE_KEY" ] && [ -n "$EC2_KNOWN_HOSTS" ]; then
+            echo 'backend=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'backend=false' >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo 'cloudflare=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'cloudflare=false' >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy_backend:
+    needs: deployment_readiness
+    if: ${{ needs.deployment_readiness.outputs.backend == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: https://api.top-k.dev/health
+    env:
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_USER: ${{ secrets.EC2_USER }}
+      EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+      EC2_KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
+      RELEASE_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify backend deployment secrets
+        run: |
+          test -n "$EC2_HOST"
+          test -n "$EC2_USER"
+          test -n "$EC2_SSH_PRIVATE_KEY"
+          test -n "$EC2_KNOWN_HOSTS"
+
+      - name: Configure SSH
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$EC2_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$EC2_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Stage and start the encrypted-state backend release
+        run: |
+          git archive --format=tar "$RELEASE_SHA" | gzip | ssh -i ~/.ssh/id_ed25519 "$EC2_USER@$EC2_HOST" "
+            set -eu
+            release=/home/ubuntu/services/top-k/releases/$RELEASE_SHA
+            install -d -m 0755 \"\$release\"
+            tar -xzf - -C \"\$release\"
+            sudo ln -sfn /srv/top-k-data/secrets/production.env \"\$release/deploy/production/.env\"
+            cd \"\$release/deploy/production\"
+            sudo TOPK_DATA_ROOT=/srv/top-k-data docker compose --project-name production up -d --build --remove-orphans
+            for attempt in 1 2 3 4 5 6; do
+              status=\$(sudo docker inspect -f '{{.State.Health.Status}}' production-gateway-1 2>/dev/null || true)
+              [ \"\$status\" = healthy ] && exit 0
+              sleep 5
+            done
+            sudo docker compose --project-name production ps
+            exit 1
+          "
+
+  deploy_edge:
+    needs: [deployment_readiness, deploy_backend]
+    if: ${{ needs.deployment_readiness.outputs.cloudflare == 'true' && needs.deploy_backend.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: production
+      url: https://api.top-k.dev/health
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Cloudflare deployment secrets
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+
+      - name: Deploy the API Worker
+        run: npx wrangler deploy --config cloudflare/gateway-worker/wrangler.jsonc
+
+  deploy_frontend:
+    needs: [deployment_readiness, deploy_edge]
+    if: ${{ needs.deployment_readiness.outputs.cloudflare == 'true' && needs.deploy_edge.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: production
+      url: https://top-k.dev
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Cloudflare deployment secrets
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+
+      - name: Deploy the static frontend
+        run: npx wrangler deploy --config cloudflare/frontend-worker/wrangler.jsonc

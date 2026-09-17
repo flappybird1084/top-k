@@ -79,7 +79,8 @@
      // each other's credential.
      user=body.user;paint();await gateOnSetup();return;
     }
-    if(me.status===401)localStorage.removeItem(key);
+    if(me.status===401||me.status===403)localStorage.removeItem(key);
+    if(me.status===403){lock('This GitHub account is not on the current access list.');return;}
    }
    lock('Sign in with GitHub to use Top-Kernel.');
   }catch{config=null;lock('Access is protected. The sign-in service is unavailable.');}
@@ -113,7 +114,7 @@
    '<li>Create or sign in to a <a href="https://molab.marimo.io" target="_blank" rel="noopener noreferrer">marimo</a> account.</li>'+
    '<li>Start a notebook on a GPU runtime and keep its browser tab open.</li>'+
    '<li>Choose <b>Pair with agent</b> and copy the whole prompt — the token on screen is masked, only the copied text carries it.</li>'+
-   '<li>Add your Weights &amp; Biases account so the run reports to you.</li>'+
+   '<li><a href="https://wandb.ai/authorize" target="_blank" rel="noopener noreferrer">Open W&amp;B</a>, create an API key, and connect the project where you want Top-K to report.</li>'+
    '</ol>';
   const form=document.createElement('form');form.className='setup-form';form.noValidate=true;
   const pair=document.createElement('textarea');pair.rows=3;pair.required=true;
@@ -123,7 +124,7 @@
   const entity=document.createElement('input');entity.type='text';entity.placeholder='W&B entity';
   const project=document.createElement('input');project.type='text';project.placeholder='W&B project';
   const pairRow=field('Your marimo notebook','From the notebook’s "Pair with agent" prompt.',pair);
-  const wandbRow=field('Your Weights & Biases account','From wandb.ai/authorize. Stored on the server, never shown again.',wandbKey);
+  const wandbRow=field('Connect W&B','Create a personal or team API key in W&B. It stays private to your signed-in Top-K account and lets us show your run metrics here.',wandbKey);
   const names=document.createElement('div');names.className='setup-names';names.append(entity,project);
   const submit=document.createElement('button');submit.type='submit';submit.textContent='Save and continue';
   setupStatus=document.createElement('p');setupStatus.className='github-gate-status';setupStatus.setAttribute('role','status');

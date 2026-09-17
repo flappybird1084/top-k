@@ -458,8 +458,14 @@ def runtime(jid):
 
 @app.get('/api/runs/<jid>/wandb')
 def wandb_metrics(jid):
+    """Return a small, browser-native W&B view for the owner’s run.
+
+    We deliberately read a bounded history instead of embedding W&B’s page.
+    W&B can restrict framing and an embedded page is not a useful live view on
+    smaller screens. The full run remains available through its direct link.
+    """
     state=snapshot(jid);url=state['integrations'].get('wandb_url')
-    if not url:return {'metrics':[]}
+    if not url:return {'metrics':[], 'series':[]}
     key='wandb:'+jid
     if key in cache and time.time()-cache[key]['sampled_at']<30:return cache[key]
     try:
@@ -472,15 +478,41 @@ def wandb_metrics(jid):
         if job.get('visitor'):
             from kernelevo.integrations import wandb_env
             api_key=wandb_env(job['visitor']).get('WANDB_API_KEY')
-            if not api_key:return {'metrics':[]},503
+            if not api_key:return {'metrics':[], 'series':[]},503
         parts=urlsplit(url).path.strip('/').split('/')
         api=wandb.Api(api_key=api_key,timeout=10) if api_key else wandb.Api(timeout=10)
         run=api.run('/'.join([parts[0],parts[1],parts[3]]))
-        metrics=[dict(name=k,value=v) for k,v in dict(run.summary).items() if not k.startswith('_') and isinstance(v,(int,float)) and not isinstance(v,bool) and math.isfinite(v)]
+        numeric=lambda value: isinstance(value,(int,float)) and not isinstance(value,bool) and math.isfinite(value)
+        metrics=[dict(name=k,value=v) for k,v in dict(run.summary).items()
+                 if not k.startswith('_') and numeric(v)]
         prefix='recipe/' if state.get('mode')=='recipe' else None
         if prefix:metrics=[m for m in metrics if m['name'].startswith(prefix)]
-        result=dict(name=run.name,state=run.state,metrics=metrics[:6],sampled_at=time.time());cache[key]=result;return result
-    except Exception:return {'metrics':[]},503
+
+        # History is capped so refreshing the Top-K page never turns into a
+        # bulk W&B export. Keep the most legible learning/performance curve.
+        rows=[]
+        try:
+            rows=list(run.history(samples=240, pandas=False) or [])
+        except (AttributeError, TypeError):
+            rows=[]
+        candidates={}
+        for index,row in enumerate(rows):
+            if not isinstance(row,dict):continue
+            step=row.get('_step', index)
+            if not numeric(step):step=index
+            for name,value in row.items():
+                if name.startswith('_') or not numeric(value):continue
+                lowered=name.lower()
+                if any(token in lowered for token in ('loss','accuracy','step_time','throughput','learning_rate','reward')):
+                    candidates.setdefault(name,[]).append(dict(step=step,value=value))
+        ranked=sorted(candidates.items(), key=lambda item: (
+            0 if 'loss' in item[0].lower() else 1,
+            -len(item[1]), item[0]))
+        series=[dict(name=name, points=points[-120:]) for name,points in ranked[:2] if len(points)>=2]
+        result=dict(name=run.name,state=run.state,metrics=metrics[:6],series=series,sampled_at=time.time())
+        cache[key]=result
+        return result
+    except Exception:return {'metrics':[], 'series':[]},503
 
 def start_worker():
     for job in sorted(web.list_jobs(),key=lambda j:(j["created_at"],j.get("related_runs",{}).get("kernel")==j["id"])):

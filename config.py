@@ -76,10 +76,9 @@ _COMMON = dict(
     anthropic_model="claude-sonnet-5",
     anthropic_subagent_model="claude-opus-5",
     openai_model="gpt-5",
-    # W&B Inference model ids (from the live /v1/models catalog). Kimi-K2.7-Code
-    # is the coding-tuned pick for subagent-style work; override per role with
-    # e.g. planner_llm="wandb:deepseek-ai/DeepSeek-V4-Flash".
-    wandb_inference_model="moonshotai/Kimi-K2.7-Code",
+    # W&B Inference model ids (from the live /v1/models catalog). Override per
+    # role with e.g. planner_llm="wandb:deepseek-ai/DeepSeek-V4-Flash".
+    wandb_inference_model="deepseek-ai/DeepSeek-V4-Flash-0731",
     max_llm_tokens=8192,
     lessons_tail=20,
     planner_web_search=True,    # planner may use the provider's native web-search tool

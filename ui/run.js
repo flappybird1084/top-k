@@ -126,6 +126,20 @@ if(runId&&['http:','https:'].includes(location.protocol))refreshRuntime();
 window.addEventListener('pagehide',()=>clearTimeout(runtimeTimer));
 
 let wandbTimer;
+function renderWandbNative(data){
+ const node=q('#wandb-native'),series=(data.series||[])[0];
+ if(!series?.points?.length){node.hidden=true;node.replaceChildren();return;}
+ const points=series.points.filter(p=>Number.isFinite(p.step)&&Number.isFinite(p.value));
+ if(points.length<2){node.hidden=true;node.replaceChildren();return;}
+ const values=points.map(p=>p.value),low=Math.min(...values),high=Math.max(...values),range=high-low||1;
+ const position=(point,index)=>[40+index*940/Math.max(1,points.length-1),12+(high-point.value)/range*128];
+ const line=points.map((point,index)=>`${index?'L':'M'}${position(point,index).join(',')}`).join(' ');
+ const labels=[0,.5,1].map(t=>`<text x="0" y="${16+t*128}" fill="#89927f" font-size="10">${(high-t*range).toPrecision(4)}</text>`).join('');
+ const grid=[0,.5,1].map(t=>`<line x1="40" x2="980" y1="${12+t*128}" y2="${12+t*128}" stroke="#e5e9df"/>`).join('');
+ const final=values.at(-1),first=values[0],delta=first===0?'':`${((final-first)/Math.abs(first)*100).toFixed(1)}%`;
+ node.hidden=false;
+ node.innerHTML=`<div class="wandb-native-heading"><span>${escapeHTML(series.name)}</span><strong>${escapeHTML(Number(final).toPrecision(5))}${delta?` · ${escapeHTML(delta)}`:''}</strong></div><svg viewBox="0 0 1000 155" role="img" aria-label="${escapeHTML(series.name)} recorded by Weights and Biases">${grid}${labels}<path d="${line}" fill="none" stroke="#417d64" stroke-width="2" vector-effect="non-scaling-stroke"/><circle cx="${position(points.at(-1),points.length-1)[0]}" cy="${position(points.at(-1),points.length-1)[1]}" r="3.5" fill="#417d64"/></svg><div class="wandb-native-axis"><span>First recorded step</span><span>Latest · W&amp;B</span></div>`;
+}
 async function refreshWandb(){
  if(demo||!runId){wandbTimer=setTimeout(refreshWandb,30000);return}
  const requestedRun=runId,requestedView=evolution.view;
@@ -134,11 +148,10 @@ async function refreshWandb(){
   if(!response.ok)throw Error('Unavailable');
   const data=await response.json(),box=q('#wandb-empty');
   if(requestedRun!==runId||requestedView!==evolution.view)return;
-  if(q('#wandb-frame').hidden){
-   box.classList.toggle('has-metrics',!!data.metrics?.length);
-   box.innerHTML=data.metrics?.length?`<div class="wandb-summary"><p>${escapeHTML(data.name)} · ${escapeHTML(data.state)}</p>${data.metrics.map(m=>`<div><span>${escapeHTML(m.name)}</span><strong>${escapeHTML(Number.isInteger(m.value)?m.value:m.value.toFixed(4))}</strong></div>`).join('')}</div>`:'Metrics will appear when a W&B run is connected and logs data.';
-  }
- }catch{if(requestedRun===runId&&requestedView===evolution.view){q('#wandb-empty').classList.remove('has-metrics');q('#wandb-empty').textContent='No metrics available for this run.';}}
+  box.classList.toggle('has-metrics',!!data.metrics?.length);
+  box.innerHTML=data.metrics?.length?`<div class="wandb-summary"><p>${escapeHTML(data.name)} · ${escapeHTML(data.state)}</p>${data.metrics.map(m=>`<div><span>${escapeHTML(m.name)}</span><strong>${escapeHTML(Number.isInteger(m.value)?m.value:m.value.toFixed(4))}</strong></div>`).join('')}</div>`:'Metrics will appear when a W&B run is connected and logs data.';
+  renderWandbNative(data);
+ }catch{if(requestedRun===runId&&requestedView===evolution.view){q('#wandb-empty').classList.remove('has-metrics');q('#wandb-empty').textContent='No metrics available for this run.';renderWandbNative({});}}
  wandbTimer=setTimeout(refreshWandb,30000);
 }
 if(runId&&['http:','https:'].includes(location.protocol))refreshWandb();
