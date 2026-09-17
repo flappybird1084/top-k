@@ -14,7 +14,8 @@ requires the Worker edge secret on every request.
 
 Deployment:
 
-1. Copy `.env.example` to `.env`, fill the secrets, and set mode `0600`.
+1. Copy `.env.example` to `.env`, fill the secrets, and set mode `0600`. Keep
+   the real file on the encrypted data volume and symlink `.env` to it.
 2. Configure the Cloudflare tunnel hostname to route to `http://gateway:8768`.
 3. Run `docker compose up -d --build`.
 4. Set the `top-k-gateway` Worker `GPU_ORIGIN` secret to the tunnel hostname.
