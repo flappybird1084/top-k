@@ -41,8 +41,9 @@ async function api(path,options={}) {
   try{response=await fetch(path,{...options,headers:{'Content-Type':'application/json',...options.headers},signal:limit.signal});}
   finally{limit.done();}
   if(response.status===401)throw Error('Sign in with GitHub to continue.');
-  if(response.status===428)throw Error('Connect your notebook and W&B account to start a run.');
-  const result=await response.json();if(!response.ok)throw Error(result.error||'Request failed');return result;
+  const result=await response.json();
+  if(response.status===428)throw Error(result.error||'Connect your notebook and W&B account to start a run.');
+  if(!response.ok)throw Error(result.error||'Request failed');return result;
 }
 function message(text){note.textContent=text;note.classList.toggle('error',!!text)}
 function renderActivity(state){

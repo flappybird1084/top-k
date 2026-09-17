@@ -22,6 +22,7 @@ import web
 from github_signin import GitHubSignIn, RateLimiter
 from kernelevo.integrations import IntegrationStore, store_dir
 from kernelevo.judges_pool import NotebookPool
+from kernelevo.molab import MolabClient
 
 DEFAULT_ORIGIN = 'https://top-kernel-demo.andre520395.chatgpt.site'
 # Written by the edge worker; a request that reaches the origin without them
@@ -76,6 +77,19 @@ def parse_notebook(pair_prompt):
         raise ValueError('That prompt has no access token. Copy the whole "Pair with agent" '
                          'prompt — the token on screen is masked, only the copied text has it.')
     return {'url': 'https://' + host + path.rstrip('/'), 'token': token}
+
+
+def validate_notebook_connection(notebook):
+    """Reject a stale Pair-with-agent prompt before work reaches the queue."""
+    try:
+        MolabClient(notebook['url'], notebook['token']).session_id()
+    except Exception as exc:
+        # Molab sandboxes are temporary. Keep upstream details and both
+        # credentials out of the response while telling the user how to fix it.
+        raise ValueError(
+            'That marimo notebook is no longer active. Open a GPU notebook, '
+            'keep its tab open, choose "Pair with agent", and paste a fresh prompt.'
+        ) from exc
 
 
 def create_app():
@@ -196,7 +210,9 @@ def create_app():
             if len(pair) > 4000:
                 return jsonify(error='That pair prompt is too long.'), 400
             try:
-                updated['molab'] = parse_notebook(pair)
+                notebook = parse_notebook(pair)
+                validate_notebook_connection(notebook)
+                updated['molab'] = notebook
             except ValueError as e:
                 return jsonify(error=str(e)), 400
         key = str(payload.get('wandb_api_key') or '').strip()
@@ -228,6 +244,10 @@ def create_app():
         if not (notebook.get('url') and notebook.get('token')):
             return jsonify(error='Connect your own marimo notebook first: start a notebook, '
                                  'choose "Pair with agent", and paste that prompt in setup.'), 428
+        try:
+            validate_notebook_connection(notebook)
+        except ValueError as e:
+            return jsonify(error=str(e)), 428
         if not run_limit.allow(g.visitor):
             return jsonify(error='You have started several runs recently. Try again later.'), 429
         with admission_lock, ui_server.lock:

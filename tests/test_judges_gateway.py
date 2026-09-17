@@ -25,6 +25,7 @@ def gateway(tmp_path, monkeypatch):
                        ('JUDGES_ORIGIN', ORIGIN)):
         monkeypatch.setenv(key, value)
     monkeypatch.setattr(judges_server, 'NotebookPool', lambda *a, **k: None)
+    monkeypatch.setattr(judges_server, 'validate_notebook_connection', lambda notebook: None)
     # create_app() installs its own queue; record the real one first so
     # monkeypatch puts it back for the rest of the suite.
     monkeypatch.setattr(judges_server.web, '_queue',
@@ -106,6 +107,35 @@ def test_pair_prompt_without_a_token_is_rejected(gateway):
     r = gateway.test_client().post('/api/integrations', headers=headers(sign_in(gateway)),
                                    json={'pair_prompt': 'https://notebook.molab.run/abc'})
     assert r.status_code == 400 and 'token' in r.json['error']
+
+
+def test_expired_pair_prompt_is_rejected_before_it_is_saved(gateway, monkeypatch):
+    import judges_server
+    monkeypatch.setattr(judges_server, 'validate_notebook_connection',
+                        lambda notebook: (_ for _ in ()).throw(
+                            ValueError('That marimo notebook is no longer active.')))
+    r = gateway.test_client().post('/api/integrations', headers=headers(sign_in(gateway)),
+                                   json={'pair_prompt': 'connect to '
+                                         'https://notebook.molab.run/abc '
+                                         '--token secret-token-value'})
+    assert r.status_code == 400
+    assert r.json['error'] == 'That marimo notebook is no longer active.'
+
+
+def test_expired_saved_notebook_is_rejected_before_a_run(gateway, monkeypatch):
+    import judges_server
+    client = gateway.test_client()
+    token = sign_in(gateway)
+    assert client.post('/api/integrations', headers=headers(token), json={
+        'pair_prompt': 'connect to https://notebook.molab.run/abc '
+                       '--token secret-token-value'}).status_code == 200
+    monkeypatch.setattr(judges_server, 'validate_notebook_connection',
+                        lambda notebook: (_ for _ in ()).throw(
+                            ValueError('That marimo notebook is no longer active.')))
+    r = client.post('/api/runs', headers=headers(token, **{'Idempotency-Key': 'x'}),
+                    json={'repo': 'https://github.com/a/b'})
+    assert r.status_code == 428
+    assert r.json['error'] == 'That marimo notebook is no longer active.'
 
 
 def test_run_needs_the_users_own_notebook(gateway):
