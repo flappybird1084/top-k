@@ -1,5 +1,5 @@
-const SITE_ORIGIN = "https://top-kernel-demo.andre520395.chatgpt.site";
-const SITE_ORIGINS = new Set([SITE_ORIGIN, "https://top-k.dev"]);
+const SITE_ORIGIN = "https://top-k.dev";
+const SITE_ORIGINS = new Set([SITE_ORIGIN, "https://top-kernel-demo.andre520395.chatgpt.site"]);
 
 function json(body, status = 200, extra = {}) {
   return new Response(JSON.stringify(body), {

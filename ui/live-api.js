@@ -161,21 +161,27 @@
  }
 
  document.addEventListener('DOMContentLoaded',()=>{
-  const style=document.createElement('link');style.rel='stylesheet';style.href='/github-auth.css?v=5';document.head.append(style);
+  const style=document.createElement('link');style.rel='stylesheet';style.href='/github-auth.css?v=7';document.head.append(style);
   gate=document.createElement('section');gate.className='github-gate';gate.setAttribute('aria-labelledby','github-gate-title');
   gate.classList.toggle('landing-gate',isLanding);
-  gate.innerHTML='<div class="github-gate-card"><p class="github-gate-kicker">Top-Kernel</p><h1 id="github-gate-title">Sign in to continue</h1><p class="github-gate-copy">Repository analysis, agent traces, and performance results are private.</p></div>';
+  // The close button is only offered on the landing page, where the sign-in
+  // panel is an optional bubble over a still-usable page. Elsewhere the panel
+  // covers the whole screen as a required gate, so a close control would leave
+  // the visitor on a blank page with no way back.
+  const closeBtn=isLanding?'<button type="button" class="github-gate-close" aria-label="Close sign-in">×</button>':'';
+  gate.innerHTML='<div class="github-gate-card">'+closeBtn+'<p class="github-gate-kicker">Top-Kernel</p><h1 id="github-gate-title">Sign in to continue</h1></div>';
  gateButton=document.createElement('button');gateButton.type='button';gateButton.textContent='Checking GitHub sign-in…';gateButton.disabled=true;
   gateStatus=document.createElement('p');gateStatus.className='github-gate-status';gateStatus.setAttribute('role','status');
   gate.querySelector('.github-gate-card').append(gateButton,gateStatus);document.body.prepend(gate);
   if(isLanding)gate.hidden=true;
   gateButton.addEventListener('click',beginSignIn);
+  gate.querySelector('.github-gate-close')?.addEventListener('click',()=>{gate.hidden=true;setStatus('');});
 
   const repoForm=document.querySelector('#repo-form');
   repoForm?.addEventListener('submit',event=>{
    if(user||!isLanding)return;
    event.preventDefault();event.stopImmediatePropagation();
-   gate.hidden=false;paint('Sign in with GitHub to enter.');
+   gate.hidden=false;paint('');
    if(config?.enabled)beginSignIn();
   },true);
 

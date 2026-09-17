@@ -1,0 +1,11 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.env
+jobs
+runs
+wandb
+deploy/production/.env
