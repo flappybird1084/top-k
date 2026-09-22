@@ -1,8 +1,76 @@
 <!doctype html>
 <html lang="en">
-<head><script src="live-api.js?v=2"></script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Top-Kernel</title><meta name="description" content="Start with your repository. Evolve faster training kernels."><link rel="stylesheet" href="front.css?v=local-fonts-1"><script src="front.js?v=20" defer></script></head>
-<body>
+<head><script>window.TOPK_PUBLIC_PAGE=true;</script><script src="live-api.js?v=2"></script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Top-Kernel</title><meta name="description" content="Point it at a PyTorch repo. Agents evolve the architecture and the kernels; a deterministic harness verifies every change."><link rel="stylesheet" href="front.css?v=local-fonts-1"><link rel="stylesheet" href="scenes.css?v=2"><script src="front.js?v=20" defer></script></head>
+<body class="story-page">
 
+<nav class="scene-dots" id="scene-dots" aria-label="Sections"></nav>
+
+<section id="scene-model" class="scene scene-dark" data-scene="model">
+<div class="ambient ambient-dark" aria-hidden="true"><span></span><span></span><span></span></div>
+
+<header class="model-hero">
+<div class="model-hero-sponsors" aria-label="Built with CoreWeave, marimo, and Weights &amp; Biases">
+<img src="assets/coreweave-sprite.png" alt="CoreWeave">
+<img src="assets/marimo-sprite.png" alt="marimo">
+<img src="assets/wandb-sprite.png" alt="Weights &amp; Biases">
+</div>
+<p class="model-kicker">Top-Kernel · CoreWeave Hacks</p>
+<h1 class="model-title">Evolve the training recipe.<br><em>Not just the kernels.</em></h1>
+<div class="model-stats">
+<div><span>−7.21%</span><small>val loss · architecture search</small></div>
+<div><span>−4.1%</span><small>step time · kernel search</small></div>
+</div>
+<p class="model-scroll-hint">Scroll through the model ↓</p>
+</header>
+
+<div class="figure-wrap" id="figure-wrap">
+<svg id="model-svg" role="img" aria-label="A transformer language model: tokens are embedded, pass through masked multi-head attention and a feed-forward network inside a stack of transformer blocks, and are unembedded into next-token probabilities. Agents then edit the architecture."></svg>
+<div class="fig-notes" id="fig-notes" aria-hidden="false">
+<div class="fig-note left" data-y="92"><b>01</b><h3>Your repo's model</h3><p>Any PyTorch training code, ingested as-is.</p></div>
+<div class="fig-note right" data-y="240"><b>·</b><h3>Tokens → vectors</h3><p>Embedding plus position, one lane per token.</p></div>
+<div class="fig-note left" data-y="700"><b>02</b><h3>Attention</h3><p>Each token weighs the ones before it.</p></div>
+<div class="fig-note right" data-y="980"><b>·</b><h3>Residual stream</h3><p>Every sublayer reads from the lanes and adds back.</p></div>
+<div class="fig-note left" data-y="1250"><b>03</b><h3>Feed-forward</h3><p>Expand, nonlinearity, project back down.</p></div>
+<div class="fig-note left" data-y="1590"><b>04</b><h3>Agents rewrite it</h3><p>Thinner here, wider there, a layer gone — each one proposed by a sub-agent.</p></div>
+<div class="fig-note right" data-y="2250"><b>·</b><h3>Kernel search</h3><p>Hot ops rewritten in Triton, gradients checked.</p></div>
+<div class="fig-note left" data-y="2630"><b>05</b><h3>Verified, not vibes</h3><p>Every change retrained at a matched budget and measured.</p></div>
+</div>
+</div>
+</section>
+
+<section id="scene-web" class="scene scene-dark" data-scene="web">
+<div class="ambient ambient-dark" aria-hidden="true"><span></span><span></span><span></span></div>
+<div class="scene-inner web-inner">
+<p class="scene-kicker scene-kicker-dark">06 · Repos we've improved</p>
+<h2 class="web-title">A growing map of the internet's training code.</h2>
+<div class="web-stage" id="web-stage">
+<svg id="web-svg" class="web-svg"></svg>
+<div class="web-tooltip" id="web-tooltip" hidden></div>
+</div>
+<p class="web-caption">Size = improvement. <span class="web-legend-verified">●</span> verified &nbsp; <span class="web-legend-sample">●</span> illustrative — press Top-Kernel to start yours.</p>
+</div>
+</section>
+
+<section id="scene-cta" class="scene scene-dark" data-scene="cta">
+<div class="ambient ambient-dark" aria-hidden="true"><span></span><span></span><span></span></div>
+<div class="scene-inner cta-inner">
+<svg viewBox="0 0 200 60" class="topk-figure" aria-hidden="true">
+<rect class="topk-bar kept" x="8" y="8" width="16" height="46"/>
+<rect class="topk-bar kept" x="32" y="14" width="16" height="40"/>
+<rect class="topk-bar kept" x="56" y="20" width="16" height="34"/>
+<rect class="topk-bar" x="80" y="28" width="16" height="26"/>
+<rect class="topk-bar" x="104" y="34" width="16" height="20"/>
+<rect class="topk-bar" x="128" y="38" width="16" height="16"/>
+<rect class="topk-bar" x="152" y="42" width="16" height="12"/>
+<rect class="topk-bar" x="176" y="46" width="16" height="8"/>
+</svg>
+<p class="cta-copy">Top-K kept. Rest dropped.</p>
+<button type="button" class="cta-node" id="cta-add-yours">+ Add yours</button>
+</div>
+</section>
+
+<section id="scene-search" class="scene scene-light" data-scene="search">
+<div class="ambient" aria-hidden="true"><span></span><span></span><span></span></div>
 <main>
 <div class="sprites" aria-label="Built with CoreWeave, marimo, and Weights & Biases">
 <div class="sprite coreweave" tabindex="0"><img src="assets/coreweave-sprite.png" alt="CoreWeave pixel sprite" width="100" height="100"><span>CoreWeave</span></div>
@@ -23,6 +91,8 @@
 <label class="mode-choice"><span>Optimize</span><select id="search-mode" aria-label="Optimization mode"><option value="recipe">Architecture</option><option value="kernel" selected>Kernels</option><option value="both">Both</option></select></label></form>
 </main>
 <footer><a href="pitch.html" style="color:inherit;text-decoration:none">Pitch walkthrough ↗</a><span>CoreWeave Hacks</span></footer>
+</section>
+
 <dialog id="data-dialog" aria-labelledby="data-title" aria-describedby="data-caption">
 <button id="close-data" type="button" aria-label="Close data dialog">×</button>
 <h2 id="data-title">Data?</h2>
@@ -35,4 +105,7 @@
 </form>
 <div id="data-check" hidden><span class="spinner" aria-hidden="true"></span><p id="data-check-text" role="status"></p></div>
 </dialog>
+<script src="repos-data.js?v=1" defer></script>
+<script type="module" src="model-figure.js?v=1"></script>
+<script type="module" src="scenes.js?v=2"></script>
 </body></html>

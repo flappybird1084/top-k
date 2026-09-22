@@ -89,6 +89,18 @@ async function poll(){
 }
 form.addEventListener('submit',async e=>{
   e.preventDefault();if(posting)return;
+  if(window.topkAuth&&!window.topkAuth.isAuthenticated()){
+    if(!window.topkAuth.isEnabled()){message('GitHub sign-in is not available yet.');return}
+    message('Sign in with GitHub to start a run…');
+    window.topkAuth.beginSignIn();
+    const onAuth=()=>{
+      window.removeEventListener('topk-auth-changed',onAuth);
+      if(window.topkAuth.isAuthenticated()){message('');form.requestSubmit()}
+      else message('Sign-in was not completed.');
+    };
+    window.addEventListener('topk-auth-changed',onAuth);
+    return;
+  }
   if(lastState&&['failed','cancelled'].includes(lastState.status)){requestKey=crypto.randomUUID();runId=null;lastState=null}
   if(runId&&lastState?.status==='awaiting_data'){dataDialog.showModal();return}
   posting=true;submit.disabled=true;message('');
