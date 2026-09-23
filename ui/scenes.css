@@ -83,7 +83,7 @@ h1.model-title{font:400 clamp(40px,6vw,70px)/1.06 'Source Serif 4',Georgia,serif
 .web-svg{width:100%;height:100%;display:block;touch-action:none}
 .web-hub{cursor:pointer}
 .web-hub circle{fill:#26362b;stroke:#7be8c6;stroke-width:2}
-.web-hub text{fill:#eef3ea;font:600 12px ui-monospace,monospace;letter-spacing:.04em;text-anchor:middle}
+.web-hub text{fill:#eef3ea;font:600 12px 'DM Sans',Arial,sans-serif;text-anchor:middle}
 .web-hub:hover circle,.web-hub:focus circle{stroke-width:2.6}
 .web-link{stroke:#4a5c4f;stroke-width:1;opacity:.4}
 .web-node{cursor:pointer}

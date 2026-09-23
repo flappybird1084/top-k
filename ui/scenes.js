@@ -98,7 +98,7 @@ function webEnter() {
   const VB_W = 900, VB_H = 560;
   svgEl.setAttribute('viewBox', `0 0 ${VB_W} ${VB_H}`);
 
-  const hub = { id: 'hub', name: 'Top-Kernel', isHub: true, r: 34,
+  const hub = { id: 'hub', name: 'Your repo', isHub: true, r: 42,
     x: VB_W / 2 + (Math.random() - 0.5) * 40, y: VB_H / 2 + (Math.random() - 0.5) * 40 };
   const nodes = [hub, ...repos.map((repo) => ({
     ...repo,
@@ -189,15 +189,19 @@ function webEnter() {
       const label = document.createElementNS(NS, 'text');
       label.setAttribute('text-anchor', 'middle');
       label.setAttribute('dy', node.isHub ? '4' : String(node.r + 12));
-      label.textContent = node.isHub ? 'TOP-K' : (node.name.split('/')[1] || node.name);
+      label.textContent = node.isHub ? 'Your repo' : (node.name.split('/')[1] || node.name);
       inner.appendChild(label);
+      node._label = label;
     }
 
     if (node.isHub) {
       g.setAttribute('role', 'button');
       g.setAttribute('aria-label', 'Start with your repository');
-      g.addEventListener('click', scrollToSearch);
-      g.addEventListener('keydown', (event) => { if (event.key === 'Enter') scrollToSearch(); });
+      const go = () => { if (!moved) expandHub(g, circle, node._label); };
+      g.addEventListener('click', go);
+      g.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); expandHub(g, circle, node._label); }
+      });
     } else {
       const show = () => {
         tooltip.hidden = false;
@@ -259,4 +263,35 @@ function webEnter() {
     stage.classList.remove('dragging');
     if (moved) tooltip.hidden = true;
   });
+
+  // "Your repo" grows until it fills the map, shifting to the search page's
+  // cream, then hands off to the search page. Resets once it's off screen.
+  let expanding = false;
+  const from = [0x26, 0x36, 0x2b], to = [0xfd, 0xfe, 0xfb];
+  const tint = (t) => `rgb(${from.map((c, i) => Math.round(c + (to[i] - c) * t)).join(',')})`;
+  function expandHub(g, circle, label) {
+    if (expanding) return;
+    if (reduceMotion) { scrollToSearch(); return; }
+    expanding = true;
+    tooltip.hidden = true;
+    pan.appendChild(g);
+    const st = { r: hub.r, t: 0 };
+    animate(st, {
+      r: 1100, t: 1, duration: 800, ease: 'inQuart',
+      onUpdate: () => {
+        circle.setAttribute('r', String(st.r));
+        circle.style.fill = tint(st.t);
+        label.style.opacity = String(Math.max(0, 1 - st.t * 4));
+      },
+      onComplete: () => {
+        scrollToSearch();
+        setTimeout(() => {
+          circle.setAttribute('r', String(hub.r));
+          circle.style.fill = '';
+          label.style.opacity = '';
+          expanding = false;
+        }, 1200);
+      },
+    });
+  }
 }
