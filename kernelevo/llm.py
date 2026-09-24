@@ -80,6 +80,18 @@ class ClaudeOAuthLLM(BaseLLM):
         return 0.0
 
 
+class WandbRelayLLM(BaseLLM):
+    """W&B completions served by the EC2 dispatcher; no key reaches the GPU."""
+    provider = "wandb"
+
+    def complete(self, messages, *, json_mode=False, tools=None, meta=None):
+        from kernelevo.codex_oauth import relay_complete
+        answer = relay_complete(dict(messages=messages, json_mode=json_mode,
+                                     model=self.model, max_tokens=self.max_tokens),
+                                "wandb_inference", "W&B Inference")
+        return self._track(Response(**answer))
+
+
 class AnthropicLLM(BaseLLM):
     provider = "anthropic"
     supports_search = True
@@ -248,8 +260,11 @@ class LLMPool:
         elif provider == "openai":
             llm = OpenAILLM(model or self.cfg["openai_model"], self.cfg["max_llm_tokens"])
         elif provider == "wandb":
-            llm = make_wandb_inference_llm(model or self.cfg["wandb_inference_model"],
-                                           self.cfg["max_llm_tokens"])
+            name = model or self.cfg["wandb_inference_model"]
+            llm = (WandbRelayLLM(name, self.cfg["max_llm_tokens"])
+                   if os.environ.get("KEVO_WANDB_INFERENCE_RELAY") and
+                   os.environ.get("KEVO_RELAY_DIR") else
+                   make_wandb_inference_llm(name, self.cfg["max_llm_tokens"]))
         else:
             raise SystemExit(f"unknown LLM provider {provider!r}")
         self._instances.append(llm)
