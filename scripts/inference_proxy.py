@@ -56,12 +56,18 @@ class InferenceRelay:
                     return self._reply(400, {"error": "invalid JSON"})
                 if body.get("model") != relay.model or body.get("stream"):
                     return self._reply(400, {"error": "unsupported model or stream"})
-                if not 0 < body.get("max_tokens", 0) <= MAX_COMPLETION_TOKENS:
+                max_tokens = body.get("max_tokens", 0)
+                if not isinstance(max_tokens, int) or not 0 < max_tokens <= MAX_COMPLETION_TOKENS:
                     return self._reply(400, {"error": "invalid max_tokens"})
                 with relay.lock:
-                    if relay.spent_usd >= relay.spend_cap:
-                        return self._reply(429, {"error": "benchmark spend cap reached"})
-                    relay.calls += 1
+                    return self._forward(body)
+
+            def _forward(self, body):
+                # Serialize all inference calls, including spend checks and
+                # accounting, so concurrent search roles cannot race the cap.
+                if relay.spent_usd >= relay.spend_cap:
+                    return self._reply(429, {"error": "benchmark spend cap reached"})
+                relay.calls += 1
                 payload = json.dumps(body).encode("utf-8")
                 request = urllib.request.Request(
                     ENDPOINT, payload, method="POST",
@@ -87,10 +93,10 @@ class InferenceRelay:
                     relay.credits_exhausted = True
                 usage = data.get("usage") or {}
                 input_price, output_price = config.price_for(relay.model)
-                with relay.lock:
-                    relay.spent_usd += (
-                        usage.get("prompt_tokens", 0) * input_price +
-                        usage.get("completion_tokens", 0) * output_price) / 1_000_000
+                relay.spent_usd += (
+                    usage.get("prompt_tokens", len(payload)) * input_price +
+                    usage.get("completion_tokens", body["max_tokens"]) *
+                    output_price) / 1_000_000
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(response)))

@@ -69,13 +69,14 @@ def test_manifest_rejects_duplicate_and_non_github_identifier(tmp_path):
         benchmark.manifest_rows(path)
 
 
-def test_repository_job_does_not_inherit_aws_operator_credentials(monkeypatch):
+def test_repository_job_does_not_inherit_operator_credentials(monkeypatch, tmp_path):
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "operator-secret")
     monkeypatch.setenv("WANDB_API_KEY", "inference-key")
-    env = benchmark.job_env("http://127.0.0.1:1234/v1")
+    env = benchmark.job_env("http://127.0.0.1:1234/v1", tmp_path)
     assert "AWS_ACCESS_KEY_ID" not in env
     assert "WANDB_API_KEY" not in env
     assert env["WANDB_INFERENCE_API_KEY"] != "inference-key"
+    assert env["HOME"] == str(tmp_path)
 
 
 def test_inference_relay_limits_model_and_keeps_upstream_key(monkeypatch):

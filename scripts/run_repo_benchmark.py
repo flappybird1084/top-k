@@ -132,7 +132,7 @@ def stop_process_tree(proc: subprocess.Popen, grace_seconds: float = 15) -> None
     proc.wait(timeout=30)
 
 
-def job_env(proxy_url: str | None = None) -> dict[str, str]:
+def job_env(proxy_url: str | None = None, home: Path | None = None) -> dict[str, str]:
     """Keep EC2/AWS/W&B operator credentials out of repository subprocesses."""
     names = ("PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "TEMP", "TMP",
              "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "VIRTUAL_ENV",
@@ -142,6 +142,8 @@ def job_env(proxy_url: str | None = None) -> dict[str, str]:
              "HF_DATASETS_CACHE", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE",
              "WANDB_ENTITY", "WANDB_PROJECT", "WANDB_INFERENCE_PROJECT")
     environment = {key: os.environ[key] for key in names if os.environ.get(key)}
+    if home is not None:
+        environment["HOME"] = str(home)
     if proxy_url:
         environment["WANDB_INFERENCE_API_KEY"] = "benchmark-local-relay"
         environment["WANDB_INFERENCE_BASE_URL"] = proxy_url
@@ -236,10 +238,13 @@ def run_one(row: dict, args, root: Path) -> dict:
                    "--spend-cap", str(args.spend_cap), "--out", str(attempt_dir)]
         log_path = run_dir / f"attempt-{attempt}.log"
         relay = InferenceRelay(args.model, args.spend_cap)
+        job_home = attempt_dir / "home"
+        job_home.mkdir(parents=True, exist_ok=True, mode=0o700)
         with relay.serving() as proxy_url:
             with log_path.open("w", encoding="utf-8", errors="replace") as log:
                 proc = subprocess.Popen(command, cwd=ROOT, stdout=log,
-                                        stderr=subprocess.STDOUT, env=job_env(proxy_url),
+                                        stderr=subprocess.STDOUT,
+                                        env=job_env(proxy_url, job_home),
                                         start_new_session=(os.name != "nt"),
                                         creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP
                                                        if os.name == "nt" else 0))
