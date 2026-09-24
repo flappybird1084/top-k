@@ -90,6 +90,11 @@ def test_github_commit_url_checks_out_pinned_sha(monkeypatch, tmp_path):
     assert commands[2][-2:] == ["--detach", sha]
     assert messages[-1] == f"[adapter] source commit {sha}"
 
+    (tmp_path / "repo" / ".git").mkdir(parents=True)
+    with pytest.raises(ValueError, match="differs from requested"):
+        fetch_repo(f"https://github.com/example/project/commit/{'b' * 40}",
+                   str(tmp_path))
+
     with pytest.raises(ValueError, match="40-character SHA"):
         fetch_repo("https://github.com/example/project/commit/abc", str(tmp_path))
 
