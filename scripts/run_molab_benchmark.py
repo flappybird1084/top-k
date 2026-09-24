@@ -27,6 +27,11 @@ from scripts.run_repo_benchmark import archive_result, manifest_rows  # noqa: E4
 CREDIT_ERROR = re.compile(r"(?:insufficient|exhausted|out of).*credits|"
                           r"credit balance|payment required|HTTP 402|Error code: 402",
                           re.IGNORECASE)
+WORKLOAD_GUIDANCE = {
+    "huggingface/pytorch-image-models":
+        "Choose a small timm Vision Transformer for classification so its "
+        "LayerNorm and MLP blocks are part of the measured training step.",
+}
 
 
 def save(path: Path, data: dict) -> None:
@@ -128,14 +133,17 @@ def main() -> int:
                            "configuration and the repository's real model implementation. "
                            "Generate a tiny deterministic synthetic training batch in memory, "
                            "with valid labels for this model. Do not download datasets or "
-                           "depend on external data paths.",
+                           "depend on external data paths. "
+                           f"{WORKLOAD_GUIDANCE.get(row['repo'], '')}",
                "max_debug_turns": 8, "profile": args.profile,
                "llm": f"wandb:{args.model}", "max_generations": args.generations,
                "spend_cap": args.spend_cap, "mode": "kernel",
                "execution_target": "molab"}
         save(attempt_dir / "job.json", job)
         state = {**expected, "status": "running", "attempt": attempt,
-                 "started_at": time.time(), "job_id": job["id"]}
+                 "started_at": time.time(), "job_id": job["id"],
+                 "data_source": "deterministic synthetic batches",
+                 "timing_scope": "full training step including host-to-GPU transfer"}
         save(state_path, state)
         log_path = attempt_dir / "dispatch.log"
         with log_path.open("w", buffering=1) as log:
