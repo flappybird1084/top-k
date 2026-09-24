@@ -45,6 +45,11 @@ DEFAULT_MODELS = frozenset({
     'Qwen/Qwen3-235B-A22B-Instruct-2507',
 })
 
+WANDB_RELAY_MODELS = frozenset({
+    'Qwen/Qwen3-235B-A22B-Instruct-2507',
+    'Qwen/Qwen3-Coder-480B-A35B-Instruct',
+})
+
 TRUSTED_LIMITS = dict(max_requests=2000, max_tokens=50_000_000, max_searches=500,
                       max_prompt_bytes=400_000, max_query_chars=400)
 UNTRUSTED_LIMITS = dict(max_requests=300, max_tokens=8_000_000, max_searches=60,
@@ -163,9 +168,6 @@ class RelayPolicy:
         self.wandb_model = (selected_llm.removeprefix('wandb:')
                             if isinstance(selected_llm, str) and selected_llm.startswith('wandb:')
                             else '')
-        if self.wandb_model:
-            # This job may charge only the W&B model its operator selected.
-            self.models = frozenset({self.wandb_model})
         self.ledger = ledger if ledger is not None else OwnerLedger()
         self.requests = self.tokens = self.searches = 0
         self.active = True
@@ -208,9 +210,17 @@ class RelayPolicy:
         if reason:
             return reason
         model = request.get('model') or ''
-        if (not isinstance(model, str) or
-                (self.wandb_model and model != self.wandb_model) or
-                (model and model not in self.models)):
+        if not isinstance(model, str):
+            return 'That model is not available through this relay.'
+        if request.get('kind') == 'wandb_inference':
+            # A W&B relay may charge only the approved model selected by this job.
+            # An operator's explicit KEVO_RELAY_MODELS setting can narrow it further.
+            configured = os.getenv('KEVO_RELAY_MODELS', '').strip()
+            allowed = (model == self.wandb_model and model in WANDB_RELAY_MODELS and
+                       (not configured or model in self.models))
+        else:
+            allowed = not model or model in self.models
+        if not allowed:
             return 'That model is not available through this relay.'
         messages = request.get('messages')
         if not isinstance(messages, list) or not messages:
