@@ -47,10 +47,11 @@ def log_tail(root):
 
 def repo_url(value):
     u=urlsplit(value.strip() if '://' in value else 'https://'+value.strip())
-    if u.scheme!='https' or u.hostname!='github.com' or u.username or u.password or u.port or u.query or u.fragment:raise ValueError('Use a GitHub repository or branch HTTPS link')
+    if u.scheme!='https' or u.hostname!='github.com' or u.username or u.password or u.port or u.query or u.fragment:raise ValueError('Use a GitHub repository, branch, or commit HTTPS link')
     parts=u.path.strip('/').split('/')
-    if len(parts)!=2 and (len(parts)<4 or parts[2]!='tree'):raise ValueError('Use a repository or /tree/branch link')
+    if len(parts)!=2 and (len(parts)<4 or parts[2]!='tree') and (len(parts)!=4 or parts[2]!='commit'):raise ValueError('Use a repository, /tree/branch, or /commit/SHA link')
     if not all(re.fullmatch(r'[\w.-]+',p) and '..' not in p and not p.startswith('-') for p in parts):raise ValueError('Invalid repository link')
+    if len(parts)==4 and parts[2]=='commit' and not re.fullmatch(r'[0-9a-fA-F]{40}',parts[3]):raise ValueError('Commit link requires a full 40-character SHA')
     return 'https://github.com/'+'/'.join(parts)
 
 def data_url(value):

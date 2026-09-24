@@ -47,6 +47,11 @@ class UI(unittest.TestCase):
   self.assertEqual(self.client.post('/api/runs',json={},headers={'Origin':'https://evil.example'}).status_code,403)
  def test_branch_parser(self):
   self.assertEqual(ui.repo_url('github.com/a/b/tree/feature/model'),'https://github.com/a/b/tree/feature/model')
+  sha='a'*40
+  self.assertEqual(ui.repo_url(f'github.com/a/b/commit/{sha}'),f'https://github.com/a/b/commit/{sha}')
+  response=self.client.post('/api/runs',json={'repo':f'https://github.com/a/b/commit/{sha}'},headers={'Idempotency-Key':'commit-url'})
+  self.assertEqual(response.status_code,202)
   for value in ('https://github.com/a/../x','http://github.com/a/b','https://github.com/a/b?token=x'):
    with self.assertRaises(ValueError):ui.repo_url(value)
+  with self.assertRaises(ValueError):ui.repo_url('https://github.com/a/b/commit/abc')
 if __name__=='__main__':unittest.main()
