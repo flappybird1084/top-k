@@ -30,6 +30,17 @@ from kernelevo import relay_policy
 
 REMOTE_DEPS = ["triton", "numpy", "pandas", "python-dotenv", "wandb", "weave",
                "anthropic", "openai", "datasets", "tiktoken"]
+
+
+def repo_runtime_deps(repo_url: str) -> list[str]:
+    """Dependencies needed by upstream source, isolated from the notebook Python."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(repo_url)
+    if (parsed.hostname == "github.com" and
+            parsed.path.strip("/").split("/")[:2] == ["huggingface", "transformers"]):
+        return ["tokenizers>=0.23.1,<0.24.0"]
+    return []
 UPLOAD_CHUNK = 400_000  # base64 chars per execute call
 EXCLUDE_DIRS = {".git", "__pycache__", "runs", "jobs", ".venv", "venv", "wandb",
                 "notebooks"}
@@ -335,6 +346,30 @@ class MolabTarget:
             write_line(f"[molab] dependency install failed:\n{out[-500:]}\n{err[-500:]}")
             return 1
 
+        job_deps = repo_runtime_deps(job.get("repo", ""))
+        job_deps_dir = os.path.join(work, "runtime-deps")
+        if job_deps:
+            write_line(f"[molab] installing isolated repository dependencies: {job_deps}")
+            ok, out, err = client.run(
+                "import subprocess, sys, os, shutil\n"
+                f"_target = {job_deps_dir!r}\n"
+                f"_deps = {job_deps!r}\n"
+                "os.makedirs(_target, exist_ok=True)\n"
+                "_r = None\n"
+                "if shutil.which('uv'):\n"
+                "    _r = subprocess.run(['uv', 'pip', 'install', '-q', '--python', "
+                "sys.executable, '--no-deps', '--target', _target, *_deps], "
+                "capture_output=True, text=True)\n"
+                "if _r is None or _r.returncode != 0:\n"
+                "    _r = subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', "
+                "'--no-deps', '--target', _target, *_deps], capture_output=True, text=True)\n"
+                "print('JOB_DEPS', _r.returncode)\n"
+                "print((_r.stderr or '')[-1200:])\n", timeout=900)
+            if not ok or "JOB_DEPS 0" not in out:
+                write_line(f"[molab] isolated dependency install failed:\n"
+                           f"{out[-500:]}\n{err[-500:]}")
+                return 1
+
         args = ["search.py", "--profile", job["profile"], "--out",
                 os.path.join(work, "run")]
         if job.get("repo"):
@@ -389,6 +424,8 @@ class MolabTarget:
             "    if os.path.exists(_p):\n"
             "        os.remove(_p)  # a stale exit file makes the poller think the new run died\n"
             f"_env = dict(os.environ); _env.update(json.loads({json.dumps(env_updates)!r}))\n"
+            + (f"_env['PYTHONPATH'] = {job_deps_dir!r} + os.pathsep + "
+               "_env.get('PYTHONPATH', '')\n" if job_deps else "") +
             f"_cmd = [sys.executable, '-u'] + json.loads({json.dumps(args)!r})\n"
             + sandbox_setup +
             "_lease = '/tmp/kevo_gpu_lease'\n"
