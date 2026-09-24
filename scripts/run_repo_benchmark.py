@@ -114,15 +114,21 @@ def stop_process_tree(proc: subprocess.Popen, grace_seconds: float = 15) -> None
         except ProcessLookupError:
             return False
 
+    def signal_group(sig: signal.Signals) -> None:
+        try:
+            os.killpg(proc.pid, sig)
+        except ProcessLookupError:
+            pass
+
     if group_exists():
-        os.killpg(proc.pid, signal.SIGTERM)
+        signal_group(signal.SIGTERM)
     deadline = time.monotonic() + grace_seconds
     while group_exists() and time.monotonic() < deadline:
         time.sleep(0.1)
     # The group leader can exit before a child does; always check the whole
     # group rather than assuming proc.wait() means GPU work has stopped.
     if group_exists():
-        os.killpg(proc.pid, signal.SIGKILL)
+        signal_group(signal.SIGKILL)
     proc.wait(timeout=30)
 
 
@@ -242,6 +248,11 @@ def run_one(row: dict, args, root: Path) -> dict:
                 except subprocess.TimeoutExpired:
                     stop_process_tree(proc)
                     rc = 124
+                else:
+                    # A successful parent may still leave a training worker
+                    # behind; clear the group before the next repository.
+                    if os.name != "nt":
+                        stop_process_tree(proc, grace_seconds=2)
         state.update(inference_calls=relay.calls, inference_spend_usd=relay.spent_usd)
         if relay.credits_exhausted:
             state["credits_exhausted"] = True
