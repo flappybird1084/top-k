@@ -53,10 +53,35 @@ def test_recipe_result_handles_zero_baseline_loss(tmp_path):
         db.execute("CREATE TABLE candidates (phase TEXT, val_loss REAL, "
                    "train_secs REAL, accepted INT)")
         db.execute("INSERT INTO candidates VALUES ('baseline', 0, 10, 1)")
+        db.execute("INSERT INTO candidates VALUES ('architecture', 0, 10, 0)")
         db.execute("INSERT INTO candidates VALUES ('finals', 0, 10, 1)")
     result = benchmark.archive_result(path, "recipe")
     assert result["measured"]
     assert "improvement_pct" not in result
+
+
+def test_recipe_result_requires_architecture_and_final_measurement(tmp_path):
+    path = tmp_path / "recipe.sqlite"
+    with sqlite3.connect(path) as db:
+        db.execute("CREATE TABLE candidates (phase TEXT, val_loss REAL, "
+                   "train_secs REAL, accepted INT)")
+        db.execute("INSERT INTO candidates VALUES ('baseline', 1.0, 120, 1)")
+    assert benchmark.archive_result(path, "recipe")["reason"] == \
+        "no architecture candidate measurement"
+    with sqlite3.connect(path) as db:
+        db.execute("INSERT INTO candidates VALUES ('architecture', 0.9, 60, 1)")
+    assert benchmark.archive_result(path, "recipe")["reason"] == \
+        "no final candidate measurement"
+    with sqlite3.connect(path) as db:
+        db.execute("INSERT INTO candidates VALUES ('finals', 1.1, 120, 0)")
+    result = benchmark.archive_result(path, "recipe")
+    assert result["measured"] and result["accepted"] == 0
+    assert result["candidate_val_loss"] == 1.1
+    assert result["improvement_pct"] == -10.0
+    with sqlite3.connect(path) as db:
+        db.execute("UPDATE candidates SET train_secs=90 WHERE phase='finals'")
+    assert benchmark.archive_result(path, "recipe")["reason"] == \
+        "no baseline at final candidate budget"
 
 
 def test_manifest_rejects_duplicate_and_non_github_identifier(tmp_path):
@@ -117,8 +142,9 @@ def test_molab_retry_refuses_a_still_running_gpu_job():
 @pytest.mark.parametrize("dispatch_rc, completed_remote, expected_count", [
     (0, False, 2), (1, False, 1), (1, True, 2),
 ])
+@pytest.mark.parametrize("mode", ["kernel", "recipe"])
 def test_molab_runner_records_failure_and_continues_sequentially(
-        tmp_path, monkeypatch, dispatch_rc, completed_remote, expected_count):
+        tmp_path, monkeypatch, dispatch_rc, completed_remote, expected_count, mode):
     import json
     import sys
     from scripts import run_molab_benchmark
@@ -140,7 +166,7 @@ def test_molab_runner_records_failure_and_continues_sequentially(
             pass
 
         def dispatch(self, job, root, env, log, artifacts_dir):
-            dispatched.append(job["repo"])
+            dispatched.append(job)
             if completed_remote:
                 log(f"[molab] remote run finished with exit {dispatch_rc}")
             return dispatch_rc
@@ -152,10 +178,17 @@ def test_molab_runner_records_failure_and_continues_sequentially(
     monkeypatch.setattr(sys, "argv", ["run_molab_benchmark.py", "--manifest", str(manifest),
                                       "--output", str(output), "--secrets", str(secrets),
                                       "--token-file", str(token), "--notebook-url",
-                                      "https://example.invalid", "--end", "2"])
+                                      "https://example.invalid", "--end", "2",
+                                      "--mode", mode])
 
     assert run_molab_benchmark.main() == 1
     assert len(dispatched) == expected_count
+    assert all(job["mode"] == mode for job in dispatched)
+    if mode == "recipe":
+        assert all(job["recipe"]["phases"][0]["kind"] == "architecture"
+                   for job in dispatched)
+    else:
+        assert all("recipe" not in job for job in dispatched)
     assert json.loads((output / "one__train" / "state.json").read_text())["status"] == "failed"
     if expected_count == 2:
         assert json.loads((output / "two__train" / "state.json").read_text())[
@@ -191,6 +224,7 @@ def test_transformers_runtime_dependency_is_scoped_to_its_job():
 def test_generated_adapter_receives_nested_batches_on_model_device(tmp_path):
     import torch
     from kernelevo.ingest import load_adapter
+    from kernelevo.recipe_loop import _loss_source
 
     path = tmp_path / "adapter.py"
     path.write_text("""import torch
@@ -203,6 +237,8 @@ def loss_fn(model, batch):
     model = torch.nn.Linear(1, 1, device="meta")
     batch = {"x": [torch.zeros(1), (torch.ones(1),)]}
     assert adapter.loss_fn(model, batch) == ("meta", "meta")
+    assert "def loss_fn(model, batch):" in _loss_source(adapter)
+    assert "loss_with_device" not in _loss_source(adapter)
     from kernelevo.bench import samples_per_batch
     assert samples_per_batch(batch) == 1
 

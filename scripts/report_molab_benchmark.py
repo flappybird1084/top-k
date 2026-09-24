@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT))
 from scripts.run_repo_benchmark import manifest_rows  # noqa: E402
 
 
-def collect(manifest: Path, output: Path) -> dict:
+def collect(manifest: Path, output: Path, mode: str = "kernel") -> dict:
     rows = manifest_rows(manifest)
     results = []
     for index, row in enumerate(rows, 1):
@@ -28,9 +28,11 @@ def collect(manifest: Path, output: Path) -> dict:
         if state_path.exists():
             state = json.loads(state_path.read_text())
             if (state.get("index") != index or state.get("repo") != row["repo"]
-                    or state.get("source_sha") != row["sha"]):
+                    or state.get("source_sha") != row["sha"]
+                    or state.get("mode", "kernel") != mode):
                 raise ValueError(f"Benchmark state does not match manifest: {state_path}")
-            result = {**state, "commit": row["sha"], "model": row["model"]}
+            result = {**state, "commit": row["sha"], "model": row["model"],
+                      "mode": mode}
             if result["status"] != "done":
                 # An interrupted search may have a promising intermediate candidate.
                 # It is not a completed benchmark result.
@@ -41,15 +43,17 @@ def collect(manifest: Path, output: Path) -> dict:
                         "inspect the private attempt log")
         else:
             result = {"index": index, "repo": row["repo"], "commit": row["sha"],
-                      "model": row["model"], "status": "pending", "result": {}}
+                      "model": row["model"], "mode": mode,
+                      "status": "pending", "result": {}}
         results.append(result)
-    return {"repositories_total": len(results),
+    return {"mode": mode, "repositories_total": len(results),
             "done": sum(r["status"] == "done" for r in results),
             "failed": sum(r["status"] == "failed" for r in results),
             "running": sum(r["status"] == "running" for r in results),
             "pending": sum(r["status"] == "pending" for r in results),
             "measured": sum(bool((r.get("result") or {}).get("measured")) for r in results),
             "improved": sum(r["status"] == "done" and
+                            (r.get("result") or {}).get("accepted", 0) > 0 and
                             (r.get("result") or {}).get("improvement_pct", 0) > 0
                             for r in results),
             "results": results}
@@ -60,7 +64,7 @@ def evidence(report: dict, output: Path) -> dict:
     records = []
     for row in report["results"]:
         record = {key: row.get(key) for key in
-                  ("index", "repo", "commit", "model", "llm", "status", "attempt",
+                  ("index", "repo", "commit", "model", "mode", "llm", "status", "attempt",
                    "exit_code", "started_at", "finished_at", "data_source", "timing_scope")}
         record["result"] = row.get("result") or {}
         archive = (output / row["repo"].replace("/", "__") /
@@ -69,10 +73,13 @@ def evidence(report: dict, output: Path) -> dict:
             try:
                 with sqlite3.connect(archive) as db:
                     db.row_factory = sqlite3.Row
+                    fields = ("generation, gate_reached, compile_ok, correct_ok, accepted, "
+                              "val_loss, train_secs, phase, model_params" if
+                              row.get("mode") == "recipe" else
+                              "generation, gate_reached, compile_ok, correct_ok, accepted, "
+                              "step_time_ms, incumbent_step_time_ms")
                     record["candidate_gates"] = [dict(candidate) for candidate in db.execute(
-                        "SELECT generation, gate_reached, compile_ok, correct_ok, accepted, "
-                        "step_time_ms, incumbent_step_time_ms FROM candidates "
-                        "WHERE generation > 0 ORDER BY id")]
+                        f"SELECT {fields} FROM candidates WHERE generation > 0 ORDER BY id")]
             except sqlite3.Error:
                 record["archive_evidence"] = "unavailable or incompatible"
         records.append(record)
@@ -86,24 +93,28 @@ def publish(report: dict, manifest: Path, evidence_path: Path) -> str:
     phase = "partial" if report["running"] or report["pending"] else "complete"
     run = wandb.init(entity=os.environ["WANDB_ENTITY"],
                      project=os.environ["WANDB_PROJECT"],
-                     name=f"{report['repositories_total']}-repo-molab-{phase}-{snapshot}",
+                     name=f"{report['repositories_total']}-repo-molab-{report['mode']}-{phase}-{snapshot}",
                      job_type="repo-benchmark-summary",
-                     tags=["repo-benchmark", "molab", "kernel", phase],
+                     tags=["repo-benchmark", "molab", report["mode"], phase],
                      config={"manifest": str(manifest),
                              "repository_count": report["repositories_total"],
-                             "execution_target": "molab", "snapshot_utc": snapshot,
+                             "execution_target": "molab", "mode": report["mode"],
+                             "snapshot_utc": snapshot,
                              "report_phase": phase})
     try:
-        columns = ["repo", "commit", "workload", "optimizer_model", "status",
-                   "measured", "accepted", "baseline_ms", "candidate_ms",
+        columns = ["repo", "commit", "workload", "mode", "optimizer_model", "status",
+                   "measured", "accepted", "baseline", "candidate",
                    "improvement_pct", "reason", "data_source", "timing_scope"]
         data = []
         for row in report["results"]:
             metric = row.get("result") or {}
-            data.append([row["repo"], row["commit"], row["model"], row.get("llm"),
+            data.append([row["repo"], row["commit"], row["model"], row["mode"],
+                         row.get("llm"),
                          row["status"], bool(metric.get("measured")),
-                         metric.get("accepted"), metric.get("baseline_ms"),
-                         metric.get("candidate_ms"), metric.get("improvement_pct"),
+                         metric.get("accepted"),
+                         metric.get("baseline_ms", metric.get("baseline_val_loss")),
+                         metric.get("candidate_ms", metric.get("candidate_val_loss")),
+                         metric.get("improvement_pct"),
                          row.get("reason", metric.get("reason")),
                          row.get("data_source"), row.get("timing_scope")])
         run.log({"repositories": wandb.Table(columns=columns, data=data)})
@@ -122,11 +133,12 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--manifest", type=Path, default=ROOT / "benchmarks/repos.json")
     ap.add_argument("--output", type=Path, required=True)
+    ap.add_argument("--mode", choices=("kernel", "recipe"), default="kernel")
     ap.add_argument("--publish", action="store_true")
     ap.add_argument("--allow-partial", action="store_true",
                     help="Publish while some repositories are pending or running")
     args = ap.parse_args()
-    report = collect(args.manifest, args.output)
+    report = collect(args.manifest, args.output, args.mode)
     report_path = args.output / "summary.json"
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     evidence_path = args.output / "evidence.json"

@@ -19,7 +19,7 @@ def test_report_preserves_full_denominator_and_measured_outcomes(tmp_path):
     (first / "state.json").write_text(json.dumps({
         "index": 1, "repo": "one/train", "source_sha": "a" * 40,
         "status": "done", "llm": "wandb:Qwen/test",
-        "result": {"measured": True, "improvement_pct": 7.5},
+        "result": {"measured": True, "accepted": 1, "improvement_pct": 7.5},
     }))
     second = output / "two__train"
     second.mkdir()
@@ -71,3 +71,38 @@ def test_report_rejects_a_stale_commit(tmp_path):
 
     with pytest.raises(ValueError, match="does not match manifest"):
         collect(manifest, tmp_path / "runs")
+
+
+def test_recipe_report_preserves_loss_evidence_and_mode(tmp_path):
+    manifest = tmp_path / "repos.json"
+    manifest.write_text(json.dumps([{
+        "repo": "one/train", "model": "vision", "sha": "a" * 40,
+    }]))
+    output = tmp_path / "runs"
+    run = output / "one__train"
+    run.mkdir(parents=True)
+    (run / "state.json").write_text(json.dumps({
+        "index": 1, "repo": "one/train", "source_sha": "a" * 40,
+        "mode": "recipe", "status": "done", "attempt": 1,
+        "llm": "wandb:Qwen/test",
+        "result": {"measured": True, "accepted": 1, "baseline_val_loss": 1.2,
+                   "winner_val_loss": 1.0, "improvement_pct": 16.667},
+    }))
+    archive = run / "attempt-1" / "artifacts" / "archive.sqlite"
+    archive.parent.mkdir(parents=True)
+    with sqlite3.connect(archive) as db:
+        db.execute("CREATE TABLE candidates (id INTEGER, generation INTEGER, "
+                   "gate_reached INTEGER, compile_ok INTEGER, correct_ok INTEGER, "
+                   "accepted INTEGER, val_loss REAL, train_secs REAL, phase TEXT, "
+                   "model_params INTEGER, code_path TEXT)")
+        db.execute("INSERT INTO candidates VALUES "
+                   "(1, 1, 4, 1, 1, 1, 1.0, 120, 'finals', 1000, 'private.py')")
+
+    report = collect(manifest, output, "recipe")
+    assert report["mode"] == "recipe"
+    assert report["improved"] == 1
+    gates = evidence(report, output)["repositories"][0]["candidate_gates"]
+    assert gates[0]["val_loss"] == 1.0
+    assert "code_path" not in gates[0]
+    with pytest.raises(ValueError, match="does not match manifest"):
+        collect(manifest, output, "kernel")

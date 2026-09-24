@@ -101,7 +101,7 @@ def _base_source(adapter_spec: str, adapter_mod) -> str:
 
 def _loss_source(adapter_mod) -> str:
     try:
-        return inspect.getsource(adapter_mod.loss_fn)
+        return inspect.getsource(inspect.unwrap(adapter_mod.loss_fn))
     except (OSError, TypeError):
         return "(source unavailable)"
 
