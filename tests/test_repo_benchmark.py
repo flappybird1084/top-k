@@ -114,9 +114,11 @@ def test_molab_retry_refuses_a_still_running_gpu_job():
     assert previous_job_finished(client, "12345678" + "a" * 24)
 
 
-@pytest.mark.parametrize("dispatch_rc, expected_count", [(0, 2), (1, 1)])
+@pytest.mark.parametrize("dispatch_rc, completed_remote, expected_count", [
+    (0, False, 2), (1, False, 1), (1, True, 2),
+])
 def test_molab_runner_records_failure_and_continues_sequentially(
-        tmp_path, monkeypatch, dispatch_rc, expected_count):
+        tmp_path, monkeypatch, dispatch_rc, completed_remote, expected_count):
     import json
     import sys
     from scripts import run_molab_benchmark
@@ -139,7 +141,9 @@ def test_molab_runner_records_failure_and_continues_sequentially(
 
         def dispatch(self, job, root, env, log, artifacts_dir):
             dispatched.append(job["repo"])
-            return dispatch_rc  # rc=1 before completion marker is infrastructure failure
+            if completed_remote:
+                log(f"[molab] remote run finished with exit {dispatch_rc}")
+            return dispatch_rc
 
     monkeypatch.setattr(run_molab_benchmark, "MolabTarget", Target)
     monkeypatch.setattr(run_molab_benchmark, "MolabClient", lambda *args: object())
@@ -153,7 +157,7 @@ def test_molab_runner_records_failure_and_continues_sequentially(
     assert run_molab_benchmark.main() == 1
     assert len(dispatched) == expected_count
     assert json.loads((output / "one__train" / "state.json").read_text())["status"] == "failed"
-    if dispatch_rc == 0:
+    if expected_count == 2:
         assert json.loads((output / "two__train" / "state.json").read_text())[
             "status"] == "failed"
     else:
