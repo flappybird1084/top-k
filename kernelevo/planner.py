@@ -88,5 +88,4 @@ def plan(llm, targets: dict, summary: dict, lessons: list[str],
         return []
     for job in valid:
         job.setdefault("parent", None)
-        valid.append(job)
     return valid[:n_jobs]
