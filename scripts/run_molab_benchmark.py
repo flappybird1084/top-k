@@ -86,8 +86,9 @@ def main() -> int:
     settings = dotenv_values(args.secrets)
     if not (settings.get("WANDB_INFERENCE_API_KEY") or settings.get("WANDB_API_KEY")):
         raise RuntimeError("W&B Inference credential missing from private secrets file")
-    for key in ("WANDB_INFERENCE_API_KEY", "WANDB_INFERENCE_BASE_URL",
-                "WANDB_INFERENCE_PROJECT"):
+    for key in ("WANDB_INFERENCE_API_KEY", "WANDB_API_KEY",
+                "WANDB_INFERENCE_BASE_URL", "WANDB_INFERENCE_PROJECT",
+                "WANDB_ENTITY", "WANDB_PROJECT"):
         if settings.get(key):
             os.environ[key] = settings[key]
     remote_env = {"KEVO_WANDB_INFERENCE_RELAY": "1"}
@@ -124,8 +125,11 @@ def main() -> int:
         job = {"id": uuid.uuid4().hex,
                "repo": f"https://github.com/{row['repo']}/commit/{row['sha']}",
                "comments": f"Benchmark {row['model']}. Use a reproducible small training "
-                           "configuration and the repository's real model implementation.",
-               "max_debug_turns": 5, "profile": args.profile,
+                           "configuration and the repository's real model implementation. "
+                           "Generate a tiny deterministic synthetic training batch in memory, "
+                           "with valid labels for this model. Do not download datasets or "
+                           "depend on external data paths.",
+               "max_debug_turns": 8, "profile": args.profile,
                "llm": f"wandb:{args.model}", "max_generations": args.generations,
                "spend_cap": args.spend_cap, "mode": "kernel",
                "execution_target": "molab"}

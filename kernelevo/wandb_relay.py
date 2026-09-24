@@ -13,6 +13,8 @@ def complete_local(request):
         raise RuntimeError("W&B Inference credential missing on the dispatcher")
     base_url = os.environ.get("WANDB_INFERENCE_BASE_URL") or "https://api.inference.wandb.ai/v1"
     project = os.environ.get("WANDB_INFERENCE_PROJECT")
+    if not project and os.environ.get("WANDB_ENTITY") and os.environ.get("WANDB_PROJECT"):
+        project = f"{os.environ['WANDB_ENTITY']}/{os.environ['WANDB_PROJECT']}"
     headers = {"OpenAI-Project": project} if project else None
     client = OpenAI(base_url=base_url, api_key=key, default_headers=headers)
     params = dict(model=request["model"], messages=request["messages"],
