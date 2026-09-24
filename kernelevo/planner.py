@@ -37,6 +37,7 @@ def plan(llm, targets: dict, summary: dict, lessons: list[str],
     msgs = prompts.planner_prompt(targets, summary, lessons, n_jobs, generation,
                                   fuse_allowed, search_enabled=can_research)
     jobs = None
+    valid = []
     research_used = 0
     empty_retry_used = False
     for _ in range(MAX_RESEARCH_ROUNDS + 3):
@@ -63,28 +64,29 @@ def plan(llm, targets: dict, summary: dict, lessons: list[str],
                  f'{{"jobs": [...]}}.'}]
             continue
         jobs = obj.get("jobs")
-        # an empty plan silently wastes a whole generation (and a barren tick
-        # per lineage) — push back once before accepting it
-        if isinstance(jobs, list) and not jobs and not empty_retry_used:
+        valid = [job for job in jobs if isinstance(job, dict)
+                 and job.get("lineage") in active
+                 and not (str(job.get("strategy", "")).upper().startswith("FUSE")
+                          and not fuse_allowed)] if isinstance(jobs, list) else []
+        # An empty or invalid plan wastes a generation and retires useful
+        # lineages. Ask once more with the exact allowable op names.
+        if not valid and not empty_retry_used:
             empty_retry_used = True
-            print("[planner] returned zero jobs; re-prompting once")
+            print("[planner] returned no valid jobs; re-prompting once")
             msgs = msgs + [
                 {"role": "assistant", "content": resp.text},
                 {"role": "user", "content":
-                 f"You proposed zero jobs, which wastes the generation. Propose "
-                 f'between 1 and {n_jobs} jobs now as {{"jobs": [...]}} for the '
-                 f"active lineages."}]
+                 f"You proposed no valid jobs, which wastes the generation. "
+                 f"Propose between 1 and {n_jobs} jobs now as "
+                 f'{{"jobs": [...]}}. Allowed lineage names: {active}. '
+                 + ("FUSE jobs are not allowed this generation." if not fuse_allowed
+                    else "") }]
             continue
         break
     if not isinstance(jobs, list):
         print("[planner] no job list produced; skipping generation")
         return []
-    valid = []
-    for job in jobs:
-        if job.get("lineage") not in active:
-            continue
-        if str(job.get("strategy", "")).upper().startswith("FUSE") and not fuse_allowed:
-            continue
+    for job in valid:
         job.setdefault("parent", None)
         valid.append(job)
     return valid[:n_jobs]
