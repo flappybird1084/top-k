@@ -114,6 +114,46 @@ def test_molab_retry_refuses_a_still_running_gpu_job():
     assert previous_job_finished(client, "12345678" + "a" * 24)
 
 
+def test_molab_runner_records_failure_and_continues_sequentially(tmp_path, monkeypatch):
+    import json
+    import sys
+    from scripts import run_molab_benchmark
+
+    manifest = tmp_path / "repos.json"
+    manifest.write_text(json.dumps([
+        {"repo": "one/train", "model": "vision", "sha": "a" * 40},
+        {"repo": "two/train", "model": "language", "sha": "b" * 40},
+    ]))
+    secrets = tmp_path / "dev.env"
+    secrets.write_text("WANDB_INFERENCE_API_KEY=test-only\n")
+    monkeypatch.setenv("WANDB_INFERENCE_API_KEY", "test-only")
+    token = tmp_path / "token"
+    token.write_text("test-only")
+    dispatched = []
+
+    class Target:
+        def __init__(self, connection):
+            pass
+
+        def dispatch(self, job, root, env, log, artifacts_dir):
+            dispatched.append(job["repo"])
+            return 0  # no measured candidate: ordinary failure
+
+    monkeypatch.setattr(run_molab_benchmark, "MolabTarget", Target)
+    monkeypatch.setattr(run_molab_benchmark, "MolabClient", lambda *args: object())
+    monkeypatch.setattr(run_molab_benchmark, "previous_job_finished", lambda *args: True)
+    output = tmp_path / "output"
+    monkeypatch.setattr(sys, "argv", ["run_molab_benchmark.py", "--manifest", str(manifest),
+                                      "--output", str(output), "--secrets", str(secrets),
+                                      "--token-file", str(token), "--notebook-url",
+                                      "https://example.invalid", "--end", "2"])
+
+    assert run_molab_benchmark.main() == 0
+    assert len(dispatched) == 2
+    assert all(json.loads((output / repo.replace("/", "__") / "state.json").read_text())
+               ["status"] == "failed" for repo in ("one/train", "two/train"))
+
+
 def test_generated_adapter_receives_nested_batches_on_model_device(tmp_path):
     import torch
     from kernelevo.ingest import load_adapter

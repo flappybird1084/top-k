@@ -170,10 +170,19 @@ def main() -> int:
                      status="done" if rc == 0 and state["result"].get("measured") else "failed",
                      finished_at=time.time())
         state["credits_exhausted"] = bool(CREDIT_ERROR.search(log_path.read_text(errors="replace")))
+        if state["status"] == "failed":
+            state["reason"] = ("W&B Inference credits exhausted" if state["credits_exhausted"]
+                               else state["result"].get("reason") or
+                               f"dispatcher exited {rc}; inspect attempt log")
         save(state_path, state)
         print(f"[benchmark] {index:02d} exit={rc} result={state['result']}", flush=True)
-        if state["status"] != "done" or state["credits_exhausted"]:
+        if state["credits_exhausted"]:
             return 1
+        if state["status"] == "failed" and not previous_job_finished(client, job["id"]):
+            print(f"[benchmark] {index:02d} GPU job may still be running; stopping", flush=True)
+            return 1
+        if state["status"] == "failed":
+            print(f"[benchmark] {index:02d} failed; continuing to next repository", flush=True)
     return 0
 
 
