@@ -50,6 +50,23 @@ def load_adapter(path_or_module: str):
     return mod, name
 
 
+def check_training_signal(loss: torch.Tensor, model: torch.nn.Module) -> None:
+    """Reject losses that do not train any parameter of the claimed model."""
+    if loss.grad_fn is None:
+        raise SystemExit("loss is detached from the model; no parameter gradient")
+    parameters = [p for p in model.parameters() if p.requires_grad]
+    if not parameters:
+        raise SystemExit("model has no trainable parameters")
+    gradients = torch.autograd.grad(loss, parameters, allow_unused=True)
+    connected = [grad for grad in gradients if grad is not None]
+    if not connected:
+        raise SystemExit("loss is not connected to a trainable model parameter")
+    if not all(bool(torch.isfinite(grad).all()) for grad in connected):
+        raise SystemExit("loss produced a non-finite model gradient")
+    if not any(bool(torch.count_nonzero(grad)) for grad in connected):
+        raise SystemExit("loss produced only zero model gradients")
+
+
 def ingest(adapter, cfg) -> dict:
     from kernelevo import patch
     torch.manual_seed(cfg["seed"])
@@ -80,6 +97,7 @@ def ingest(adapter, cfg) -> dict:
     assert isinstance(loss, torch.Tensor) and loss.dim() == 0, "loss_fn must return a scalar tensor"
     assert torch.isfinite(loss).item(), "loss is not finite on the first batch"
     assert loss.requires_grad, "loss does not require grad"
+    check_training_signal(loss, model)
     n_params = sum(p.numel() for p in model.parameters())
     info = dict(
         n_params=n_params,

@@ -133,6 +133,18 @@ def loss_fn(model, batch):
     assert samples_per_batch(batch) == 1
 
 
+def test_ingest_rejects_loss_without_model_gradient():
+    import torch
+    from kernelevo.ingest import check_training_signal
+
+    model = torch.nn.Linear(1, 1)
+    with pytest.raises(SystemExit, match="detached"):
+        check_training_signal(torch.tensor(0.0, requires_grad=True), model)
+    with pytest.raises(SystemExit, match="only zero"):
+        check_training_signal((model.weight * 0).sum(), model)
+    check_training_signal((model.weight ** 2).sum(), model)
+
+
 def test_repository_job_does_not_inherit_operator_credentials(monkeypatch, tmp_path):
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "operator-secret")
     monkeypatch.setenv("WANDB_API_KEY", "inference-key")

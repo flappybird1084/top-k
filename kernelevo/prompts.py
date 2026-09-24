@@ -150,6 +150,9 @@ Hard requirements:
 - build_model() returns the model on CPU; the harness moves it to the device.
 - The harness moves tensor leaves in each batch to the model's device before
   loss_fn(). Keep them on that device through the forward and loss.
+- loss_fn() must use the real model output and yield a nonzero, finite gradient
+  for at least one trainable model parameter. A standalone requires_grad=True
+  tensor, a constant loss, or model output multiplied by zero is invalid.
 - Deterministic: seed everything; get_dataloader must yield the SAME batches in
   the SAME order every time it is called. Constant shapes across steps strongly
   preferred (pad/crop if needed). The harness consumes ~60 consecutive steps per
