@@ -53,7 +53,7 @@ def _run_candidate(job: dict, job_index: int, generation: int, ctx) -> dict:
 
         ok, msg = ctx.runner.compile(path, op)
         if not ok:
-            result.update(compile_ok=False, failure_note=msg[:2000])
+            result.update(compile_ok=False, failure_note=msg[-2000:])
             if attempt < cfg["max_repairs"]:
                 messages = messages + [{"role": "assistant", "content": resp.text},
                                        prompts.repair_message("compile", msg)]
@@ -64,7 +64,7 @@ def _run_candidate(job: dict, job_index: int, generation: int, ctx) -> dict:
         v = ctx.runner.verify(path, op, upto=2, incumbents=ctx.incumbents_snapshot())
         if not v.get("correct_ok"):
             note = v.get("failure_note") or "unknown mismatch"
-            result["failure_note"] = note[:2000]
+            result["failure_note"] = note[-2000:]
             if attempt < cfg["max_repairs"]:
                 messages = messages + [{"role": "assistant", "content": resp.text},
                                        prompts.repair_message("mismatch", note)]

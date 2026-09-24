@@ -268,7 +268,7 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, only_lineage: str | None = N
                       + (f", MFU {res['mfu']:.3f}" if res.get("mfu") else ""))
             else:
                 print(f"[gates] {op}: gate_reached={res['gate_reached']} "
-                      f"{(res.get('failure_note') or '')[:100]}")
+                      f"{(res.get('failure_note') or '')[-180:]}")
 
         # §6.2 — barren lineages and retirement
         for op in active:
