@@ -135,7 +135,9 @@ def main() -> int:
                "execution_target": "molab"}
         save(attempt_dir / "job.json", job)
         state = {**expected, "status": "running", "attempt": attempt,
-                 "started_at": time.time(), "job_id": job["id"]}
+                 "started_at": time.time(), "job_id": job["id"],
+                 "data_source": "deterministic synthetic batches",
+                 "timing_scope": "full training step including host-to-GPU transfer"}
         save(state_path, state)
         log_path = attempt_dir / "dispatch.log"
         with log_path.open("w", buffering=1) as log:

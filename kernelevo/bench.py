@@ -107,14 +107,17 @@ def make_optimizer(model):
 
 
 def samples_per_batch(batch) -> int:
-    if isinstance(batch, (tuple, list)):
-        for t in batch:
-            if isinstance(t, torch.Tensor):
-                return t.shape[0]
-    if isinstance(batch, dict):
-        for t in batch.values():
-            if isinstance(t, torch.Tensor):
-                return t.shape[0]
-    if isinstance(batch, torch.Tensor):
+    if isinstance(batch, torch.Tensor) and batch.ndim:
         return batch.shape[0]
+    if isinstance(batch, dict):
+        values = batch.values()
+    elif isinstance(batch, (tuple, list)):
+        values = batch
+    else:
+        values = ()
+    for value in values:
+        try:
+            return samples_per_batch(value)
+        except ValueError:
+            continue
     raise ValueError("cannot infer samples per batch")

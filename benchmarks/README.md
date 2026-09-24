@@ -59,3 +59,12 @@ Some repositories are framework collections or require custom CUDA extensions,
 large datasets, or multiple GPUs. Their adapter failures should be recorded
 and triaged rather than dropped from the denominator. The list is an intake
 set, not a published 30-repository result.
+
+For EC2-to-Marimo runs, `scripts/run_molab_benchmark.py` dispatches the same
+repository flow as the website, using the pinned commit URLs in `repos.json`.
+This benchmark explicitly asks adapters to use deterministic synthetic batches
+with the repository's real model; it does not test dataset setup or data quality.
+Reported step times include batch loading and host-to-GPU transfer, so any
+improvement percentage describes the full measured training step on that GPU,
+not isolated kernel latency. Failed adapters and missing measurements remain
+failures in the denominator.

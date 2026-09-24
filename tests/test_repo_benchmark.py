@@ -129,6 +129,8 @@ def loss_fn(model, batch):
     model = torch.nn.Linear(1, 1, device="meta")
     batch = {"x": [torch.zeros(1), (torch.ones(1),)]}
     assert adapter.loss_fn(model, batch) == ("meta", "meta")
+    from kernelevo.bench import samples_per_batch
+    assert samples_per_batch(batch) == 1
 
 
 def test_repository_job_does_not_inherit_operator_credentials(monkeypatch, tmp_path):
