@@ -40,6 +40,26 @@
       ? 'Static preview: this page doesn’t start runs.' : 'Paste the URL of a PyTorch training repo.';
   }));
 
+  /* ---------------- tabs: one view per panel at first glance ---------------- */
+  document.querySelectorAll('[data-tabs]').forEach(box => {
+    const tabs = [...box.querySelectorAll('[data-tab]')], panes = [...box.querySelectorAll('[data-pane]')];
+    const show = key => {
+      tabs.forEach(t => { const on = t.dataset.tab === key; t.classList.toggle('on', on); t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1; });
+      panes.forEach(p => { p.hidden = p.dataset.pane !== key; });
+      dispatchEvent(new Event('resize'));   // anything measured while hidden re-fits now
+    };
+    tabs.forEach((t, i) => {
+      t.tabIndex = t.classList.contains('on') ? 0 : -1;
+      t.addEventListener('click', () => show(t.dataset.tab));
+      t.addEventListener('keydown', e => {
+        const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+        if (!step) return;
+        const n = tabs[(i + step + tabs.length) % tabs.length];
+        show(n.dataset.tab); n.focus();
+      });
+    });
+  });
+
   const tip = $('#tip');
   const place = (x, y) => {
     const r = tip.getBoundingClientRect();
@@ -157,7 +177,7 @@
         for (let j = 1; j <= 72; j++) {
           const t = j / 72 * 6.2832, cur = cam.project(RX[i], RR * Math.cos(t), RR * Math.sin(t));
           const rel = ((t - spin[i]) % 6.2832 + 6.2832) % 6.2832, arc = rel < 1.1 ? 1 - rel / 1.1 : 0;
-          const a = (.15 + pulse[i] * .6 + arc * .55) * depthA((prev[2] + cur[2]) / 2);
+          const a = (.12 + pulse[i] * .55 + arc * .5) * depthA((prev[2] + cur[2]) / 2);
           const col = pulse[i] > .05 ? pulseCol[i] : arc > 0 ? C.accent2 : C.ink;
           ctx.strokeStyle = `rgba(${col},${a.toFixed(3)})`; ctx.lineWidth = 1 + pulse[i] * 1.2 + arc * .7;
           ctx.beginPath(); ctx.moveTo(prev[0], prev[1]); ctx.lineTo(cur[0], cur[1]); ctx.stroke();
@@ -168,7 +188,7 @@
         const kept = p.g === 5 && p.passed >= 4;
         const col = p.dead || kept ? FATE[p.kind] : C.ink;
         const h = cam.project(p.x, p.y, p.z);
-        const a = (p.dead ? 1 : kept ? 1 : .78) * Math.max(0, p.a) * depthA(h[2]);
+        const a = (p.dead ? .95 : kept ? 1 : .62) * Math.max(0, p.a) * depthA(h[2]);
         if (!p.dead) {
           const tl = cam.project(p.x - (kept ? .9 : .35), p.y, p.z);
           const g = ctx.createLinearGradient(tl[0], tl[1], h[0], h[1]);
@@ -194,23 +214,34 @@
     });
   })();
 
-  /* ---------------- 01: the architecture search ---------------- */
+  /* ---------------- the architecture search, in raw validation loss ----------------
+     Lower is better and is drawn lower. Later generations train longer (60 s, then
+     120 s, then 300 s), so loss also falls from training time alone. The baseline's
+     own loss at each budget is drawn as a staircase: a candidate beats the baseline
+     only if it sits below the step for its own budget. */
   (function arch() {
     const A = R.arch, svg = $('#arch-svg');
-    const W = 1000, H = 500, X = [80, 290, 490, 690, 895], TOP = 44, Z = 372, CRASH = 428, MAX = 17;
+    const W = 1000, H = 500, X = [80, 290, 490, 690, 880], CRASH = 44, TOP = 84, BOT = 418, HI = 7.0, LO = 5.3;
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-    const y = g => Z - g / MAX * (Z - TOP);
-    const GEN = [['Baseline', '60 · 120 · 300 s'], ['Gen 1', 'architecture · 60 s'], ['Gen 2', 'architecture · 60 s'], ['Gen 3', 'hyperparameters · 120 s'], ['Finals', 're-trained · 300 s']];
+    const y = l => TOP + (HI - l) / (HI - LO) * (BOT - TOP);
+    const GEN = [['Baseline', 'original model'], ['Gen 1', 'architecture · 60 s'], ['Gen 2', 'architecture · 60 s'], ['Gen 3', 'hyperparameters · 120 s'], ['Finals', 're-trained · 300 s']];
+    const B = A.baseline, L3 = v => v.toFixed(3);
 
     const axis = S('g', { class: 'axis' }, svg);
-    S('text', { x: 40, y: 18, class: 'title' }, axis).textContent = 'Val loss vs. the baseline trained for the same time';
-    for (const t of [0, 5, 10, 15]) {
-      S('line', { x1: 40, x2: W - 8, y1: y(t), y2: y(t), 'stroke-dasharray': t ? '2 6' : '0' }, axis);
-      S('text', { x: 34, y: y(t) + 4, 'text-anchor': 'end' }, axis).textContent = t ? `−${t}%` : '0%';
+    S('text', { x: 40, y: 16, class: 'title' }, axis).textContent = 'Validation loss · lower is better';
+    for (const t of [5.4, 5.8, 6.2, 6.6, 7.0]) {
+      S('line', { x1: 40, x2: W - 8, y1: y(t), y2: y(t), 'stroke-dasharray': '2 6' }, axis);
+      S('text', { x: 34, y: y(t) + 4, 'text-anchor': 'end' }, axis).textContent = t.toFixed(1);
     }
     const lane = S('g', { class: 'crash-lane' }, svg);
     S('line', { x1: 40, x2: W - 8, y1: CRASH, y2: CRASH, stroke: '#2e2224', 'stroke-dasharray': '1 5' }, lane);
     S('text', { x: 34, y: CRASH + 4, 'text-anchor': 'end' }, lane).textContent = 'crash';
+    // The baseline, trained for each budget, as a staircase.
+    const m23 = (X[2] + X[3]) / 2, m34 = (X[3] + X[4]) / 2;
+    const stair = S('g', { class: 'stair' }, svg);
+    S('path', { d: `M40,${y(B[60])} H${m23} V${y(B[120])} H${m34} V${y(B[300])} H${W - 8}`, class: 'stair-line' }, stair);
+    [[m23 - 8, y(B[60]) - 7, `baseline ${L3(B[60])} · 60 s`], [m34 - 8, y(B[120]) - 7, `${L3(B[120])} · 120 s`], [W - 10, y(B[300]) - 7, `${L3(B[300])} · 300 s`]]
+      .forEach(([x, yy, t]) => { S('text', { x, y: yy, 'text-anchor': 'end', class: 'stair-lab' }, stair).textContent = t; });
     const labels = GEN.map((g, i) => {
       const gl = S('g', { class: 'col-label' }, svg);
       S('text', { x: X[i], y: 466, 'text-anchor': 'middle', class: 't' }, gl).textContent = g[0];
@@ -219,7 +250,7 @@
     });
 
     const nodes = new Map();
-    const base = { id: 'base', gen: 0, x: X[0], y: Z, base: true };
+    const base = { id: 'base', gen: 0, x: X[0], y: y(B[60]), base: true };
     nodes.set('base', base);
     const cands = A.candidates.filter(c => c.phase !== 'baseline');
     for (let g = 1; g <= 4; g++) {
@@ -227,7 +258,7 @@
       const gap = g === 4 ? 44 : 17;
       list.forEach((c, i) => {
         const crash = c.loss == null;
-        nodes.set(c.id, { ...c, crash, x: X[g] + (i - (list.length - 1) / 2) * gap, y: crash ? CRASH : y(c.gain) });
+        nodes.set(c.id, { ...c, crash, x: X[g] + (i - (list.length - 1) / 2) * gap, y: crash ? CRASH : y(c.loss) });
       });
     }
     const parentOf = n => (n.parent == null || n.parent <= 3) ? 'base' : n.parent;
@@ -241,11 +272,11 @@
     const curve = (a, b) => { const mx = (a.x + b.x) / 2; return `M${a.x},${a.y} C${mx},${a.y} ${mx},${b.y} ${b.x},${b.y}`; };
     for (const n of nodes.values()) if (!n.base) n.edge = S('path', { d: curve(nodes.get(parentOf(n)), n), class: 'edge' + (n.crash ? ' crash' : '') }, gEdges);
     const tipFor = n => {
-      if (n.base) return `<div class="h">Baseline · the repo's model + AdamW</div>Val loss ${A.baseline[60].toFixed(3)} after 60 s, ${A.baseline[120].toFixed(3)} after 120 s, ${A.baseline[300].toFixed(3)} after 300 s.`;
+      if (n.base) return `<div class="h">Baseline · the repo's model + AdamW</div>Val loss ${L3(B[60])} after 60 s, ${L3(B[120])} after 120 s, ${L3(B[300])} after 300 s.`;
       const head = `<div class="h">#${n.id} · ${GEN[n.gen][0]} · ${GEN[n.gen][1]}</div>`;
       return head + esc(n.strategy) + (n.crash
         ? `<div class="r bad">${esc(n.err)}</div>`
-        : `<div class="r">${pct(n.gain)} val loss (${n.loss.toFixed(3)} after ${n.secs} s)</div>`);
+        : `<div class="r">val loss ${L3(n.loss)} · ${pct(n.gain)} vs. the ${n.secs} s baseline</div>`);
     };
     for (const n of nodes.values()) {
       const g = S('g', { class: 'node' + (n.base ? ' base' : '') + (n.crash ? ' crash' : ''), tabindex: 0, role: 'img', 'aria-label': n.base ? 'Baseline' : `Candidate ${n.id}` }, gNodes);
@@ -262,21 +293,27 @@
       S('text', { x: n.x + dx, y: n.y + dy, 'text-anchor': anchor }, t).textContent = text;
       return t;
     };
-    const tags = [tag(win, pct(win.gain), 'win', 11, 4, 'start'), tag(lead3, `led at 120 s: ${pct(lead3.gain)}`, 'lead', 0, -15, 'middle')];
-    if (leadFinal) tags.push(tag(leadFinal, pct(leadFinal.gain), 'lead', 11, 4, 'start'));
+    const tags = [tag(win, `${L3(win.loss)} · reported`, 'win', 0, 22, 'middle'), tag(lead3, `led at 120 s: ${L3(lead3.loss)}`, 'lead', 0, 22, 'middle')];
+    if (leadFinal) tags.push(tag(leadFinal, `${L3(leadFinal.loss)} after 300 s`, 'lead', 11, 4, 'start'));
     const trav = S('circle', { r: 4, class: 'traveler', opacity: 0 }, svg);
 
-    // One-line ticker of the real crash messages, typed out.
-    const tGen = $('#tick-gen'), tMsg = $('#tick-msg'), crashes = [...nodes.values()].filter(n => n.crash);
-    let typing = 0, cycle = 0, cycleTimer = 0;
-    const type = n => {
-      const my = ++typing, msg = n.err;
-      tGen.textContent = GEN[n.gen][0];
-      if (reduce) { tMsg.textContent = msg; return; }
+    // "What crashed" tab: the real last line of each crash, typed out the first time it's opened.
+    const list = $('#crash-list'), crashes = [...nodes.values()].filter(n => n.crash);
+    $('#crash-n').textContent = crashes.length;
+    const typeInto = (el, msg) => new Promise(done => {
       let i = 0;
-      const go = () => { if (my !== typing) return; tMsg.textContent = msg.slice(0, ++i); if (i < msg.length) setTimeout(go, 14); };
+      const go = () => { el.textContent = msg.slice(0, ++i); if (i < msg.length) setTimeout(go, 9); else done(); };
       go();
-    };
+    });
+    for (const n of crashes) {
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="g">${GEN[n.gen][0]} · #${n.id}</span><code></code>`;
+      bindTip(li, () => `<div class="h">What the agent tried</div>${esc(n.strategy)}`);
+      list.appendChild(li);
+      n.code = li.querySelector('code');
+      if (reduce) n.code.textContent = n.err;
+    }
+    if (!reduce) once(list, async () => { for (const n of crashes) { await typeInto(n.code, n.err); await sleep(90); } }, .1);
 
     const readout = $('#arch-readout');
     let token = 0, visible = false, played = false, travRaf = 0;
@@ -300,8 +337,7 @@
       travRaf = requestAnimationFrame(frame);
     }
     function reset() {
-      token++; played = false; clearInterval(cycleTimer); typing++; travel();
-      tGen.textContent = ''; tMsg.textContent = '';
+      token++; played = false; travel();
       for (const n of nodes.values()) {
         n.el.classList.remove('on', 'win', 'lead');
         if (!n.edge) continue;
@@ -333,11 +369,10 @@
           if (my !== token) return;
           drawEdge(n); await sleep(130);
           n.el.classList.add('on');
-          if (n.crash) type(n);
           await sleep(80);
         }
-        const ok = list.filter(n => !n.crash), best = ok.reduce((a, b) => b.gain > a.gain ? b : a, ok[0]);
-        if (g < 4) readout.innerHTML = `${GEN[g][0]} · best <b>${pct(best.gain)}</b>`;
+        const ok = list.filter(n => !n.crash), best = ok.reduce((a, b) => b.loss < a.loss ? b : a, ok[0]);
+        if (g < 4) readout.innerHTML = `${GEN[g][0]} · best <b>${L3(best.loss)}</b> vs. baseline ${L3(B[best.secs])}`;
         await sleep(620);
       }
       if (my !== token) return;
@@ -350,9 +385,8 @@
       lead3.el.classList.add('lead');
       if (leadFinal) { leadFinal.el.classList.add('lead'); leadFinal.edge.classList.add('lead'); }
       tags.forEach(t => t.classList.add('on'));
-      readout.innerHTML = `Reported <b>${pct(win.gain)}</b> at 300 s · the 120 s leader fell to <span style="color:var(--amber)">${pct(leadFinal.gain)}</span>`;
+      readout.innerHTML = `Reported <b>${L3(B[300])} → ${L3(win.loss)}</b> after 300 s (${pct(win.gain)}) · the 120 s leader ended at <span style="color:var(--amber)">${L3(leadFinal.loss)}</span>`;
       played = true; travel();
-      if (!reduce) cycleTimer = setInterval(() => { if (visible) type(crashes[cycle++ % crashes.length]); }, 3800);
     }
     reset();
     watch(svg, v => { visible = v; travel(); });
@@ -360,7 +394,7 @@
     $('#arch-replay').addEventListener('click', play);
   })();
 
-  /* ---------------- 02: the kernel checks, as a looping funnel ---------------- */
+  /* ---------------- the kernel checks, as a funnel (plays once; ↻ replays) ---------------- */
   (function kernels() {
     const K = R.kernel, all = K.candidates.filter(c => c.kind !== 'seed');
     const n = k => all.filter(c => c.kind === k).length;
@@ -432,7 +466,6 @@
       const dt = Math.min(.05, (t - lastT) / 1000 || 0); lastT = t;
       if (step(dt)) { raf = requestAnimationFrame(frame); return; }
       raf = 0; settle();
-      loop = setTimeout(() => { if (visible) play(); else pending = true; }, 6000);   // replay while on screen
     }
     function play() {
       cancelAnimationFrame(raf); clearTimeout(loop); pending = false; build();
@@ -454,51 +487,105 @@
     c.addEventListener('pointerleave', () => { c.style.transform = ''; });
   });
 
-  /* ---------------- closing: a rotating globe of candidates ---------------- */
-  (function orb() {
-    const cv = $('#orb'), host = $('.final'), cam = camera(4.2), mouse = pointer(host);
-    const N = 420, pts = [];
-    for (let i = 0; i < N; i++) {
-      const yy = 1 - (i + .5) / N * 2, r = Math.sqrt(1 - yy * yy), th = i * 2.39996;
-      pts.push([r * Math.cos(th), yy, r * Math.sin(th)]);
-    }
-    const kept = new Set([97, 311]);   // two lit points: the two kernels that made it
-    const TILT = .55, RING = 1.38;
+  /* ---------------- repos: measured runs and open repos around "Your repo" ----------------
+     Only filled nodes carry numbers, and each is a measured run. Outlined nodes are open
+     PyTorch training repos that haven't been run; they carry no claims. Clicking the hub
+     (or a repo) grows it to fill the map and hands off to the search box at the top. */
+  (function web() {
+    const box = $('#web'), cv = $('#web-canvas'), layer = $('#web-nodes'), hub = $('#hub');
+    if (!box) return;
+    const A = R.arch, K = R.kernel;
+    const win = A.candidates.filter(c => c.gen === 4 && c.gain != null).sort((a, b) => b.gain - a.gain)[0];
+    const RUNS = [
+      // nanochat numbers are from findings/01-results.md (not in the recorded runs).
+      { name: 'karpathy/nanochat', short: 'nanochat', url: 'github.com/karpathy/nanochat', what: 'Kernel search · 11.5M parameters',
+        result: '−4.1% step time vs. per-op torch.compile (8.95 → 8.58 ms); −1.7% vs. eager' },
+      { name: 'modern-lm', short: 'modern-lm', what: 'Architecture search · 480.9M parameters',
+        result: `${pct(win.gain)} val loss at the same 300 s budget (${A.baseline[300].toFixed(3)} → ${win.loss.toFixed(3)})` },
+      { name: 'Top-K demo LM', short: 'demo LM', what: 'Kernel search · 21.6M parameters',
+        result: `${pct(K.paired_median * 100)} step time vs. torch.compile (${K.baseline_ms.toFixed(2)} → ${K.final_ms.toFixed(2)} ms)` },
+    ];
+    const OPEN = ['karpathy/nanoGPT', 'karpathy/minGPT', 'KellerJordan/modded-nanogpt', 'Lightning-AI/litgpt',
+      'allenai/OLMo', 'BlinkDL/RWKV-LM', 'pytorch/torchtitan', 'EleutherAI/gpt-neox'];
+    const nodes = [];
+    RUNS.forEach((r, i) => {
+      const a = i / RUNS.length * 6.2832 + .5;
+      nodes.push({ ...r, run: true, x: Math.cos(a) * 1.05, y: [.2, -.24, .06][i], z: Math.sin(a) * 1.05 });
+    });
+    OPEN.forEach((name, i) => {
+      const a = i / OPEN.length * 6.2832 + .9;
+      nodes.push({ name, short: name.split('/')[1], url: 'github.com/' + name, run: false,
+        x: Math.cos(a) * 1.85, y: Math.sin(i * 1.7) * .45, z: Math.sin(a) * 1.85 });
+    });
+    const links = [];
+    const O = { x: 0, y: 0, z: 0 };
+    nodes.forEach(n => links.push([O, n, n.run ? 'run' : 'hub']));
+    const outer = nodes.filter(n => !n.run);
+    outer.forEach((n, i) => links.push([n, outer[(i + 1) % outer.length], 'ring']));
+    nodes.filter(n => n.run).forEach(r => {
+      const near = outer.slice().sort((a, b) => Math.hypot(a.x - r.x, a.z - r.z) - Math.hypot(b.x - r.x, b.z - r.z))[0];
+      links.push([r, near, 'ring']);
+    });
+
+    const go = url => {
+      const input = $('#repo-hero');
+      if (url) input.value = url;
+      if (reduce) { $('#hero').scrollIntoView(); input.focus({ preventScroll: true }); return; }
+      box.classList.add('expanding');
+      setTimeout(() => $('#hero').scrollIntoView({ behavior: 'smooth', block: 'start' }), 520);
+      setTimeout(() => { input.focus({ preventScroll: true }); box.classList.remove('expanding'); }, 1400);
+    };
+    hub.addEventListener('click', () => go(''));
+    nodes.forEach(n => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'rnode' + (n.run ? ' run' : '');
+      b.innerHTML = `<i aria-hidden="true"></i><span>${esc(n.short)}</span>`;
+      b.setAttribute('aria-label', n.run ? `${n.name}: ${n.result}` : `${n.name}: not run yet`);
+      bindTip(b, () => n.run
+        ? `<div class="h">${esc(n.name)}</div>${esc(n.what)}<div class="r">${esc(n.result)}</div>`
+        : `<div class="h">${esc(n.name)}</div>Not run yet.${n.url ? '<div class="r">Click to try it</div>' : ''}`);
+      if (n.url) b.addEventListener('click', () => go(n.url));
+      layer.appendChild(b);
+      n.el = b;
+    });
+
+    const cam = camera(7), mouse = pointer(box);
     let W = 0, H = 0, t = 0;
-    const ringPt = a => [RING * Math.cos(a), RING * Math.sin(a) * Math.sin(TILT), RING * Math.sin(a) * Math.cos(TILT)];
+    cam.pitch = .32;
+    const depthOf = d => Math.max(0, Math.min(1, (8.9 - d) / 3.8));
     function step(dt) {
       t += dt;
       const ease = Math.min(1, dt * 2);
-      cam.yaw = t * .16 + mouse.x * .8;
-      cam.pitch += (.38 + mouse.y * .5 - cam.pitch) * ease;
+      cam.yaw += (t * .11 + mouse.x * .6 - cam.yaw) * ease;
+      cam.pitch += (.32 + mouse.y * .3 - cam.pitch) * ease;
     }
     function draw(ctx) {
       ctx.clearRect(0, 0, W, H);
-      ctx.globalCompositeOperation = 'lighter';
-      const proj = pts.map((p, i) => [...cam.project(...p), i]).sort((a, b) => b[2] - a[2]);
-      for (const [x, y, d, s, i] of proj) {
-        const front = Math.max(.07, Math.min(1, (5.2 - d) / 2));
-        if (kept.has(i)) { ctx.shadowColor = `rgba(${C.accent},1)`; ctx.shadowBlur = 14; ctx.fillStyle = `rgba(${C.accent2},${Math.max(.35, front).toFixed(3)})`; }
-        else ctx.fillStyle = `rgba(${C.ink},${(front * .55).toFixed(3)})`;
-        ctx.beginPath(); ctx.arc(x, y, (kept.has(i) ? 2.8 : 1.2) * s, 0, 6.2832); ctx.fill();
-        ctx.shadowBlur = 0;
+      for (const [a, b, kind] of links) {
+        const pa = cam.project(a.x, a.y, a.z), pb = cam.project(b.x, b.y, b.z), dep = (depthOf(pa[2]) + depthOf(pb[2])) / 2;
+        ctx.setLineDash(kind === 'hub' ? [3, 6] : []);
+        ctx.lineWidth = kind === 'run' ? 1.4 : 1;
+        ctx.strokeStyle = kind === 'run' ? `rgba(${C.accent},${(.25 + .45 * dep).toFixed(3)})`
+          : `rgba(${C.ink},${((kind === 'hub' ? .1 : .06) + .08 * dep).toFixed(3)})`;
+        ctx.beginPath(); ctx.moveTo(pa[0], pa[1]); ctx.lineTo(pb[0], pb[1]); ctx.stroke();
       }
-      let prev = cam.project(...ringPt(0));
-      for (let j = 1; j <= 96; j++) {
-        const cur = cam.project(...ringPt(j / 96 * 6.2832));
-        ctx.strokeStyle = `rgba(${C.accent2},${(Math.max(.05, Math.min(1, (5.6 - cur[2]) / 2.2)) * .35).toFixed(3)})`;
-        ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(prev[0], prev[1]); ctx.lineTo(cur[0], cur[1]); ctx.stroke();
-        prev = cur;
+      ctx.setLineDash([]);
+      // a pulse runs out from your repo to each measured run
+      nodes.filter(n => n.run).forEach((n, i) => {
+        const k = (t * .35 + i / 3) % 1, p = cam.project(n.x * k, n.y * k, n.z * k);
+        ctx.fillStyle = `rgba(${C.accent2},${(Math.sin(k * Math.PI) * .9).toFixed(3)})`;
+        ctx.beginPath(); ctx.arc(p[0], p[1], 2.4 * p[3], 0, 6.2832); ctx.fill();
+      });
+      for (const n of nodes) {
+        const p = cam.project(n.x, n.y, n.z), dep = depthOf(p[2]);
+        n.el.style.transform = `translate(${p[0].toFixed(1)}px,${p[1].toFixed(1)}px) translate(-50%,-50%) scale(${(.7 + .4 * p[3]).toFixed(3)})`;
+        n.el.style.opacity = ((n.run ? .5 : .22) + (n.run ? .5 : .6) * dep).toFixed(3);
+        n.el.style.zIndex = String(Math.round(dep * 100));
       }
-      const m = cam.project(...ringPt(t * .9));
-      ctx.shadowColor = `rgba(${C.accent},1)`; ctx.shadowBlur = 18;
-      ctx.fillStyle = `rgba(${C.accent2},1)`;
-      ctx.beginPath(); ctx.arc(m[0], m[1], 3.2 * m[3], 0, 6.2832); ctx.fill();
-      ctx.shadowBlur = 0;
-      ctx.globalCompositeOperation = 'source-over';
     }
-    animate(cv, host, {
-      resize: (w, h) => { W = w; H = h; cam.scale = Math.min(w, h) * 1.25; cam.cx = w / 2; cam.cy = h / 2; },
+    animate(cv, box, {
+      resize: (w, h) => { W = w; H = h; cam.scale = Math.min(w * 1.2, h * 2); cam.cx = w / 2; cam.cy = h / 2; },
       step, draw,
     });
   })();

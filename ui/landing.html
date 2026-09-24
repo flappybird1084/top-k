@@ -1,7 +1,8 @@
 <!doctype html>
-<!-- Landing-page redesign (static prototype). Every animation is driven by real data extracted
-     from assets/recorded-data.js into landing-data.js and landing-timeline.js. The repo form does
-     not start runs yet; wiring it to front.js / live-api.js is the next step.
+<!-- Landing page for top-k.dev (static prototype). Every animation is driven by real data extracted
+     from assets/recorded-data.js into landing-data.js and landing-timeline.js; the only other numbers
+     are nanochat's, from findings/01-results.md. The repo form does not start runs yet: wiring it to
+     front.js / live-api.js is required before this can replace index.html.
      Preview: uv run --no-project python -m http.server 8799 --directory ui, then open /landing.html -->
 <html lang="en">
 <head>
@@ -16,7 +17,7 @@
 
 <nav class="top" id="top">
   <a class="brand" href="#">Top-K<small>ernel</small></a>
-  <div class="links"><a href="#loop">How it works</a><a href="#arch">Architecture</a><a href="#kernels">Kernels</a><a href="#models">Models</a></div>
+  <div class="links"><a href="#loop">How it works</a><a href="#arch">Architecture</a><a href="#kernels">Kernels</a><a href="#repos">Repos</a></div>
   <div class="sponsors" aria-label="Built with CoreWeave, marimo, and Weights &amp; Biases">
     <img src="assets/coreweave-sprite.png" alt="CoreWeave"><img src="assets/marimo-sprite.png" alt="marimo"><img src="assets/wandb-sprite.png" alt="Weights &amp; Biases">
   </div>
@@ -27,7 +28,7 @@
   <div class="hero-inner">
     <h1 class="reveal">Evolve the whole training loop.<br><em>Not just the kernels.</em></h1>
     <p class="lede reveal" style="--d:.1s">Paste a PyTorch repo. Agents evolve its architecture and kernels, and only what measurably wins survives.</p>
-    <form class="repo reveal" style="--d:.2s" novalidate>
+    <form class="repo reveal" id="hero-form" style="--d:.2s" novalidate>
       <label class="sr-only" for="repo-hero">Repository URL</label>
       <div class="field">
         <span class="glyph" aria-hidden="true">↳</span>
@@ -40,7 +41,7 @@
     <div class="results reveal" style="--d:.3s">
       <div><b data-count="7.21" data-dec="2">−7.21%</b><span>val loss · 481M model</span></div>
       <i aria-hidden="true"></i>
-      <div><b data-count="4.1" data-dec="1">−4.1%</b><span>step time · nanochat</span></div>
+      <div><b data-count="3.3" data-dec="1">−3.3%</b><span>step time · vs torch.compile</span></div>
     </div>
   </div>
 </header>
@@ -49,7 +50,7 @@
   <div class="wrap">
     <div class="sec-head reveal">
       <h2>One generation, as it actually ran.</h2>
-      <p class="sub"> A planner proposes, eight sub-agents write in parallel, the GPU trains and scores, and a curator notes what worked for the next round.</p>
+      <p class="sub">A planner proposes, eight sub-agents write in parallel, the GPU trains and scores, and a curator notes what worked for the next round.</p>
     </div>
     <figure class="panel tl reveal">
       <div class="tl-bar">
@@ -65,16 +66,25 @@
   <div class="wrap">
     <div class="sec-head reveal">
       <h2>Every candidate from that run.</h2>
-      <p class="sub">24 proposals across three generations; hover any point to see what an agent tried.</p>
+      <p class="sub">24 proposals across three generations. Lower is better; hover any point to see what an agent tried.</p>
     </div>
-    <figure class="chart reveal">
-      <div class="chart-bar"><span id="arch-readout">&nbsp;</span><button id="arch-replay" class="ghost" type="button" aria-label="Replay">↻</button></div>
-      <svg id="arch-svg" role="img" aria-label="Every candidate from the architecture search, plotted by generation and by how much lower its validation loss was than the baseline trained for the same time. Crashed candidates sit on a separate lane."></svg>
-      <div class="ticker"><span class="x" aria-hidden="true">×</span><span class="g" id="tick-gen"></span><span class="msg" id="tick-msg"></span><span class="caret" aria-hidden="true"></span></div>
-    </figure>
-    <div class="panel recipe reveal">
-      <h3>The recipe that won</h3>
-      <div class="steps" id="steps"><span class="glide" aria-hidden="true"></span></div>
+    <div class="panel tabbed reveal" data-tabs>
+      <div class="tabbar" role="tablist">
+        <button type="button" role="tab" data-tab="cands" class="on" aria-selected="true">Every candidate</button>
+        <button type="button" role="tab" data-tab="recipe" aria-selected="false">The recipe that won</button>
+        <button type="button" role="tab" data-tab="crashes" aria-selected="false">What crashed</button>
+      </div>
+      <div class="pane" data-pane="cands" role="tabpanel">
+        <div class="chart-bar"><span id="arch-readout">&nbsp;</span><button id="arch-replay" class="ghost" type="button" aria-label="Replay">↻</button></div>
+        <svg id="arch-svg" role="img" aria-label="Validation loss of every candidate in the architecture search, by generation, against the baseline's loss for the same training time. Crashed candidates sit on a separate lane."></svg>
+      </div>
+      <div class="pane" data-pane="recipe" role="tabpanel" hidden>
+        <div class="steps" id="steps"><span class="glide" aria-hidden="true"></span></div>
+      </div>
+      <div class="pane" data-pane="crashes" role="tabpanel" hidden>
+        <p class="pane-note"><span id="crash-n">7</span> of 24 proposals crashed when they ran. The last line of each error:</p>
+        <ul class="crashes" id="crash-list"></ul>
+      </div>
     </div>
   </div>
 </section>
@@ -83,34 +93,44 @@
   <div class="wrap">
     <div class="sec-head reveal">
       <h2><span id="k-rejected">35</span> of <span id="k-total">37</span> kernels didn’t make it.</h2>
-      <p class="sub">A 21.6M-parameter language model and five generations of Triton kernels. Every check is plain code, cheapest first. No model grades its own work.</p>
+      <p class="sub">A 21.6M-parameter language model and five generations of Triton kernels. Every check is plain code, run cheapest first.</p>
     </div>
-    <div class="funnel reveal">
-      <ol class="stages" id="stages"></ol>
-      <svg id="funnel-svg" aria-hidden="true"></svg>
-      <div class="funnel-foot">
-        <div class="legend"><span><i style="background:#6b6b75"></i>didn’t finish</span><span><i style="background:#ef7a6d"></i>failed a check</span><span><i style="background:#f2b560"></i>correct, not faster</span><span><i style="background:#8b97ff"></i>kept</span></div>
-        <button id="k-replay" class="ghost" type="button" aria-label="Replay">↻</button>
+    <div class="panel tabbed reveal" data-tabs>
+      <div class="tabbar" role="tablist">
+        <button type="button" role="tab" data-tab="funnel" class="on" aria-selected="true">The funnel</button>
+        <button type="button" role="tab" data-tab="checks" aria-selected="false">The four checks</button>
+        <button type="button" role="tab" data-tab="shipped" aria-selected="false">What shipped</button>
+        <button type="button" role="tab" data-tab="measured" aria-selected="false">How it was measured</button>
       </div>
-    </div>
-    <div class="checks">
-      <article class="check reveal"><canvas data-kind="compile" aria-hidden="true"></canvas><span class="n">Check 1</span><h4>Compiles</h4><p>Built in a CPU process pool, off the GPU’s critical path, and cached by source.</p></article>
-      <article class="check reveal" style="--d:.06s"><canvas data-kind="eager" aria-hidden="true"></canvas><span class="n">Check 2</span><h4>Matches eager</h4><p>Outputs and gradients against PyTorch eager, on common shapes plus one it has never seen.</p></article>
-      <article class="check reveal" style="--d:.12s"><canvas data-kind="alone" aria-hidden="true"></canvas><span class="n">Check 3</span><h4>Faster alone</h4><p>Re-timed against the current best in the same session. Inputs rotate, so it can’t memorize.</p></article>
-      <article class="check reveal" style="--d:.18s"><canvas data-kind="step" aria-hidden="true"></canvas><span class="n">Check 4</span><h4>Faster in the step</h4><p>Timed inside a real training step, interleaved with the incumbent. Within noise counts as no.</p></article>
-    </div>
-    <p class="cheat reveal">
-      <svg viewBox="0 0 24 28" aria-hidden="true"><path d="M12 1 2 5v8c0 6.3 4.2 11.6 10 13.9C17.8 24.6 22 19.3 22 13V5z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m7.5 13.5 3 3 6-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span>The checks are tested too: two planted cheating kernels, one that caches its outputs and one that hard-codes shapes, go through them before every run. If either passes, the run aborts.</span>
-    </p>
-    <div class="shipped">
-      <div class="lineage reveal">
-        <h3>What shipped</h3>
+      <div class="pane funnel" data-pane="funnel" role="tabpanel">
+        <ol class="stages" id="stages"></ol>
+        <svg id="funnel-svg" aria-hidden="true"></svg>
+        <div class="funnel-foot">
+          <div class="legend"><span><i style="background:#6b6b75"></i>didn’t finish</span><span><i style="background:#ef7a6d"></i>failed a check</span><span><i style="background:#f2b560"></i>correct, not faster</span><span><i style="background:#8b97ff"></i>kept</span></div>
+          <button id="k-replay" class="ghost" type="button" aria-label="Replay">↻</button>
+        </div>
+      </div>
+      <div class="pane" data-pane="checks" role="tabpanel" hidden>
+        <div class="checks">
+          <article class="check"><canvas data-kind="compile" aria-hidden="true"></canvas><span class="n">Check 1</span><h4>Compiles</h4><p>Built in a CPU process pool, off the GPU’s critical path, and cached by source.</p></article>
+          <article class="check"><canvas data-kind="eager" aria-hidden="true"></canvas><span class="n">Check 2</span><h4>Matches eager</h4><p>Outputs and gradients against PyTorch eager, on common shapes plus one it has never seen.</p></article>
+          <article class="check"><canvas data-kind="alone" aria-hidden="true"></canvas><span class="n">Check 3</span><h4>Faster alone</h4><p>Re-timed against the current best in the same session. Inputs rotate, so it can’t memorize.</p></article>
+          <article class="check"><canvas data-kind="step" aria-hidden="true"></canvas><span class="n">Check 4</span><h4>Faster in the step</h4><p>Timed inside a real training step, interleaved with the incumbent. Within noise counts as no.</p></article>
+        </div>
+        <p class="cheat">
+          <svg viewBox="0 0 24 28" aria-hidden="true"><path d="M12 1 2 5v8c0 6.3 4.2 11.6 10 13.9C17.8 24.6 22 19.3 22 13V5z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m7.5 13.5 3 3 6-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>The checks are tested too: two planted cheating kernels, one that caches its outputs and one that hard-codes shapes, go through them before every run. If either passes, the run aborts.</span>
+        </p>
+      </div>
+      <div class="pane lineage" data-pane="shipped" role="tabpanel" hidden>
         <ol id="k-lineage"></ol>
         <div class="chips" id="k-chips"></div>
         <p class="fine" id="k-fine"></p>
       </div>
-      <div class="blocks reveal"><h3>How the final number was measured</h3><svg id="blocks-svg" role="img"></svg><p id="blocks-cap"></p></div>
+      <div class="pane blocks" data-pane="measured" role="tabpanel" hidden>
+        <svg id="blocks-svg" role="img"></svg>
+        <p id="blocks-cap"></p>
+      </div>
     </div>
   </div>
 </section>
@@ -119,7 +139,7 @@
   <div class="wrap">
     <div class="sec-head reveal">
       <h2>Use the model you trust.</h2>
-      <p class="sub">Planner, sub-agents and curator can each run a different model: W&amp;B Inference, Claude or ChatGPT Oauth, or api. </p>
+      <p class="sub">Planner, sub-agents and curator can each run a different model: W&amp;B Inference, a Claude or ChatGPT login, or an API key.</p>
     </div>
   </div>
   <div class="carousel reveal" id="carousel" aria-label="Supported models"></div>
@@ -135,20 +155,17 @@
   </div>
 </section>
 
-<section class="final">
-  <canvas id="orb" aria-hidden="true"></canvas>
-  <div class="wrap reveal">
-    <h2>Point it at your repo.</h2>
-    <form class="repo" novalidate>
-      <label class="sr-only" for="repo-final">Repository URL</label>
-      <div class="field">
-        <span class="glyph" aria-hidden="true">↳</span>
-        <input id="repo-final" type="text" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="github.com/you/your-training-repo">
-        <select aria-label="What to optimize"><option>Architecture</option><option selected>Kernels</option><option>Both</option></select>
-        <button type="submit" aria-label="Start">→</button>
-      </div>
-      <p class="note" role="status"></p>
-    </form>
+<section class="sec final" id="repos">
+  <div class="wrap">
+    <div class="sec-head center reveal">
+      <h2>Point it at your repo.</h2>
+      <p class="sub">Filled nodes are measured runs. Outlined ones are open PyTorch training repos it hasn’t run yet.</p>
+    </div>
+  </div>
+  <div class="web reveal" id="web">
+    <canvas id="web-canvas" aria-hidden="true"></canvas>
+    <div id="web-nodes"></div>
+    <button class="hub" id="hub" type="button" aria-label="Your repo: go to the search box"><i aria-hidden="true"></i><span>Your repo</span></button>
   </div>
 </section>
 

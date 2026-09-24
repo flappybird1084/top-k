@@ -137,7 +137,6 @@ svg text{font-family:var(--mono)}
 
 /* Final */
 .final{position:relative;padding:90px 0 120px;text-align:center;background:radial-gradient(55% 60% at 50% 38%,rgba(139,151,255,.08),transparent 70%)}
-#orb{display:block;width:min(420px,78vw);height:min(420px,78vw);margin:0 auto 6px}
 .final h2{margin-bottom:34px}
 .foot{border-top:1px solid var(--line);padding:26px 0;color:var(--faint);font-size:13px}
 .foot .wrap{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}
@@ -305,4 +304,69 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   .step.last::before{background:var(--accent);box-shadow:0 0 14px rgba(139,151,255,.85)}
   #blocks-svg .stem{transform:none;transition:none}
   #blocks-svg .pt{opacity:1;transition:none}
+}
+
+/* ================= v4: tabs, raw-loss chart, repo web ================= */
+/* Tabbed panels: one view at first glance, the rest a click away */
+.tabbed{padding:0;overflow:hidden}
+.tabbar{display:flex;gap:2px;padding:0 12px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
+.tabbar::-webkit-scrollbar{display:none}
+.tabbar button{position:relative;flex:none;border:0;background:none;color:var(--faint);font:13px var(--sans);padding:15px 12px 14px;cursor:pointer;transition:color .2s}
+.tabbar button:hover{color:var(--muted)}
+.tabbar button.on{color:var(--ink)}
+.tabbar button::after{content:"";position:absolute;left:12px;right:12px;bottom:-1px;height:2px;border-radius:2px;background:var(--accent);transform:scaleX(0);transition:transform .25s ease}
+.tabbar button.on::after{transform:scaleX(1)}
+.pane{padding:14px 18px 18px;animation:pane-in .35s ease}
+@keyframes pane-in{from{opacity:0;transform:translateY(4px)}}
+.tabbed .pane.funnel{border:0;border-radius:0;background:none;padding:26px 18px 14px}
+.pane.lineage,.pane.blocks{padding:26px 26px 24px}
+.pane.blocks #blocks-svg{max-width:640px}
+.pane-note{margin:6px 0 16px;color:var(--muted);font-size:14px}
+.crashes{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.crashes li{display:flex;gap:16px;align-items:baseline;padding:10px 12px;border:1px solid rgba(239,122,109,.14);background:rgba(239,122,109,.05);border-radius:10px;cursor:default}
+.crashes .g{flex:none;min-width:92px;font:11px var(--mono);color:var(--faint)}
+.crashes code{min-height:1.5em;font:12.5px/1.5 var(--mono);color:#eba399;overflow-wrap:anywhere}
+
+/* Raw-loss chart: the baseline at each training budget, as a staircase */
+.stair-line{fill:none;stroke:var(--muted);stroke-width:1.2;stroke-dasharray:5 5;opacity:.55}
+.stair-lab{fill:var(--muted);font-size:10.5px}
+
+/* Repos web */
+.final{padding:140px 0 60px;background:radial-gradient(50% 55% at 50% 64%,rgba(139,151,255,.07),transparent 70%)}
+.sec-head.center{text-align:center;margin:0 auto 8px}
+.sec-head.center .sub{max-width:600px;margin-left:auto;margin-right:auto}
+.web{position:relative;height:min(600px,80vw);min-height:420px;overflow:hidden}
+#web-canvas{position:absolute;inset:0;display:block;width:100%;height:100%}
+#web-nodes{position:absolute;inset:0}
+.rnode{position:absolute;left:0;top:0;display:flex;flex-direction:column;align-items:center;gap:7px;padding:6px;border:0;background:none;color:var(--muted);font:12px var(--mono);cursor:pointer;will-change:transform,opacity}
+.rnode i{width:11px;height:11px;border-radius:50%;border:1.4px solid #6f6f7a;background:var(--bg);transition:border-color .2s}
+.rnode span{white-space:nowrap;transition:color .2s}
+.rnode:hover span,.rnode:focus-visible span{color:var(--ink)}
+.rnode:hover i{border-color:var(--ink)}
+.rnode.run{color:var(--ink)}
+.rnode.run i{width:15px;height:15px;border:0;background:var(--accent);box-shadow:0 0 0 4px rgba(139,151,255,.14),0 0 18px rgba(139,151,255,.7)}
+.hub{position:absolute;left:50%;top:50%;z-index:300;display:grid;place-items:center;width:112px;height:112px;transform:translate(-50%,-50%);border:1px solid rgba(196,202,255,.45);border-radius:50%;background:radial-gradient(circle at 50% 35%,#20234a,#101126);color:var(--ink);font:400 17px var(--serif);cursor:pointer;box-shadow:0 0 0 10px rgba(139,151,255,.05),0 0 60px rgba(139,151,255,.25);transition:border-color .2s}
+.hub:hover{border-color:var(--accent-2)}
+.hub span{position:relative;z-index:1;white-space:nowrap}
+.hub i{position:absolute;inset:0;border-radius:50%;background:#15172e;opacity:0;transform:scale(1);transition:transform .65s cubic-bezier(.6,0,.3,1),opacity .3s}
+.hub::after{content:"";position:absolute;inset:-10px;border-radius:50%;border:1px solid rgba(139,151,255,.35);animation:hub-pulse 2.8s ease-out infinite;pointer-events:none}
+@keyframes hub-pulse{0%{transform:scale(.9);opacity:.8}100%{transform:scale(1.5);opacity:0}}
+.web.expanding .hub i{opacity:1;transform:scale(18)}
+.web.expanding .rnode{opacity:0!important;transition:opacity .3s}
+
+@media(max-width:700px){
+  .pane[data-pane="cands"]{overflow-x:auto}
+  .web{height:460px}
+  .hub{width:92px;height:92px;font-size:15px}
+  .rnode{font-size:11px}
+  .crashes li{flex-direction:column;gap:4px}
+}
+@media(prefers-reduced-motion:reduce){
+  .pane{animation:none}
+  .hub::after{animation:none}
+}
+@media(max-width:560px){
+  .hub{width:72px;height:72px;font-size:13px}
+  .rnode{font-size:10.5px;gap:5px}
+  .rnode:not(.run) span{display:none}
 }
