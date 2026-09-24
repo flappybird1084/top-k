@@ -122,6 +122,8 @@ class OpenAILLM(BaseLLM):
 
     def complete(self, messages, *, json_mode=False, tools=None, meta=None) -> Response:
         kwargs = dict(model=self.model, messages=messages)
+        if self.provider == "wandb":
+            kwargs["max_tokens"] = self.max_tokens
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
         resp = self.client.chat.completions.create(**kwargs)
