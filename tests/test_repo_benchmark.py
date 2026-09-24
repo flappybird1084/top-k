@@ -117,8 +117,9 @@ def test_molab_retry_refuses_a_still_running_gpu_job():
 @pytest.mark.parametrize("dispatch_rc, completed_remote, expected_count", [
     (0, False, 2), (1, False, 1), (1, True, 2),
 ])
+@pytest.mark.parametrize("mode", ["kernel", "recipe"])
 def test_molab_runner_records_failure_and_continues_sequentially(
-        tmp_path, monkeypatch, dispatch_rc, completed_remote, expected_count):
+        tmp_path, monkeypatch, dispatch_rc, completed_remote, expected_count, mode):
     import json
     import sys
     from scripts import run_molab_benchmark
@@ -140,7 +141,7 @@ def test_molab_runner_records_failure_and_continues_sequentially(
             pass
 
         def dispatch(self, job, root, env, log, artifacts_dir):
-            dispatched.append(job["repo"])
+            dispatched.append(job)
             if completed_remote:
                 log(f"[molab] remote run finished with exit {dispatch_rc}")
             return dispatch_rc
@@ -152,10 +153,17 @@ def test_molab_runner_records_failure_and_continues_sequentially(
     monkeypatch.setattr(sys, "argv", ["run_molab_benchmark.py", "--manifest", str(manifest),
                                       "--output", str(output), "--secrets", str(secrets),
                                       "--token-file", str(token), "--notebook-url",
-                                      "https://example.invalid", "--end", "2"])
+                                      "https://example.invalid", "--end", "2",
+                                      "--mode", mode])
 
     assert run_molab_benchmark.main() == 1
     assert len(dispatched) == expected_count
+    assert all(job["mode"] == mode for job in dispatched)
+    if mode == "recipe":
+        assert all(job["recipe"]["phases"][0]["kind"] == "architecture"
+                   for job in dispatched)
+    else:
+        assert all("recipe" not in job for job in dispatched)
     assert json.loads((output / "one__train" / "state.json").read_text())["status"] == "failed"
     if expected_count == 2:
         assert json.loads((output / "two__train" / "state.json").read_text())[

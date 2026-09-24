@@ -34,6 +34,17 @@ WORKLOAD_GUIDANCE = {
         "Choose a small timm Vision Transformer for classification so its "
         "LayerNorm and MLP blocks are part of the measured training step.",
 }
+RECIPE_BENCHMARK = {
+    "phases": [
+        {"kind": "architecture", "generations": 1, "candidates": 2,
+         "train_seconds": 60},
+        {"kind": "hyperparam", "generations": 1, "candidates": 2,
+         "train_seconds": 60},
+    ],
+    "finals_top_k": 1,
+    "finals_train_seconds": 120,
+    "subagent_parallelism": 1,
+}
 
 
 def save(path: Path, data: dict) -> None:
@@ -64,6 +75,7 @@ def main() -> int:
     ap.add_argument("--token-file", type=Path, required=True)
     ap.add_argument("--notebook-url", required=True)
     ap.add_argument("--model", default="Qwen/Qwen3-235B-A22B-Instruct-2507")
+    ap.add_argument("--mode", choices=("kernel", "recipe"), default="kernel")
     ap.add_argument("--profile", choices=("DEV", "RUN"), default="DEV")
     ap.add_argument("--generations", type=int, default=2)
     ap.add_argument("--spend-cap", type=float, default=3.0)
@@ -78,7 +90,7 @@ def main() -> int:
     selected = rows[args.start - 1:args.end]
     if args.plan:
         for index, row in enumerate(selected, args.start):
-            print(f"{index:02d} {row['repo']} {row['sha']} wandb:{args.model}")
+            print(f"{index:02d} {row['repo']} {row['sha']} {args.mode} wandb:{args.model}")
         return 0
 
     if args.wait_for:
@@ -110,7 +122,9 @@ def main() -> int:
         expected = {"index": index, "repo": row["repo"], "source_sha": row["sha"],
                     "workload": row["model"], "llm": f"wandb:{args.model}",
                     "profile": args.profile, "generations": args.generations,
-                    "spend_cap_usd": args.spend_cap, "execution_target": "molab"}
+                    "spend_cap_usd": args.spend_cap, "execution_target": "molab",
+                    "mode": args.mode,
+                    "recipe": RECIPE_BENCHMARK if args.mode == "recipe" else None}
         if state_path.exists():
             old = json.loads(state_path.read_text())
             if any(old.get(key) != value for key, value in expected.items()):
@@ -140,13 +154,17 @@ def main() -> int:
                            f"{WORKLOAD_GUIDANCE.get(row['repo'], '')}",
                "max_debug_turns": 8, "profile": args.profile,
                "llm": f"wandb:{args.model}", "max_generations": args.generations,
-               "spend_cap": args.spend_cap, "mode": "kernel",
+               "spend_cap": args.spend_cap, "mode": args.mode,
                "execution_target": "molab"}
+        if args.mode == "recipe":
+            job["recipe"] = RECIPE_BENCHMARK
         save(attempt_dir / "job.json", job)
         state = {**expected, "status": "running", "attempt": attempt,
                  "started_at": time.time(), "job_id": job["id"],
                  "data_source": "deterministic synthetic batches",
-                 "timing_scope": "full training step including host-to-GPU transfer"}
+                 "timing_scope": ("fixed wall-clock training budget; held-out validation loss"
+                                  if args.mode == "recipe" else
+                                  "full training step including host-to-GPU transfer")}
         save(state_path, state)
         log_path = attempt_dir / "dispatch.log"
         with log_path.open("w", buffering=1) as log:
@@ -156,7 +174,8 @@ def main() -> int:
 
             write_line(f"[benchmark] {index:02d}/{len(rows)} repo={row['repo']} "
                        f"source_sha={row['sha']} llm={job['llm']} "
-                       f"generations={args.generations} spend_cap_usd={args.spend_cap}")
+                       f"mode={args.mode} generations={args.generations} "
+                       f"spend_cap_usd={args.spend_cap}")
             try:
                 rc = MolabTarget(connection).dispatch(
                     job, str(ROOT), remote_env, write_line,
@@ -166,7 +185,7 @@ def main() -> int:
                 rc = 1
         archive = attempt_dir / "artifacts/archive.sqlite"
         try:
-            state["result"] = archive_result(archive, "kernel")
+            state["result"] = archive_result(archive, args.mode)
         except Exception as exc:
             state["result"] = {"measured": False, "reason": f"archive unreadable: {exc}"}
         state.update(exit_code=rc,
