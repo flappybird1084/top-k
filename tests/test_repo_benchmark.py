@@ -53,10 +53,31 @@ def test_recipe_result_handles_zero_baseline_loss(tmp_path):
         db.execute("CREATE TABLE candidates (phase TEXT, val_loss REAL, "
                    "train_secs REAL, accepted INT)")
         db.execute("INSERT INTO candidates VALUES ('baseline', 0, 10, 1)")
+        db.execute("INSERT INTO candidates VALUES ('architecture', 0, 10, 0)")
         db.execute("INSERT INTO candidates VALUES ('finals', 0, 10, 1)")
     result = benchmark.archive_result(path, "recipe")
     assert result["measured"]
     assert "improvement_pct" not in result
+
+
+def test_recipe_result_requires_architecture_and_final_measurement(tmp_path):
+    path = tmp_path / "recipe.sqlite"
+    with sqlite3.connect(path) as db:
+        db.execute("CREATE TABLE candidates (phase TEXT, val_loss REAL, "
+                   "train_secs REAL, accepted INT)")
+        db.execute("INSERT INTO candidates VALUES ('baseline', 1.0, 120, 1)")
+    assert benchmark.archive_result(path, "recipe")["reason"] == \
+        "no architecture candidate measurement"
+    with sqlite3.connect(path) as db:
+        db.execute("INSERT INTO candidates VALUES ('architecture', 0.9, 60, 1)")
+    assert benchmark.archive_result(path, "recipe")["reason"] == \
+        "no final candidate measurement"
+    with sqlite3.connect(path) as db:
+        db.execute("INSERT INTO candidates VALUES ('finals', 1.1, 120, 0)")
+    result = benchmark.archive_result(path, "recipe")
+    assert result["measured"] and result["accepted"] == 0
+    assert result["candidate_val_loss"] == 1.1
+    assert result["improvement_pct"] == -10.0
 
 
 def test_manifest_rejects_duplicate_and_non_github_identifier(tmp_path):

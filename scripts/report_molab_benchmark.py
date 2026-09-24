@@ -53,6 +53,7 @@ def collect(manifest: Path, output: Path, mode: str = "kernel") -> dict:
             "pending": sum(r["status"] == "pending" for r in results),
             "measured": sum(bool((r.get("result") or {}).get("measured")) for r in results),
             "improved": sum(r["status"] == "done" and
+                            (r.get("result") or {}).get("accepted", 0) > 0 and
                             (r.get("result") or {}).get("improvement_pct", 0) > 0
                             for r in results),
             "results": results}
@@ -112,7 +113,7 @@ def publish(report: dict, manifest: Path, evidence_path: Path) -> str:
                          row["status"], bool(metric.get("measured")),
                          metric.get("accepted"),
                          metric.get("baseline_ms", metric.get("baseline_val_loss")),
-                         metric.get("candidate_ms", metric.get("winner_val_loss")),
+                         metric.get("candidate_ms", metric.get("candidate_val_loss")),
                          metric.get("improvement_pct"),
                          row.get("reason", metric.get("reason")),
                          row.get("data_source"), row.get("timing_scope")])

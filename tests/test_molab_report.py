@@ -19,7 +19,7 @@ def test_report_preserves_full_denominator_and_measured_outcomes(tmp_path):
     (first / "state.json").write_text(json.dumps({
         "index": 1, "repo": "one/train", "source_sha": "a" * 40,
         "status": "done", "llm": "wandb:Qwen/test",
-        "result": {"measured": True, "improvement_pct": 7.5},
+        "result": {"measured": True, "accepted": 1, "improvement_pct": 7.5},
     }))
     second = output / "two__train"
     second.mkdir()
@@ -85,7 +85,7 @@ def test_recipe_report_preserves_loss_evidence_and_mode(tmp_path):
         "index": 1, "repo": "one/train", "source_sha": "a" * 40,
         "mode": "recipe", "status": "done", "attempt": 1,
         "llm": "wandb:Qwen/test",
-        "result": {"measured": True, "baseline_val_loss": 1.2,
+        "result": {"measured": True, "accepted": 1, "baseline_val_loss": 1.2,
                    "winner_val_loss": 1.0, "improvement_pct": 16.667},
     }))
     archive = run / "attempt-1" / "artifacts" / "archive.sqlite"

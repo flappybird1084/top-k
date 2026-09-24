@@ -179,21 +179,32 @@ def archive_result(path: Path, mode: str) -> dict:
         baseline = db.execute(
             "SELECT val_loss, train_secs FROM candidates WHERE phase='baseline' "
             "ORDER BY train_secs DESC LIMIT 1").fetchone()
-        winner = db.execute(
-            "SELECT val_loss, train_secs FROM candidates WHERE phase='finals' "
-            "AND accepted=1 ORDER BY val_loss LIMIT 1").fetchone()
+        architecture = db.execute(
+            "SELECT 1 FROM candidates WHERE phase='architecture' "
+            "AND val_loss IS NOT NULL LIMIT 1").fetchone()
+        finalist = db.execute(
+            "SELECT val_loss, train_secs, accepted FROM candidates WHERE phase='finals' "
+            "AND val_loss IS NOT NULL ORDER BY val_loss LIMIT 1").fetchone()
         if not baseline or baseline["val_loss"] is None:
             return {"measured": False, "reason": "no baseline final"}
+        if not architecture:
+            return {"measured": False, "baseline_val_loss": baseline["val_loss"],
+                    "reason": "no architecture candidate measurement"}
+        if not finalist:
+            return {"measured": False, "baseline_val_loss": baseline["val_loss"],
+                    "reason": "no final candidate measurement"}
         result = {"measured": True, "baseline_val_loss": baseline["val_loss"],
-                  "final_budget_s": baseline["train_secs"], "accepted": int(bool(winner))}
-        if winner and baseline["val_loss"] > 0:
-            result["winner_val_loss"] = winner["val_loss"]
+                  "final_budget_s": baseline["train_secs"],
+                  "accepted": int(bool(finalist["accepted"])),
+                  "candidate_val_loss": finalist["val_loss"]}
+        if baseline["val_loss"] > 0:
             result["improvement_pct"] = round(
-                100 * (baseline["val_loss"] - winner["val_loss"]) /
+                100 * (baseline["val_loss"] - finalist["val_loss"]) /
                 baseline["val_loss"], 3)
-        elif winner:
-            result["winner_val_loss"] = winner["val_loss"]
+        else:
             result["reason"] = "baseline validation loss is not positive"
+        if finalist["accepted"]:
+            result["winner_val_loss"] = finalist["val_loss"]
         return result
 
 
@@ -310,7 +321,7 @@ def publish_summary(results: list[dict], args) -> str:
                          result.get("llm"), result.get("status"),
                          metric.get("measured", False), metric.get("accepted"),
                          metric.get("baseline_ms", metric.get("baseline_val_loss")),
-                         metric.get("candidate_ms", metric.get("winner_val_loss")),
+                         metric.get("candidate_ms", metric.get("candidate_val_loss")),
                          metric.get("improvement_pct"),
                          result.get("reason", metric.get("reason")),
                          result.get("wandb_url")])
@@ -321,6 +332,7 @@ def publish_summary(results: list[dict], args) -> str:
         run.summary["measured"] = sum(bool((r.get("result") or {}).get("measured"))
                                       for r in results)
         run.summary["improved"] = sum(r.get("status") == "done" and
+                                      (r.get("result") or {}).get("accepted", 0) > 0 and
                                       (r.get("result") or {}).get("improvement_pct", 0) > 0
                                       for r in results)
         return run.url
