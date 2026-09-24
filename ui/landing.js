@@ -621,6 +621,26 @@
       bindTip(el, () => `<div class="h">#${c.id} · ${GEN[c.gen]}</div>${esc(c.strategy)}`);
       host.appendChild(el);
     });
+
+    // Light up each circle as the glide dot reaches it; the last one stays lit
+    // until the loop resets, since there's no next circle to hand off to.
+    const glide = host.querySelector('.glide'), steps = [...host.querySelectorAll('.step')];
+    if (glide && steps.length && !reduce) {
+      let offsets = steps.map(s => s.offsetLeft), raf = 0, vis = false;
+      addEventListener('resize', () => { offsets = steps.map(s => s.offsetLeft); });
+      const frame = () => {
+        if (getComputedStyle(glide).display === 'none') {
+          steps.forEach(s => s.classList.remove('lit'));
+        } else {
+          const x = parseFloat(getComputedStyle(glide).left) || 0;
+          let idx = -1;
+          for (let i = 0; i < offsets.length; i++) if (x >= offsets[i] - 2) idx = i;
+          steps.forEach((s, i) => s.classList.toggle('lit', i === idx));
+        }
+        raf = vis ? requestAnimationFrame(frame) : 0;
+      };
+      watch(host, v => { vis = v; if (v && !raf) raf = requestAnimationFrame(frame); });
+    }
   })();
 
   /* 03: a small looping picture for each check */
@@ -727,8 +747,8 @@
     const MODELS = [
       { img: 'assets/agent-claude.png', name: 'Claude', via: 'Anthropic API or Claude login' },
       { img: 'assets/agent-gpt.png', name: 'GPT', via: 'OpenAI API or ChatGPT login' },
-      { mono: 'K2', name: 'Kimi K2.7', via: 'W&B Inference · the run above' },
-      { mono: 'V4', name: 'DeepSeek V4 Flash', via: 'W&B Inference · default' },
+      { img: 'assets/agent-kimi.png', name: 'Kimi K2.7', via: 'W&B Inference · the run above' },
+      { img: 'assets/agent-deepseek.png', name: 'DeepSeek V4 Flash', via: 'W&B Inference · default' },
       { img: 'assets/agent-glm.png', name: 'GLM', via: 'W&B Inference' },
     ];
     const tiles = MODELS.map(m => {
@@ -738,9 +758,8 @@
       stage.appendChild(el);
       return el;
     });
-    let a = 0, raf = 0, vis = false, last = 0, hover = false, drag = null;
-    stage.addEventListener('pointerenter', () => { hover = true; });
-    stage.addEventListener('pointerleave', () => { hover = false; drag = null; });
+    let a = 0, raf = 0, vis = false, last = 0, drag = null;
+    stage.addEventListener('pointerleave', () => { drag = null; });
     stage.addEventListener('pointerdown', e => { drag = { x: e.clientX, a }; });
     addEventListener('pointerup', () => { drag = null; });
     stage.addEventListener('pointermove', e => { if (drag) { a = drag.a + (e.clientX - drag.x) / 260; place(); } });
@@ -756,7 +775,7 @@
     }
     const frame = now => {
       const dt = Math.min(.05, (now - last) / 1000); last = now;
-      if (!hover && !drag) a += dt * .22;
+      if (!drag) a += dt * .22;
       place();
       raf = vis ? requestAnimationFrame(frame) : 0;
     };

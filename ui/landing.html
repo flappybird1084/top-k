@@ -25,7 +25,7 @@
 <header class="hero" id="hero">
   <canvas id="gates" aria-hidden="true"></canvas>
   <div class="hero-inner">
-    <h1 class="reveal">Evolve the training recipe.<br><em>Not just the kernels.</em></h1>
+    <h1 class="reveal">Evolve the whole training loop.<br><em>Not just the kernels.</em></h1>
     <p class="lede reveal" style="--d:.1s">Paste a PyTorch repo. Agents evolve its architecture and kernels, and only what measurably wins survives.</p>
     <form class="repo reveal" style="--d:.2s" novalidate>
       <label class="sr-only" for="repo-hero">Repository URL</label>
@@ -48,9 +48,8 @@
 <section class="sec" id="loop">
   <div class="wrap">
     <div class="sec-head reveal">
-      <p class="kicker">01 · How it works</p>
       <h2>One generation, as it actually ran.</h2>
-      <p class="sub">Real timings from the 481M run. A planner proposes, eight sub-agents write in parallel, the GPU trains and scores, and a curator notes what worked for the next round.</p>
+      <p class="sub"> A planner proposes, eight sub-agents write in parallel, the GPU trains and scores, and a curator notes what worked for the next round.</p>
     </div>
     <figure class="panel tl reveal">
       <div class="tl-bar">
@@ -65,9 +64,8 @@
 <section class="sec" id="arch">
   <div class="wrap">
     <div class="sec-head reveal">
-      <p class="kicker">02 · Architecture search</p>
       <h2>Every candidate from that run.</h2>
-      <p class="sub">24 proposals across three generations, each trained exactly as long as the baseline. Hover any point to see what an agent tried.</p>
+      <p class="sub">24 proposals across three generations; hover any point to see what an agent tried.</p>
     </div>
     <figure class="chart reveal">
       <div class="chart-bar"><span id="arch-readout">&nbsp;</span><button id="arch-replay" class="ghost" type="button" aria-label="Replay">↻</button></div>
@@ -84,7 +82,6 @@
 <section class="sec" id="kernels">
   <div class="wrap">
     <div class="sec-head reveal">
-      <p class="kicker">03 · Kernel search</p>
       <h2><span id="k-rejected">35</span> of <span id="k-total">37</span> kernels didn’t make it.</h2>
       <p class="sub">A 21.6M-parameter language model and five generations of Triton kernels. Every check is plain code, cheapest first. No model grades its own work.</p>
     </div>
@@ -121,9 +118,8 @@
 <section class="sec" id="models">
   <div class="wrap">
     <div class="sec-head reveal">
-      <p class="kicker">04 · Models</p>
       <h2>Use the model you trust.</h2>
-      <p class="sub">Planner, sub-agents and curator can each run a different model: an API key, a Claude or ChatGPT login, or a model on W&amp;B Inference.</p>
+      <p class="sub">Planner, sub-agents and curator can each run a different model: W&amp;B Inference, Claude or ChatGPT Oauth, or api. </p>
     </div>
   </div>
   <div class="carousel reveal" id="carousel" aria-label="Supported models"></div>
@@ -131,37 +127,10 @@
 
 <section class="sec" id="stack">
   <div class="wrap">
-    <div class="sec-head reveal">
-      <p class="kicker">05 · Your stack</p>
-      <h2>Your GPU. Your W&amp;B. Your code.</h2>
-    </div>
     <div class="cards">
-      <article class="card reveal"><img src="assets/marimo-sprite.png" alt=""><h3>Your GPU</h3><p>Runs in a marimo notebook you own. Top-K drives it remotely.</p></article>
-      <article class="card reveal" style="--d:.08s"><img src="assets/wandb-sprite.png" alt=""><h3>Your W&amp;B</h3><p>Every metric, candidate and agent trace lands in your project.</p></article>
-      <article class="card reveal" style="--d:.16s"><span class="glyph-lg" aria-hidden="true">↳</span><h3>Your code</h3><p>Any PyTorch repo. An agent writes the adapter and must show it runs first.</p></article>
-    </div>
-  </div>
-</section>
-
-<section class="sec" id="scope">
-  <div class="wrap">
-    <div class="sec-head reveal">
-      <p class="kicker">06 · Scope</p>
-      <h2>What it does, and what it won’t.</h2>
-    </div>
-    <div class="scope">
-      <div class="reveal"><h3>Does</h3><ul>
-        <li>Times one full training step, every time: forward, loss, backward, optimizer.</li>
-        <li>Writes Triton kernels for ops PyTorch’s compiler already turns into Triton.</li>
-        <li>Evolves architecture, optimizer and hyperparameters under a fixed time budget and a parameter cap.</li>
-        <li>Runs on one GPU, yours.</li>
-      </ul></div>
-      <div class="no reveal" style="--d:.08s"><h3>Won’t</h3><ul>
-        <li>Let a candidate touch the loss, data or eval code. The harness owns them.</li>
-        <li>Rewrite attention, convolution or embedding kernels.</li>
-        <li>Grade its own work. Every check is deterministic code.</li>
-        <li>Run multi-GPU or inference-only jobs.</li>
-      </ul></div>
+      <article class="card reveal"><div class="card-head"><h3>Your GPU</h3><img src="assets/marimo-sprite.png" alt=""></div><p>Runs in a marimo notebook you own. Top-K drives it remotely.</p></article>
+      <article class="card reveal" style="--d:.08s"><div class="card-head"><h3>Your W&amp;B</h3><img src="assets/wandb-sprite.png" alt=""></div><p>Every metric, candidate and agent trace lands in your project.</p></article>
+      <article class="card reveal" style="--d:.16s"><div class="card-head"><h3>Your code</h3><span class="glyph-lg" aria-hidden="true"><img src="assets/github-mark.png" alt=""></span></div><p>Any PyTorch repo. An agent writes the adapter and must show it runs first.</p></article>
     </div>
   </div>
 </section>
