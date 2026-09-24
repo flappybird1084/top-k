@@ -2,6 +2,7 @@
 
 import importlib.util
 import http.client
+import io
 import json
 import os
 import sqlite3
@@ -10,6 +11,7 @@ import sys
 import time
 import types
 import urllib.request
+import urllib.error
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -123,6 +125,32 @@ def test_inference_relay_limits_model_and_keeps_upstream_key(monkeypatch):
     assert seen == ["Bearer private-key"]
     assert relay.calls == 1
     assert relay.spent_usd > 0
+
+
+def test_inference_relay_marks_provider_credit_error(monkeypatch):
+    from scripts.inference_proxy import InferenceRelay
+
+    monkeypatch.setenv("WANDB_API_KEY", "private-key")
+    monkeypatch.setenv("WANDB_ENTITY", "team")
+    monkeypatch.setenv("WANDB_PROJECT", "benchmark")
+
+    def fake_urlopen(request, timeout):
+        raise urllib.error.HTTPError(request.full_url, 402, "Payment Required", {},
+                                     io.BytesIO(b'{"error":{"code":"insufficient_quota"}}'))
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    relay = InferenceRelay("deepseek-ai/DeepSeek-V4-Flash-0731", 3.0)
+    with relay.serving() as url:
+        target = urlsplit(url)
+        client = http.client.HTTPConnection(target.hostname, target.port)
+        client.request("POST", "/v1/chat/completions", body=json.dumps({
+            "model": relay.model, "max_tokens": 100, "messages": []}),
+            headers={"Content-Type": "application/json"})
+        response = client.getresponse()
+        assert response.status == 402
+        response.read()
+        client.close()
+    assert relay.credits_exhausted
 
 
 @pytest.mark.skipif(os.name == "nt" or not Path("/proc").exists(),
