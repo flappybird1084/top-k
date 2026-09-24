@@ -114,7 +114,9 @@ def test_molab_retry_refuses_a_still_running_gpu_job():
     assert previous_job_finished(client, "12345678" + "a" * 24)
 
 
-def test_molab_runner_records_failure_and_continues_sequentially(tmp_path, monkeypatch):
+@pytest.mark.parametrize("dispatch_rc, expected_count", [(0, 2), (1, 1)])
+def test_molab_runner_records_failure_and_continues_sequentially(
+        tmp_path, monkeypatch, dispatch_rc, expected_count):
     import json
     import sys
     from scripts import run_molab_benchmark
@@ -137,7 +139,7 @@ def test_molab_runner_records_failure_and_continues_sequentially(tmp_path, monke
 
         def dispatch(self, job, root, env, log, artifacts_dir):
             dispatched.append(job["repo"])
-            return 0  # no measured candidate: ordinary failure
+            return dispatch_rc  # rc=1 before completion marker is infrastructure failure
 
     monkeypatch.setattr(run_molab_benchmark, "MolabTarget", Target)
     monkeypatch.setattr(run_molab_benchmark, "MolabClient", lambda *args: object())
@@ -148,10 +150,28 @@ def test_molab_runner_records_failure_and_continues_sequentially(tmp_path, monke
                                       "--token-file", str(token), "--notebook-url",
                                       "https://example.invalid", "--end", "2"])
 
-    assert run_molab_benchmark.main() == 0
-    assert len(dispatched) == 2
-    assert all(json.loads((output / repo.replace("/", "__") / "state.json").read_text())
-               ["status"] == "failed" for repo in ("one/train", "two/train"))
+    assert run_molab_benchmark.main() == 1
+    assert len(dispatched) == expected_count
+    assert json.loads((output / "one__train" / "state.json").read_text())["status"] == "failed"
+    if dispatch_rc == 0:
+        assert json.loads((output / "two__train" / "state.json").read_text())[
+            "status"] == "failed"
+    else:
+        assert not (output / "two__train").exists()
+
+
+def test_molab_credit_and_infrastructure_failures_are_stop_conditions():
+    from scripts.run_molab_benchmark import CREDIT_ERROR
+    from kernelevo.wandb_relay import is_credit_error
+
+    assert CREDIT_ERROR.search("Error code: insufficient_quota")
+    assert CREDIT_ERROR.search("You exceeded your current quota")
+    assert CREDIT_ERROR.search("billing limit exceeded")
+    class QuotaError(Exception):
+        status_code = 429
+        body = {"error": {"code": "insufficient_quota"}}
+    assert is_credit_error(QuotaError("request rejected"))
+    assert not is_credit_error(RuntimeError("temporary connection reset"))
 
 
 def test_generated_adapter_receives_nested_batches_on_model_device(tmp_path):

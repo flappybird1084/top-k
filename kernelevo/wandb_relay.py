@@ -1,8 +1,24 @@
 """Serve W&B Inference on EC2 for a Molab run without sending its key to GPU code."""
 
 import os
+import re
 
 from kernelevo.codex_oauth import Relay as FileRelay
+
+
+def is_credit_error(exc: Exception) -> bool:
+    """Recognize W&B quota and billing failures before the relay shortens text."""
+    body = getattr(exc, "body", None)
+    code = getattr(exc, "code", None)
+    if isinstance(body, dict):
+        detail = body.get("error", body)
+        if isinstance(detail, dict):
+            code = code or detail.get("code")
+    message = f"{code or ''} {exc}"
+    return getattr(exc, "status_code", None) == 402 or bool(re.search(
+        r"insufficient[_ ]quota|(?:insufficient|exhausted|out of).*credits|"
+        r"(?:quota|billing).*(?:exceeded|limit|disabled)|"
+        r"exceeded your current quota|payment required", message, re.IGNORECASE))
 
 
 def complete_local(request):
@@ -21,7 +37,12 @@ def complete_local(request):
                   max_tokens=min(int(request.get("max_tokens") or 8192), 8192))
     if request.get("json_mode"):
         params["response_format"] = {"type": "json_object"}
-    result = client.chat.completions.create(**params)
+    try:
+        result = client.chat.completions.create(**params)
+    except Exception as exc:
+        if is_credit_error(exc):
+            raise RuntimeError("W&B Inference credits exhausted or quota exceeded") from exc
+        raise
     text = result.choices[0].message.content or ""
     if not text.strip():
         raise RuntimeError(f"W&B model returned empty text ({result.choices[0].finish_reason})")

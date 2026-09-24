@@ -25,7 +25,9 @@ from kernelevo.molab import MolabClient, MolabTarget  # noqa: E402
 from scripts.run_repo_benchmark import archive_result, manifest_rows  # noqa: E402
 
 CREDIT_ERROR = re.compile(r"(?:insufficient|exhausted|out of).*credits|"
-                          r"credit balance|payment required|HTTP 402|Error code: 402",
+                          r"credit balance|payment required|HTTP 402|Error code: 402|"
+                          r"insufficient[_ ]quota|(?:quota|billing).*(?:exceeded|limit|disabled)|"
+                          r"exceeded your current quota",
                           re.IGNORECASE)
 WORKLOAD_GUIDANCE = {
     "huggingface/pytorch-image-models":
@@ -100,6 +102,7 @@ def main() -> int:
     token = args.token_file.read_text().strip()
     connection = {"notebook_url": args.notebook_url, "connection": "--token " + token}
     client = MolabClient(args.notebook_url, token)
+    had_failures = False
 
     for index, row in enumerate(selected, args.start):
         run_dir = args.output / row["repo"].replace("/", "__")
@@ -169,21 +172,26 @@ def main() -> int:
         state.update(exit_code=rc,
                      status="done" if rc == 0 and state["result"].get("measured") else "failed",
                      finished_at=time.time())
-        state["credits_exhausted"] = bool(CREDIT_ERROR.search(log_path.read_text(errors="replace")))
+        log_text = log_path.read_text(errors="replace")
+        state["credits_exhausted"] = bool(CREDIT_ERROR.search(log_text))
+        infrastructure_failure = (rc != 0 and
+                                  "[molab] remote run finished with exit" not in log_text)
         if state["status"] == "failed":
             state["reason"] = ("W&B Inference credits exhausted" if state["credits_exhausted"]
+                               else "notebook dispatch or infrastructure failed" if infrastructure_failure
                                else state["result"].get("reason") or
                                f"dispatcher exited {rc}; inspect attempt log")
+            had_failures = True
         save(state_path, state)
         print(f"[benchmark] {index:02d} exit={rc} result={state['result']}", flush=True)
-        if state["credits_exhausted"]:
+        if state["credits_exhausted"] or infrastructure_failure:
             return 1
         if state["status"] == "failed" and not previous_job_finished(client, job["id"]):
             print(f"[benchmark] {index:02d} GPU job may still be running; stopping", flush=True)
             return 1
         if state["status"] == "failed":
             print(f"[benchmark] {index:02d} failed; continuing to next repository", flush=True)
-    return 0
+    return int(had_failures)
 
 
 if __name__ == "__main__":
