@@ -1,0 +1,199 @@
+<!doctype html>
+<!-- Landing-page redesign (static prototype). Every animation is driven by real data extracted
+     from assets/recorded-data.js into landing-data.js and landing-timeline.js. The repo form does
+     not start runs yet; wiring it to front.js / live-api.js is the next step.
+     Preview: uv run --no-project python -m http.server 8799 --directory ui, then open /landing.html -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Top-Kernel</title>
+<meta name="description" content="Point it at a PyTorch repo. Agents evolve the architecture and the kernels, and only what measurably wins survives.">
+<link rel="stylesheet" href="landing.css">
+<script>document.documentElement.classList.add('js')</script>
+</head>
+<body>
+
+<nav class="top" id="top">
+  <a class="brand" href="#">Top-K<small>ernel</small></a>
+  <div class="links"><a href="#loop">How it works</a><a href="#arch">Architecture</a><a href="#kernels">Kernels</a><a href="#models">Models</a></div>
+  <div class="sponsors" aria-label="Built with CoreWeave, marimo, and Weights &amp; Biases">
+    <img src="assets/coreweave-sprite.png" alt="CoreWeave"><img src="assets/marimo-sprite.png" alt="marimo"><img src="assets/wandb-sprite.png" alt="Weights &amp; Biases">
+  </div>
+</nav>
+
+<header class="hero" id="hero">
+  <canvas id="gates" aria-hidden="true"></canvas>
+  <div class="hero-inner">
+    <h1 class="reveal">Evolve the training recipe.<br><em>Not just the kernels.</em></h1>
+    <p class="lede reveal" style="--d:.1s">Paste a PyTorch repo. Agents evolve its architecture and kernels, and only what measurably wins survives.</p>
+    <form class="repo reveal" style="--d:.2s" novalidate>
+      <label class="sr-only" for="repo-hero">Repository URL</label>
+      <div class="field">
+        <span class="glyph" aria-hidden="true">↳</span>
+        <input id="repo-hero" type="text" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="github.com/you/your-training-repo">
+        <select aria-label="What to optimize"><option>Architecture</option><option selected>Kernels</option><option>Both</option></select>
+        <button type="submit" aria-label="Start">→</button>
+      </div>
+      <p class="note" role="status"></p>
+    </form>
+    <div class="results reveal" style="--d:.3s">
+      <div><b data-count="7.21" data-dec="2">−7.21%</b><span>val loss · 481M model</span></div>
+      <i aria-hidden="true"></i>
+      <div><b data-count="4.1" data-dec="1">−4.1%</b><span>step time · nanochat</span></div>
+    </div>
+  </div>
+</header>
+
+<section class="sec" id="loop">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="kicker">01 · How it works</p>
+      <h2>One generation, as it actually ran.</h2>
+      <p class="sub">Real timings from the 481M run. A planner proposes, eight sub-agents write in parallel, the GPU trains and scores, and a curator notes what worked for the next round.</p>
+    </div>
+    <figure class="panel tl reveal">
+      <div class="tl-bar">
+        <div class="tabs" id="tl-tabs"><button type="button">Gen 1</button><button type="button">Gen 2</button><button type="button">Gen 3</button></div>
+        <div class="tl-meta"><span>t = <b id="tl-clock">0:00</b></span><span>spent before this gen <b id="tl-spend">$0.00</b></span></div>
+      </div>
+      <svg id="tl-svg" role="img" aria-label="Timeline of one generation: the planner call, eight sub-agent calls running in parallel, the GPU training and scoring each candidate, and the curator call."></svg>
+    </figure>
+  </div>
+</section>
+
+<section class="sec" id="arch">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="kicker">02 · Architecture search</p>
+      <h2>Every candidate from that run.</h2>
+      <p class="sub">24 proposals across three generations, each trained exactly as long as the baseline. Hover any point to see what an agent tried.</p>
+    </div>
+    <figure class="chart reveal">
+      <div class="chart-bar"><span id="arch-readout">&nbsp;</span><button id="arch-replay" class="ghost" type="button" aria-label="Replay">↻</button></div>
+      <svg id="arch-svg" role="img" aria-label="Every candidate from the architecture search, plotted by generation and by how much lower its validation loss was than the baseline trained for the same time. Crashed candidates sit on a separate lane."></svg>
+      <div class="ticker"><span class="x" aria-hidden="true">×</span><span class="g" id="tick-gen"></span><span class="msg" id="tick-msg"></span><span class="caret" aria-hidden="true"></span></div>
+    </figure>
+    <div class="panel recipe reveal">
+      <h3>The recipe that won</h3>
+      <div class="steps" id="steps"><span class="glide" aria-hidden="true"></span></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="kernels">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="kicker">03 · Kernel search</p>
+      <h2><span id="k-rejected">35</span> of <span id="k-total">37</span> kernels didn’t make it.</h2>
+      <p class="sub">A 21.6M-parameter language model and five generations of Triton kernels. Every check is plain code, cheapest first. No model grades its own work.</p>
+    </div>
+    <div class="funnel reveal">
+      <ol class="stages" id="stages"></ol>
+      <svg id="funnel-svg" aria-hidden="true"></svg>
+      <div class="funnel-foot">
+        <div class="legend"><span><i style="background:#6b6b75"></i>didn’t finish</span><span><i style="background:#ef7a6d"></i>failed a check</span><span><i style="background:#f2b560"></i>correct, not faster</span><span><i style="background:#8b97ff"></i>kept</span></div>
+        <button id="k-replay" class="ghost" type="button" aria-label="Replay">↻</button>
+      </div>
+    </div>
+    <div class="checks">
+      <article class="check reveal"><canvas data-kind="compile" aria-hidden="true"></canvas><span class="n">Check 1</span><h4>Compiles</h4><p>Built in a CPU process pool, off the GPU’s critical path, and cached by source.</p></article>
+      <article class="check reveal" style="--d:.06s"><canvas data-kind="eager" aria-hidden="true"></canvas><span class="n">Check 2</span><h4>Matches eager</h4><p>Outputs and gradients against PyTorch eager, on common shapes plus one it has never seen.</p></article>
+      <article class="check reveal" style="--d:.12s"><canvas data-kind="alone" aria-hidden="true"></canvas><span class="n">Check 3</span><h4>Faster alone</h4><p>Re-timed against the current best in the same session. Inputs rotate, so it can’t memorize.</p></article>
+      <article class="check reveal" style="--d:.18s"><canvas data-kind="step" aria-hidden="true"></canvas><span class="n">Check 4</span><h4>Faster in the step</h4><p>Timed inside a real training step, interleaved with the incumbent. Within noise counts as no.</p></article>
+    </div>
+    <p class="cheat reveal">
+      <svg viewBox="0 0 24 28" aria-hidden="true"><path d="M12 1 2 5v8c0 6.3 4.2 11.6 10 13.9C17.8 24.6 22 19.3 22 13V5z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m7.5 13.5 3 3 6-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>The checks are tested too: two planted cheating kernels, one that caches its outputs and one that hard-codes shapes, go through them before every run. If either passes, the run aborts.</span>
+    </p>
+    <div class="shipped">
+      <div class="lineage reveal">
+        <h3>What shipped</h3>
+        <ol id="k-lineage"></ol>
+        <div class="chips" id="k-chips"></div>
+        <p class="fine" id="k-fine"></p>
+      </div>
+      <div class="blocks reveal"><h3>How the final number was measured</h3><svg id="blocks-svg" role="img"></svg><p id="blocks-cap"></p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="models">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="kicker">04 · Models</p>
+      <h2>Use the model you trust.</h2>
+      <p class="sub">Planner, sub-agents and curator can each run a different model: an API key, a Claude or ChatGPT login, or a model on W&amp;B Inference.</p>
+    </div>
+  </div>
+  <div class="carousel reveal" id="carousel" aria-label="Supported models"></div>
+</section>
+
+<section class="sec" id="stack">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="kicker">05 · Your stack</p>
+      <h2>Your GPU. Your W&amp;B. Your code.</h2>
+    </div>
+    <div class="cards">
+      <article class="card reveal"><img src="assets/marimo-sprite.png" alt=""><h3>Your GPU</h3><p>Runs in a marimo notebook you own. Top-K drives it remotely.</p></article>
+      <article class="card reveal" style="--d:.08s"><img src="assets/wandb-sprite.png" alt=""><h3>Your W&amp;B</h3><p>Every metric, candidate and agent trace lands in your project.</p></article>
+      <article class="card reveal" style="--d:.16s"><span class="glyph-lg" aria-hidden="true">↳</span><h3>Your code</h3><p>Any PyTorch repo. An agent writes the adapter and must show it runs first.</p></article>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="scope">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="kicker">06 · Scope</p>
+      <h2>What it does, and what it won’t.</h2>
+    </div>
+    <div class="scope">
+      <div class="reveal"><h3>Does</h3><ul>
+        <li>Times one full training step, every time: forward, loss, backward, optimizer.</li>
+        <li>Writes Triton kernels for ops PyTorch’s compiler already turns into Triton.</li>
+        <li>Evolves architecture, optimizer and hyperparameters under a fixed time budget and a parameter cap.</li>
+        <li>Runs on one GPU, yours.</li>
+      </ul></div>
+      <div class="no reveal" style="--d:.08s"><h3>Won’t</h3><ul>
+        <li>Let a candidate touch the loss, data or eval code. The harness owns them.</li>
+        <li>Rewrite attention, convolution or embedding kernels.</li>
+        <li>Grade its own work. Every check is deterministic code.</li>
+        <li>Run multi-GPU or inference-only jobs.</li>
+      </ul></div>
+    </div>
+  </div>
+</section>
+
+<section class="final">
+  <canvas id="orb" aria-hidden="true"></canvas>
+  <div class="wrap reveal">
+    <h2>Point it at your repo.</h2>
+    <form class="repo" novalidate>
+      <label class="sr-only" for="repo-final">Repository URL</label>
+      <div class="field">
+        <span class="glyph" aria-hidden="true">↳</span>
+        <input id="repo-final" type="text" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="github.com/you/your-training-repo">
+        <select aria-label="What to optimize"><option>Architecture</option><option selected>Kernels</option><option>Both</option></select>
+        <button type="submit" aria-label="Start">→</button>
+      </div>
+      <p class="note" role="status"></p>
+    </form>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap">
+    <span class="brand">Top-K<small>ernel</small></span>
+    <span><img src="assets/coreweave-sprite.png" alt="">Built at CoreWeave Hacks</span>
+    <a href="pitch.html">Pitch walkthrough ↗</a>
+  </div>
+</footer>
+
+<div id="tip" role="tooltip" hidden></div>
+<script src="landing-data.js"></script>
+<script src="landing-timeline.js"></script>
+<script src="landing.js"></script>
+</body>
+</html>
