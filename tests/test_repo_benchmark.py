@@ -114,6 +114,70 @@ def test_molab_retry_refuses_a_still_running_gpu_job():
     assert previous_job_finished(client, "12345678" + "a" * 24)
 
 
+@pytest.mark.parametrize("dispatch_rc, completed_remote, expected_count", [
+    (0, False, 2), (1, False, 1), (1, True, 2),
+])
+def test_molab_runner_records_failure_and_continues_sequentially(
+        tmp_path, monkeypatch, dispatch_rc, completed_remote, expected_count):
+    import json
+    import sys
+    from scripts import run_molab_benchmark
+
+    manifest = tmp_path / "repos.json"
+    manifest.write_text(json.dumps([
+        {"repo": "one/train", "model": "vision", "sha": "a" * 40},
+        {"repo": "two/train", "model": "language", "sha": "b" * 40},
+    ]))
+    secrets = tmp_path / "dev.env"
+    secrets.write_text("WANDB_INFERENCE_API_KEY=test-only\n")
+    monkeypatch.setenv("WANDB_INFERENCE_API_KEY", "test-only")
+    token = tmp_path / "token"
+    token.write_text("test-only")
+    dispatched = []
+
+    class Target:
+        def __init__(self, connection):
+            pass
+
+        def dispatch(self, job, root, env, log, artifacts_dir):
+            dispatched.append(job["repo"])
+            if completed_remote:
+                log(f"[molab] remote run finished with exit {dispatch_rc}")
+            return dispatch_rc
+
+    monkeypatch.setattr(run_molab_benchmark, "MolabTarget", Target)
+    monkeypatch.setattr(run_molab_benchmark, "MolabClient", lambda *args: object())
+    monkeypatch.setattr(run_molab_benchmark, "previous_job_finished", lambda *args: True)
+    output = tmp_path / "output"
+    monkeypatch.setattr(sys, "argv", ["run_molab_benchmark.py", "--manifest", str(manifest),
+                                      "--output", str(output), "--secrets", str(secrets),
+                                      "--token-file", str(token), "--notebook-url",
+                                      "https://example.invalid", "--end", "2"])
+
+    assert run_molab_benchmark.main() == 1
+    assert len(dispatched) == expected_count
+    assert json.loads((output / "one__train" / "state.json").read_text())["status"] == "failed"
+    if expected_count == 2:
+        assert json.loads((output / "two__train" / "state.json").read_text())[
+            "status"] == "failed"
+    else:
+        assert not (output / "two__train").exists()
+
+
+def test_molab_credit_and_infrastructure_failures_are_stop_conditions():
+    from scripts.run_molab_benchmark import CREDIT_ERROR
+    from kernelevo.wandb_relay import is_credit_error
+
+    assert CREDIT_ERROR.search("Error code: insufficient_quota")
+    assert CREDIT_ERROR.search("You exceeded your current quota")
+    assert CREDIT_ERROR.search("billing limit exceeded")
+    class QuotaError(Exception):
+        status_code = 429
+        body = {"error": {"code": "insufficient_quota"}}
+    assert is_credit_error(QuotaError("request rejected"))
+    assert not is_credit_error(RuntimeError("temporary connection reset"))
+
+
 def test_generated_adapter_receives_nested_batches_on_model_device(tmp_path):
     import torch
     from kernelevo.ingest import load_adapter
