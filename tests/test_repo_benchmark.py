@@ -78,6 +78,10 @@ def test_recipe_result_requires_architecture_and_final_measurement(tmp_path):
     assert result["measured"] and result["accepted"] == 0
     assert result["candidate_val_loss"] == 1.1
     assert result["improvement_pct"] == -10.0
+    with sqlite3.connect(path) as db:
+        db.execute("UPDATE candidates SET train_secs=90 WHERE phase='finals'")
+    assert benchmark.archive_result(path, "recipe")["reason"] == \
+        "no baseline at final candidate budget"
 
 
 def test_manifest_rejects_duplicate_and_non_github_identifier(tmp_path):

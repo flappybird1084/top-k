@@ -176,17 +176,19 @@ def archive_result(path: Path, mode: str) -> dict:
                     "candidate_ms": best["step_time_ms"],
                     "improvement_pct": round(100 * (baseline -
                                               best["step_time_ms"]) / baseline, 3)}
-        baseline = db.execute(
-            "SELECT val_loss, train_secs FROM candidates WHERE phase='baseline' "
-            "ORDER BY train_secs DESC LIMIT 1").fetchone()
         architecture = db.execute(
             "SELECT 1 FROM candidates WHERE phase='architecture' "
             "AND val_loss IS NOT NULL LIMIT 1").fetchone()
         finalist = db.execute(
             "SELECT val_loss, train_secs, accepted FROM candidates WHERE phase='finals' "
             "AND val_loss IS NOT NULL ORDER BY val_loss LIMIT 1").fetchone()
+        baseline = db.execute(
+            "SELECT val_loss, train_secs FROM candidates WHERE phase='baseline' "
+            "AND train_secs=? LIMIT 1", (finalist["train_secs"],)).fetchone() if finalist else \
+            db.execute("SELECT val_loss, train_secs FROM candidates "
+                       "WHERE phase='baseline' ORDER BY train_secs DESC LIMIT 1").fetchone()
         if not baseline or baseline["val_loss"] is None:
-            return {"measured": False, "reason": "no baseline final"}
+            return {"measured": False, "reason": "no baseline at final candidate budget"}
         if not architecture:
             return {"measured": False, "baseline_val_loss": baseline["val_loss"],
                     "reason": "no architecture candidate measurement"}
