@@ -78,12 +78,17 @@ def main() -> int:
     ap.add_argument("--mode", choices=("kernel", "recipe"), default="kernel")
     ap.add_argument("--profile", choices=("DEV", "RUN"), default="DEV")
     ap.add_argument("--generations", type=int, default=2)
-    ap.add_argument("--spend-cap", type=float, default=3.0)
+    ap.add_argument("--spend-cap", type=float,
+                    help="inference USD estimate per repository (kernel: 3, recipe: 0.75)")
     ap.add_argument("--start", type=int, default=1, help="One-based manifest row")
     ap.add_argument("--end", type=int, default=25, help="Inclusive manifest row")
     ap.add_argument("--wait-for", type=Path, help="Wait for a previous run's result.json")
     ap.add_argument("--plan", action="store_true", help="Print selected repositories only")
     args = ap.parse_args()
+    if args.spend_cap is None:
+        args.spend_cap = 0.75 if args.mode == "recipe" else 3.0
+    if args.mode == "recipe" and args.generations != 2:
+        ap.error("--generations applies to kernel mode; recipe phases use their recorded schedule")
     rows = manifest_rows(args.manifest)
     if not 1 <= args.start <= args.end <= len(rows):
         ap.error("--start and --end must select manifest rows in order")
@@ -121,7 +126,8 @@ def main() -> int:
         state_path = run_dir / "state.json"
         expected = {"index": index, "repo": row["repo"], "source_sha": row["sha"],
                     "workload": row["model"], "llm": f"wandb:{args.model}",
-                    "profile": args.profile, "generations": args.generations,
+                    "profile": args.profile,
+                    "generations": args.generations if args.mode == "kernel" else None,
                     "spend_cap_usd": args.spend_cap, "execution_target": "molab",
                     "mode": args.mode,
                     "recipe": RECIPE_BENCHMARK if args.mode == "recipe" else None}
@@ -153,11 +159,13 @@ def main() -> int:
                            "depend on external data paths. "
                            f"{WORKLOAD_GUIDANCE.get(row['repo'], '')}",
                "max_debug_turns": 8, "profile": args.profile,
-               "llm": f"wandb:{args.model}", "max_generations": args.generations,
+               "llm": f"wandb:{args.model}",
                "spend_cap": args.spend_cap, "mode": args.mode,
                "execution_target": "molab"}
         if args.mode == "recipe":
             job["recipe"] = RECIPE_BENCHMARK
+        else:
+            job["max_generations"] = args.generations
         save(attempt_dir / "job.json", job)
         state = {**expected, "status": "running", "attempt": attempt,
                  "started_at": time.time(), "job_id": job["id"],
@@ -174,7 +182,8 @@ def main() -> int:
 
             write_line(f"[benchmark] {index:02d}/{len(rows)} repo={row['repo']} "
                        f"source_sha={row['sha']} llm={job['llm']} "
-                       f"mode={args.mode} generations={args.generations} "
+                       f"mode={args.mode} "
+                       f"schedule={RECIPE_BENCHMARK if args.mode == 'recipe' else args.generations} "
                        f"spend_cap_usd={args.spend_cap}")
             try:
                 rc = MolabTarget(connection).dispatch(

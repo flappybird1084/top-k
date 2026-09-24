@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+from functools import wraps
 import os
 import sys
 
@@ -40,6 +41,7 @@ def load_adapter(path_or_module: str):
         from torch.utils._pytree import tree_map
         original_loss = mod.loss_fn
 
+        @wraps(original_loss)
         def loss_with_device(model, batch):
             device = next(model.parameters()).device
             moved = tree_map(lambda value: value.to(device) if isinstance(value, torch.Tensor)

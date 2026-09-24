@@ -199,6 +199,7 @@ def test_transformers_runtime_dependency_is_scoped_to_its_job():
 def test_generated_adapter_receives_nested_batches_on_model_device(tmp_path):
     import torch
     from kernelevo.ingest import load_adapter
+    from kernelevo.recipe_loop import _loss_source
 
     path = tmp_path / "adapter.py"
     path.write_text("""import torch
@@ -211,6 +212,8 @@ def loss_fn(model, batch):
     model = torch.nn.Linear(1, 1, device="meta")
     batch = {"x": [torch.zeros(1), (torch.ones(1),)]}
     assert adapter.loss_fn(model, batch) == ("meta", "meta")
+    assert "def loss_fn(model, batch):" in _loss_source(adapter)
+    assert "loss_with_device" not in _loss_source(adapter)
     from kernelevo.bench import samples_per_batch
     assert samples_per_batch(batch) == 1
 
