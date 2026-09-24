@@ -1,8 +1,9 @@
 import json
+import sqlite3
 
 import pytest
 
-from scripts.report_molab_benchmark import collect
+from scripts.report_molab_benchmark import collect, evidence
 
 
 def test_report_preserves_full_denominator_and_measured_outcomes(tmp_path):
@@ -24,7 +25,8 @@ def test_report_preserves_full_denominator_and_measured_outcomes(tmp_path):
     second.mkdir()
     (second / "state.json").write_text(json.dumps({
         "index": 2, "repo": "two/train", "source_sha": "b" * 40,
-        "status": "failed", "result": {"measured": False},
+        "status": "failed", "exit_code": 1,
+        "result": {"measured": True, "improvement_pct": 20.0},
     }))
 
     report = collect(manifest, output)
@@ -32,7 +34,21 @@ def test_report_preserves_full_denominator_and_measured_outcomes(tmp_path):
     assert (report["repositories_total"], report["done"], report["failed"],
             report["pending"], report["measured"], report["improved"]) == (3, 1, 1, 1, 1, 1)
     assert report["results"][0]["llm"] == "wandb:Qwen/test"
+    assert report["results"][1]["result"] == {"measured": False}
+    assert report["results"][1]["reason"].startswith("dispatch exited 1")
     assert report["results"][2]["status"] == "pending"
+
+    archive = first / "attempt-0" / "artifacts" / "archive.sqlite"
+    archive.parent.mkdir(parents=True)
+    with sqlite3.connect(archive) as db:
+        db.execute("CREATE TABLE candidates (id INTEGER, generation INTEGER, "
+                   "gate_reached INTEGER, compile_ok INTEGER, correct_ok INTEGER, "
+                   "accepted INTEGER, step_time_ms REAL, incumbent_step_time_ms REAL, "
+                   "code_path TEXT)")
+        db.execute("INSERT INTO candidates VALUES (1, 1, 4, 1, 1, 1, 9, 10, 'private.py')")
+    gates = evidence(report, output)["repositories"][0]["candidate_gates"]
+    assert gates[0]["gate_reached"] == 4
+    assert "code_path" not in gates[0]
 
 
 def test_report_rejects_a_stale_commit(tmp_path):

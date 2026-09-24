@@ -7,8 +7,10 @@ contains no credentials and can be published to W&B with --publish.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import os
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -29,6 +31,14 @@ def collect(manifest: Path, output: Path) -> dict:
                     or state.get("source_sha") != row["sha"]):
                 raise ValueError(f"Benchmark state does not match manifest: {state_path}")
             result = {**state, "commit": row["sha"], "model": row["model"]}
+            if result["status"] != "done":
+                # An interrupted search may have a promising intermediate candidate.
+                # It is not a completed benchmark result.
+                result["result"] = {"measured": False}
+                if result["status"] == "failed":
+                    result["reason"] = result.get("reason") or (
+                        f"dispatch exited {result.get('exit_code', 'unknown')}; "
+                        "inspect the private attempt log")
         else:
             result = {"index": index, "repo": row["repo"], "commit": row["sha"],
                       "model": row["model"], "status": "pending", "result": {}}
@@ -45,17 +55,41 @@ def collect(manifest: Path, output: Path) -> dict:
             "results": results}
 
 
-def publish(report: dict, manifest: Path) -> str:
+def evidence(report: dict, output: Path) -> dict:
+    """Export numeric gate evidence only; never upload source, logs or secrets."""
+    records = []
+    for row in report["results"]:
+        record = {key: row.get(key) for key in
+                  ("index", "repo", "commit", "model", "llm", "status", "attempt",
+                   "exit_code", "started_at", "finished_at", "data_source", "timing_scope")}
+        record["result"] = row.get("result") or {}
+        archive = (output / row["repo"].replace("/", "__") /
+                   f"attempt-{row.get('attempt', 0)}" / "artifacts" / "archive.sqlite")
+        if archive.is_file():
+            with sqlite3.connect(archive) as db:
+                db.row_factory = sqlite3.Row
+                record["candidate_gates"] = [dict(candidate) for candidate in db.execute(
+                    "SELECT generation, gate_reached, compile_ok, correct_ok, accepted, "
+                    "step_time_ms, incumbent_step_time_ms FROM candidates "
+                    "WHERE generation > 0 ORDER BY id")]
+        records.append(record)
+    return {"schema": "top-k-molab-benchmark-evidence-v1", "repositories": records}
+
+
+def publish(report: dict, manifest: Path, evidence_path: Path) -> str:
     import wandb
 
+    snapshot = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    phase = "partial" if report["running"] or report["pending"] else "complete"
     run = wandb.init(entity=os.environ["WANDB_ENTITY"],
                      project=os.environ["WANDB_PROJECT"],
-                     name=f"{report['repositories_total']}-repo-molab-kernel-benchmark",
+                     name=f"{report['repositories_total']}-repo-molab-{phase}-{snapshot}",
                      job_type="repo-benchmark-summary",
-                     tags=["repo-benchmark", "molab", "kernel"],
+                     tags=["repo-benchmark", "molab", "kernel", phase],
                      config={"manifest": str(manifest),
                              "repository_count": report["repositories_total"],
-                             "execution_target": "molab"})
+                             "execution_target": "molab", "snapshot_utc": snapshot,
+                             "report_phase": phase})
     try:
         columns = ["repo", "commit", "workload", "optimizer_model", "status",
                    "measured", "accepted", "baseline_ms", "candidate_ms",
@@ -70,6 +104,9 @@ def publish(report: dict, manifest: Path) -> str:
                          row.get("reason", metric.get("reason")),
                          row.get("data_source"), row.get("timing_scope")])
         run.log({"repositories": wandb.Table(columns=columns, data=data)})
+        artifact = wandb.Artifact(f"molab-benchmark-evidence-{snapshot}", type="benchmark-evidence")
+        artifact.add_file(str(evidence_path), name="evidence.json")
+        run.log_artifact(artifact)
         for key in ("repositories_total", "done", "failed", "running", "pending",
                     "measured", "improved"):
             run.summary[key] = report[key]
@@ -89,12 +126,15 @@ def main() -> int:
     report = collect(args.manifest, args.output)
     report_path = args.output / "summary.json"
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    evidence_path = args.output / "evidence.json"
+    evidence_path.write_text(json.dumps(evidence(report, args.output), indent=2,
+                                        sort_keys=True) + "\n")
     print(f"Wrote {report_path}: {report['done']} done, {report['failed']} failed, "
           f"{report['running']} running, {report['pending']} pending")
     if args.publish:
         if (report["running"] or report["pending"]) and not args.allow_partial:
             ap.error("benchmark incomplete; use --allow-partial to publish now")
-        url = publish(report, args.manifest)
+        url = publish(report, args.manifest, evidence_path)
         report["wandb_summary_url"] = url
         report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
         print(url)
