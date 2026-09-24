@@ -114,6 +114,17 @@ archive (`marimo run notebooks/viewer.py`).
 | `findings/` | Run ledger, harness-bug log, performance analysis, agent-behavior notes |
 | `config.py` | `DEV` (smoke) and `RUN` (real search) profiles |
 
+## Multi-repository benchmark
+
+The [25-repository intake set and runner](benchmarks/README.md) pin public
+repository commits, run one GPU job at a time with W&B Inference, and publish
+the complete result table to W&B, including failures. A repository appears in
+the intake set only as a candidate workload; measured improvements are recorded
+per run after deterministic verification.
+
+For operator access to the production EC2 host through AWS Systems Manager,
+see [Session Manager setup](docs/deployment/ec2-ssm.md).
+
 ## Scope and honesty
 
 Single GPU, single node, full training steps only (forward → loss → backward →
