@@ -53,6 +53,14 @@ def test_only_configured_models_may_be_named(tmp_path, monkeypatch):
     assert 'not available' in p.check_llm(ask(model='some-expensive-model'))
 
 
+def test_wandb_job_can_only_request_its_selected_model(tmp_path):
+    model = 'Qwen/Qwen3-Coder-480B-A35B-Instruct'
+    p = policy(tmp_path, llm=f'wandb:{model}')
+    assert p.check_llm(ask(model=model)) is None
+    assert 'not available' in p.check_llm(ask(model='Qwen/Qwen3-235B-A22B-Instruct-2507'))
+    assert 'not available' in p.check_llm(ask())
+
+
 def test_malformed_and_oversized_prompts_are_refused(tmp_path, monkeypatch):
     monkeypatch.setenv('KEVO_ALLOW_OPERATOR_LLM_RELAY', '1')
     p = policy(tmp_path, visitor='github:7')

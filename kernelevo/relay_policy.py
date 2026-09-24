@@ -43,7 +43,6 @@ DEFAULT_MODELS = frozenset({
     'claude-opus-5', 'claude-sonnet-5', 'claude-fable-5-1', 'claude-haiku-4-5-20251001',
     'gpt-5', 'gpt-5-codex', 'gpt-5-mini', 'o3', 'o4-mini',
     'Qwen/Qwen3-235B-A22B-Instruct-2507',
-    'Qwen/Qwen3-Coder-480B-A35B-Instruct',
 })
 
 TRUSTED_LIMITS = dict(max_requests=2000, max_tokens=50_000_000, max_searches=500,
@@ -160,6 +159,13 @@ class RelayPolicy:
         base = UNTRUSTED_LIMITS if self.untrusted else TRUSTED_LIMITS
         self.limits = {k: _int_env('KEVO_RELAY_' + k.upper(), v) for k, v in base.items()}
         self.models = allowed_models()
+        selected_llm = job.get('llm') or ''
+        self.wandb_model = (selected_llm.removeprefix('wandb:')
+                            if isinstance(selected_llm, str) and selected_llm.startswith('wandb:')
+                            else '')
+        if self.wandb_model:
+            # This job may charge only the W&B model its operator selected.
+            self.models = frozenset({self.wandb_model})
         self.ledger = ledger if ledger is not None else OwnerLedger()
         self.requests = self.tokens = self.searches = 0
         self.active = True
@@ -202,7 +208,9 @@ class RelayPolicy:
         if reason:
             return reason
         model = request.get('model') or ''
-        if not isinstance(model, str) or (model and model not in self.models):
+        if (not isinstance(model, str) or
+                (self.wandb_model and model != self.wandb_model) or
+                (model and model not in self.models)):
             return 'That model is not available through this relay.'
         messages = request.get('messages')
         if not isinstance(messages, list) or not messages:
