@@ -391,9 +391,18 @@ class MolabTarget:
             f"_env = dict(os.environ); _env.update(json.loads({json.dumps(env_updates)!r}))\n"
             f"_cmd = [sys.executable, '-u'] + json.loads({json.dumps(args)!r})\n"
             + sandbox_setup +
-            "_sh = ' '.join(shlex.quote(c) for c in _cmd) + ' > job.log 2>&1; echo $? > job.exit'\n"
-            "_p = subprocess.Popen(['bash', '-c', _sh], cwd=_w, env=_env,"
+            "_lease = '/tmp/kevo_gpu_lease'\n"
+            "os.mkdir(_lease)  # atomic across website and benchmark dispatchers\n"
+            "_owner = os.path.join(_lease, 'owner')\n"
+            f"open(_owner, 'w').write({job['id']!r})\n"
+            "_sh = ' '.join(shlex.quote(c) for c in _cmd) + "
+            "' > job.log 2>&1; _rc=$?; echo $_rc > job.exit; "
+            "rm -f /tmp/kevo_gpu_lease/owner; rmdir /tmp/kevo_gpu_lease; exit $_rc'\n"
+            "try:\n"
+            "    _p = subprocess.Popen(['bash', '-c', _sh], cwd=_w, env=_env,"
             " start_new_session=True)\n"
+            "except BaseException:\n"
+            "    os.unlink(_owner); os.rmdir(_lease); raise\n"
             "print('LAUNCHED', _p.pid)\n"
             "try:\n"
             "    import marimo as mo\n"
@@ -407,8 +416,10 @@ class MolabTarget:
 
         from kernelevo.claude_oauth import Relay as ClaudeRelay
         from kernelevo.codex_oauth import Relay, RELAY_STALE_S
+        from kernelevo.wandb_relay import Relay as WandbRelay
         oauth_relay = Relay()
         claude_relay = ClaudeRelay()
+        wandb_relay = WandbRelay()
         served_searches: dict = {}
         offset, misses = 0, 0
         last_archive_sync = 0.0
@@ -481,7 +492,8 @@ class MolabTarget:
                 try:
                     oauth_relay.service(client, work, [r for r in status["relay"] if r.get("kind")=="codex_oauth"], write_line, relay_dir=relay_dir, policy=policy)
                     claude_relay.service(client, work, [r for r in status["relay"] if r.get("kind")=="claude_oauth"], write_line, relay_dir=relay_dir, policy=policy)
-                    _service_relay(client, work, [r for r in status["relay"] if r.get("kind") not in ("codex_oauth", "claude_oauth")], write_line, relay_dir=relay_dir, policy=policy, served=served_searches)
+                    wandb_relay.service(client, work, [r for r in status["relay"] if r.get("kind")=="wandb_inference"], write_line, relay_dir=relay_dir, policy=policy)
+                    _service_relay(client, work, [r for r in status["relay"] if r.get("kind") not in ("codex_oauth", "claude_oauth", "wandb_inference")], write_line, relay_dir=relay_dir, policy=policy, served=served_searches)
                 except Exception as e:  # noqa: BLE001 — relay is best-effort
                     write_line(f"[research-relay] servicing failed: {e}")
             if status["exit"] is not None:

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import time
@@ -20,12 +21,9 @@ from dotenv import dotenv_values
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from kernelevo.molab import MolabTarget  # noqa: E402
+from kernelevo.molab import MolabClient, MolabTarget  # noqa: E402
 from scripts.run_repo_benchmark import archive_result, manifest_rows  # noqa: E402
 
-PASS_ENV = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "WANDB_API_KEY", "WANDB_ENTITY",
-            "WANDB_PROJECT", "WEAVE_PROJECT", "WANDB_INFERENCE_API_KEY",
-            "WANDB_INFERENCE_BASE_URL", "WANDB_INFERENCE_PROJECT", "SEARXNG_URL")
 CREDIT_ERROR = re.compile(r"(?:insufficient|exhausted|out of).*credits|"
                           r"credit balance|payment required|HTTP 402|Error code: 402",
                           re.IGNORECASE)
@@ -38,6 +36,19 @@ def save(path: Path, data: dict) -> None:
     temp.replace(path)
 
 
+def previous_job_finished(client: MolabClient, job_id: str) -> bool:
+    """Fail closed if a disconnected dispatcher left its GPU job running."""
+    work = f"/tmp/kevo_{job_id[:8]}"
+    ok, out, err = client.run(
+        "import os\n"
+        f"_w={work!r}\n"
+        "print('NO_WORK' if not os.path.isdir(_w) else "
+        "('EXITED' if os.path.isfile(os.path.join(_w,'job.exit')) else 'RUNNING'))\n")
+    if not ok:
+        raise RuntimeError(f"Could not inspect prior notebook job: {err[:200]}")
+    return out.strip().splitlines()[-1] in ("NO_WORK", "EXITED")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--manifest", type=Path, default=ROOT / "benchmarks/repos.json")
@@ -45,7 +56,7 @@ def main() -> int:
     ap.add_argument("--secrets", type=Path, required=True)
     ap.add_argument("--token-file", type=Path, required=True)
     ap.add_argument("--notebook-url", required=True)
-    ap.add_argument("--model", default="deepseek-ai/DeepSeek-V4-Flash-0731")
+    ap.add_argument("--model", default="Qwen/Qwen3-235B-A22B-Instruct-2507")
     ap.add_argument("--profile", choices=("DEV", "RUN"), default="DEV")
     ap.add_argument("--generations", type=int, default=2)
     ap.add_argument("--spend-cap", type=float, default=3.0)
@@ -73,11 +84,16 @@ def main() -> int:
             return 1
 
     settings = dotenv_values(args.secrets)
-    remote_env = {key: settings[key] for key in PASS_ENV if settings.get(key)}
-    if not (remote_env.get("WANDB_INFERENCE_API_KEY") or remote_env.get("WANDB_API_KEY")):
+    if not (settings.get("WANDB_INFERENCE_API_KEY") or settings.get("WANDB_API_KEY")):
         raise RuntimeError("W&B Inference credential missing from private secrets file")
+    for key in ("WANDB_INFERENCE_API_KEY", "WANDB_INFERENCE_BASE_URL",
+                "WANDB_INFERENCE_PROJECT"):
+        if settings.get(key):
+            os.environ[key] = settings[key]
+    remote_env = {"KEVO_WANDB_INFERENCE_RELAY": "1"}
     token = args.token_file.read_text().strip()
     connection = {"notebook_url": args.notebook_url, "connection": "--token " + token}
+    client = MolabClient(args.notebook_url, token)
 
     for index, row in enumerate(selected, args.start):
         run_dir = args.output / row["repo"].replace("/", "__")
@@ -90,14 +106,20 @@ def main() -> int:
             old = json.loads(state_path.read_text())
             if any(old.get(key) != value for key, value in expected.items()):
                 raise RuntimeError(f"{state_path} has a different benchmark configuration")
-            if old.get("status") == "done":
+            if old.get("status") == "done" and old.get("result", {}).get("measured"):
                 print(f"[benchmark] {index:02d} {row['repo']} already done", flush=True)
                 continue
+            if old.get("job_id") and not previous_job_finished(client, old["job_id"]):
+                raise RuntimeError(f"Prior GPU job for {row['repo']} may still be running; "
+                                   "inspect the notebook before retrying")
             attempt = old.get("attempt", 0) + 1
         else:
             attempt = 1
         run_dir.mkdir(parents=True, exist_ok=True)
         attempt_dir = run_dir / f"attempt-{attempt}"
+        while attempt_dir.exists():
+            attempt += 1
+            attempt_dir = run_dir / f"attempt-{attempt}"
         attempt_dir.mkdir()
         job = {"id": uuid.uuid4().hex,
                "repo": f"https://github.com/{row['repo']}/commit/{row['sha']}",
@@ -127,14 +149,18 @@ def main() -> int:
             except Exception as exc:
                 write_line(f"[benchmark] dispatcher error: {type(exc).__name__}: {exc}")
                 rc = 1
-        state.update(exit_code=rc, status="done" if rc == 0 else "failed",
-                     finished_at=time.time())
         archive = attempt_dir / "artifacts/archive.sqlite"
-        state["result"] = archive_result(archive, "kernel")
+        try:
+            state["result"] = archive_result(archive, "kernel")
+        except Exception as exc:
+            state["result"] = {"measured": False, "reason": f"archive unreadable: {exc}"}
+        state.update(exit_code=rc,
+                     status="done" if rc == 0 and state["result"].get("measured") else "failed",
+                     finished_at=time.time())
         state["credits_exhausted"] = bool(CREDIT_ERROR.search(log_path.read_text(errors="replace")))
         save(state_path, state)
         print(f"[benchmark] {index:02d} exit={rc} result={state['result']}", flush=True)
-        if rc or state["credits_exhausted"]:
+        if state["status"] != "done" or state["credits_exhausted"]:
             return 1
     return 0
 

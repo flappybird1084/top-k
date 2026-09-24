@@ -99,6 +99,21 @@ def test_github_commit_url_checks_out_pinned_sha(monkeypatch, tmp_path):
         fetch_repo("https://github.com/example/project/commit/abc", str(tmp_path))
 
 
+def test_molab_retry_refuses_a_still_running_gpu_job():
+    from scripts.run_molab_benchmark import previous_job_finished
+
+    class Client:
+        result = "RUNNING\n"
+        def run(self, code):
+            assert "/tmp/kevo_12345678" in code
+            return True, self.result, ""
+
+    client = Client()
+    assert not previous_job_finished(client, "12345678" + "a" * 24)
+    client.result = "EXITED\n"
+    assert previous_job_finished(client, "12345678" + "a" * 24)
+
+
 def test_repository_job_does_not_inherit_operator_credentials(monkeypatch, tmp_path):
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "operator-secret")
     monkeypatch.setenv("WANDB_API_KEY", "inference-key")
