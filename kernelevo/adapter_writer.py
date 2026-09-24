@@ -33,7 +33,7 @@ _SCORE_WORDS = ("train", "model", "main", "data", "dataset", "loss", "config", "
 
 
 def fetch_repo(repo: str, dest_dir: str, log=print) -> str:
-    """Accepts a git URL or an existing local path."""
+    """Accept a git URL, a GitHub branch/commit URL, or a local path."""
     if os.path.isdir(repo):
         return os.path.abspath(repo)
     target = os.path.join(dest_dir, "repo")
@@ -43,9 +43,24 @@ def fetch_repo(repo: str, dest_dir: str, log=print) -> str:
     from urllib.parse import urlsplit, unquote
     u = urlsplit(repo)
     base, marker, ref = repo.partition('/tree/') if u.hostname == 'github.com' else (repo, '', '')
-    branch_args = ['--branch', unquote(ref), '--single-branch'] if marker else []
+    commit = None
+    if u.hostname == 'github.com' and not marker:
+        base, marker, ref = repo.partition('/commit/')
+        if marker:
+            commit = unquote(ref)
+            if not re.fullmatch(r'[0-9a-fA-F]{40}', commit):
+                raise ValueError('GitHub commit URLs require a full 40-character SHA')
+    branch_args = ['--branch', unquote(ref), '--single-branch'] if marker and not commit else []
     subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "clone", "--depth", "1", *branch_args, '--', base, target],
                    check=True, capture_output=True, text=True, timeout=600)
+    if commit:
+        subprocess.run(["git", "-C", target, "fetch", "--depth", "1", "origin", commit],
+                       check=True, capture_output=True, text=True, timeout=600)
+        subprocess.run(["git", "-C", target, "checkout", "--detach", commit],
+                       check=True, capture_output=True, text=True, timeout=60)
+    actual = subprocess.run(["git", "-C", target, "rev-parse", "HEAD"],
+                            check=True, capture_output=True, text=True, timeout=30).stdout.strip()
+    log(f"[adapter] source commit {actual}")
     return target
 
 

@@ -69,6 +69,31 @@ def test_manifest_rejects_duplicate_and_non_github_identifier(tmp_path):
         benchmark.manifest_rows(path)
 
 
+def test_github_commit_url_checks_out_pinned_sha(monkeypatch, tmp_path):
+    from kernelevo.adapter_writer import fetch_repo
+
+    sha = "a" * 40
+    commands = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        if command[-2:] == ["rev-parse", "HEAD"]:
+            return types.SimpleNamespace(stdout=sha + "\n")
+        return types.SimpleNamespace(stdout="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    messages = []
+    fetch_repo(f"https://github.com/example/project/commit/{sha}",
+               str(tmp_path), log=messages.append)
+    assert commands[0][-3:] == ["--", "https://github.com/example/project", str(tmp_path / "repo")]
+    assert commands[1][-4:] == ["--depth", "1", "origin", sha]
+    assert commands[2][-2:] == ["--detach", sha]
+    assert messages[-1] == f"[adapter] source commit {sha}"
+
+    with pytest.raises(ValueError, match="40-character SHA"):
+        fetch_repo("https://github.com/example/project/commit/abc", str(tmp_path))
+
+
 def test_repository_job_does_not_inherit_operator_credentials(monkeypatch, tmp_path):
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "operator-secret")
     monkeypatch.setenv("WANDB_API_KEY", "inference-key")
