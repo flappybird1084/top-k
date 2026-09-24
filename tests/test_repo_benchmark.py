@@ -1,11 +1,17 @@
 """Benchmark reporting must never turn an attempted run into a claimed win."""
 
 import importlib.util
+import http.client
 import json
+import os
 import sqlite3
+import subprocess
 import sys
+import time
 import types
+import urllib.request
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -64,9 +70,84 @@ def test_manifest_rejects_duplicate_and_non_github_identifier(tmp_path):
 def test_repository_job_does_not_inherit_aws_operator_credentials(monkeypatch):
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "operator-secret")
     monkeypatch.setenv("WANDB_API_KEY", "inference-key")
-    env = benchmark.job_env()
+    env = benchmark.job_env("http://127.0.0.1:1234/v1")
     assert "AWS_ACCESS_KEY_ID" not in env
-    assert env["WANDB_API_KEY"] == "inference-key"
+    assert "WANDB_API_KEY" not in env
+    assert env["WANDB_INFERENCE_API_KEY"] != "inference-key"
+
+
+def test_inference_relay_limits_model_and_keeps_upstream_key(monkeypatch):
+    from scripts.inference_proxy import InferenceRelay
+
+    monkeypatch.setenv("WANDB_API_KEY", "private-key")
+    monkeypatch.setenv("WANDB_ENTITY", "team")
+    monkeypatch.setenv("WANDB_PROJECT", "benchmark")
+    seen = []
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def read(self):
+            return json.dumps({"choices": [{"message": {"content": "ok"}}],
+                               "usage": {"prompt_tokens": 100,
+                                         "completion_tokens": 50}}).encode()
+
+    def fake_urlopen(request, timeout):
+        seen.append(request.get_header("Authorization"))
+        return FakeResponse()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    relay = InferenceRelay("deepseek-ai/DeepSeek-V4-Flash-0731", 3.0)
+    with relay.serving() as url:
+        target = urlsplit(url)
+        client = http.client.HTTPConnection(target.hostname, target.port)
+        client.request("POST", "/v1/chat/completions", body=json.dumps({
+            "model": "wrong", "max_tokens": 100, "messages": []}),
+            headers={"Content-Type": "application/json"})
+        first = client.getresponse()
+        assert first.status == 400
+        first.read()
+        client.request("POST", "/v1/chat/completions", body=json.dumps({
+            "model": relay.model, "max_tokens": 100, "messages": []}),
+            headers={"Content-Type": "application/json"})
+        second = client.getresponse()
+        assert second.status == 200
+        second.read()
+        client.close()
+    assert seen == ["Bearer private-key"]
+    assert relay.calls == 1
+    assert relay.spent_usd > 0
+
+
+@pytest.mark.skipif(os.name == "nt" or not Path("/proc").exists(),
+                    reason="requires Linux process groups")
+def test_timeout_stops_gpu_child_after_parent_exits(tmp_path):
+    pidfile = tmp_path / "child.pid"
+    child_code = "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"
+    parent_code = ("import subprocess,time; "
+                   f"p=subprocess.Popen([{sys.executable!r},'-c',{child_code!r}]); "
+                   f"open({str(pidfile)!r},'w').write(str(p.pid)); time.sleep(60)")
+    proc = subprocess.Popen([sys.executable, "-c", parent_code], start_new_session=True)
+    try:
+        for _ in range(100):
+            if pidfile.exists():
+                break
+            time.sleep(0.01)
+        assert pidfile.exists()
+        child_pid = int(pidfile.read_text())
+        benchmark.stop_process_tree(proc, grace_seconds=0.3)
+        stat = Path(f"/proc/{child_pid}/stat")
+        assert not stat.exists() or stat.read_text().split()[2] == "Z"
+    finally:
+        if proc.poll() is None:
+            os.killpg(proc.pid, 9)
+            proc.wait()
 
 
 def test_online_summary_keeps_failures_in_denominator(monkeypatch):

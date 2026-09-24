@@ -37,13 +37,19 @@ are distinct. The runner checks the live model catalog and makes one small
 completion before cloning anything. It then executes repositories serially
 on the GPU to avoid contention and W&B concurrency spikes.
 
+The runner keeps the W&B API key in its parent process and forwards worker
+inference through a loopback relay restricted to the selected model and spend
+cap. Per-repository W&B tracing is disabled in the worker because the worker
+does not receive the API key; the final W&B summary run records the model and
+all outcomes. This is not an OS sandbox: use a disposable, isolated GPU host
+when executing third-party repository code.
+
 Each repository gets a shallow checkout, commit SHA, attempt log, archive,
 `benchmark.json`, and any W&B URL under `benchmark-runs/`. Failed attempts
 remain in separate directories when `--resume` retries them. `summary.json`
-records every attempted run, including failures. A reported kernel improvement
-uses the accepted candidate's *paired in-session* baseline; a failed ingest
-or absent measurement never becomes a performance claim. The reported kernel
-comparison uses the initial incumbent and fastest accepted candidate, matching
+records every attempted run, including failures. A failed ingest or absent
+measurement never becomes a performance claim. The reported kernel comparison
+uses the initial incumbent and fastest accepted candidate, matching
 the search loop's final summary. Use the same GPU,
 dataset, objective, profile, and budget when comparing repositories or reruns.
 At the end, one W&B summary run publishes the complete table and denominator;

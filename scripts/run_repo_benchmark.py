@@ -20,6 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = ROOT / "benchmarks" / "repos.json"
 sys.path.insert(0, str(ROOT))
+from scripts.inference_proxy import InferenceRelay
 
 
 def manifest_rows(path: Path) -> list[dict]:
@@ -98,36 +99,47 @@ def checkout(row: dict, cache: Path) -> tuple[Path, str]:
     return dest, sha
 
 
-def stop_process_tree(proc: subprocess.Popen) -> None:
+def stop_process_tree(proc: subprocess.Popen, grace_seconds: float = 15) -> None:
     """Do not start the next GPU job while a timed-out child can still run."""
     if os.name == "nt":
         subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
                        capture_output=True, timeout=30)
-    else:
-        os.killpg(proc.pid, signal.SIGTERM)
-    try:
-        proc.wait(timeout=15)
-    except subprocess.TimeoutExpired:
-        if os.name == "nt":
-            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
-                           capture_output=True, timeout=30)
-        else:
-            os.killpg(proc.pid, signal.SIGKILL)
         proc.wait(timeout=30)
+        return
+
+    def group_exists() -> bool:
+        try:
+            os.killpg(proc.pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+
+    if group_exists():
+        os.killpg(proc.pid, signal.SIGTERM)
+    deadline = time.monotonic() + grace_seconds
+    while group_exists() and time.monotonic() < deadline:
+        time.sleep(0.1)
+    # The group leader can exit before a child does; always check the whole
+    # group rather than assuming proc.wait() means GPU work has stopped.
+    if group_exists():
+        os.killpg(proc.pid, signal.SIGKILL)
+    proc.wait(timeout=30)
 
 
-def job_env() -> dict[str, str]:
-    """Keep EC2/AWS operator credentials out of repository subprocesses."""
+def job_env(proxy_url: str | None = None) -> dict[str, str]:
+    """Keep EC2/AWS/W&B operator credentials out of repository subprocesses."""
     names = ("PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "TEMP", "TMP",
              "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "VIRTUAL_ENV",
              "LD_LIBRARY_PATH", "CUDA_HOME", "CUDA_VISIBLE_DEVICES",
              "TORCHINDUCTOR_CACHE_DIR", "TRITON_CACHE_DIR", "UV_CACHE_DIR",
              "XDG_CACHE_HOME", "HF_HOME", "HUGGINGFACE_HUB_CACHE",
              "HF_DATASETS_CACHE", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE",
-             "WANDB_API_KEY", "WANDB_ENTITY", "WANDB_PROJECT", "WEAVE_PROJECT",
-             "WANDB_INFERENCE_API_KEY", "WANDB_INFERENCE_BASE_URL",
-             "WANDB_INFERENCE_PROJECT")
-    return {key: os.environ[key] for key in names if os.environ.get(key)}
+             "WANDB_ENTITY", "WANDB_PROJECT", "WANDB_INFERENCE_PROJECT")
+    environment = {key: os.environ[key] for key in names if os.environ.get(key)}
+    if proxy_url:
+        environment["WANDB_INFERENCE_API_KEY"] = "benchmark-local-relay"
+        environment["WANDB_INFERENCE_BASE_URL"] = proxy_url
+    return environment
 
 
 def archive_result(path: Path, mode: str) -> dict:
@@ -217,17 +229,22 @@ def run_one(row: dict, args, root: Path) -> dict:
                    "--profile", args.profile, "--max-generations", str(args.generations),
                    "--spend-cap", str(args.spend_cap), "--out", str(attempt_dir)]
         log_path = run_dir / f"attempt-{attempt}.log"
-        with log_path.open("w", encoding="utf-8", errors="replace") as log:
-            proc = subprocess.Popen(command, cwd=ROOT, stdout=log,
-                                    stderr=subprocess.STDOUT, env=job_env(),
-                                    start_new_session=(os.name != "nt"),
-                                    creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP
-                                                   if os.name == "nt" else 0))
-            try:
-                rc = proc.wait(timeout=args.timeout)
-            except subprocess.TimeoutExpired:
-                stop_process_tree(proc)
-                rc = 124
+        relay = InferenceRelay(args.model, args.spend_cap)
+        with relay.serving() as proxy_url:
+            with log_path.open("w", encoding="utf-8", errors="replace") as log:
+                proc = subprocess.Popen(command, cwd=ROOT, stdout=log,
+                                        stderr=subprocess.STDOUT, env=job_env(proxy_url),
+                                        start_new_session=(os.name != "nt"),
+                                        creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP
+                                                       if os.name == "nt" else 0))
+                try:
+                    rc = proc.wait(timeout=args.timeout)
+                except subprocess.TimeoutExpired:
+                    stop_process_tree(proc)
+                    rc = 124
+        state.update(inference_calls=relay.calls, inference_spend_usd=relay.spent_usd)
+        if relay.credits_exhausted:
+            state["credits_exhausted"] = True
         state.update(exit_code=rc, status="done" if rc == 0 else "failed",
                      finished_at=time.time())
         with log_path.open(encoding="utf-8", errors="replace") as log:
