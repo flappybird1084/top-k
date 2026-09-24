@@ -178,6 +178,16 @@ def test_molab_credit_and_infrastructure_failures_are_stop_conditions():
     assert not is_credit_error(RuntimeError("temporary connection reset"))
 
 
+def test_transformers_runtime_dependency_is_scoped_to_its_job():
+    from kernelevo.molab import REMOTE_DEPS, repo_runtime_deps
+
+    assert not any(dep.startswith("tokenizers") for dep in REMOTE_DEPS)
+    assert repo_runtime_deps("https://github.com/huggingface/transformers/commit/" + "a" * 40) \
+        == ["tokenizers>=0.23.1,<0.24.0"]
+    assert repo_runtime_deps("https://github.com/huggingface/diffusers") == []
+    assert repo_runtime_deps("https://github.com.evil/huggingface/transformers") == []
+
+
 def test_generated_adapter_receives_nested_batches_on_model_device(tmp_path):
     import torch
     from kernelevo.ingest import load_adapter
