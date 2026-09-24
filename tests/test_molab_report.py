@@ -49,6 +49,12 @@ def test_report_preserves_full_denominator_and_measured_outcomes(tmp_path):
     gates = evidence(report, output)["repositories"][0]["candidate_gates"]
     assert gates[0]["gate_reached"] == 4
     assert "code_path" not in gates[0]
+    broken = second / "attempt-0" / "artifacts" / "archive.sqlite"
+    broken.parent.mkdir(parents=True)
+    broken.write_bytes(b"not a database")
+    records = evidence(report, output)["repositories"]
+    assert records[1]["archive_evidence"] == "unavailable or incompatible"
+    assert len(records) == 3
 
 
 def test_report_rejects_a_stale_commit(tmp_path):

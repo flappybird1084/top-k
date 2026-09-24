@@ -66,12 +66,15 @@ def evidence(report: dict, output: Path) -> dict:
         archive = (output / row["repo"].replace("/", "__") /
                    f"attempt-{row.get('attempt', 0)}" / "artifacts" / "archive.sqlite")
         if archive.is_file():
-            with sqlite3.connect(archive) as db:
-                db.row_factory = sqlite3.Row
-                record["candidate_gates"] = [dict(candidate) for candidate in db.execute(
-                    "SELECT generation, gate_reached, compile_ok, correct_ok, accepted, "
-                    "step_time_ms, incumbent_step_time_ms FROM candidates "
-                    "WHERE generation > 0 ORDER BY id")]
+            try:
+                with sqlite3.connect(archive) as db:
+                    db.row_factory = sqlite3.Row
+                    record["candidate_gates"] = [dict(candidate) for candidate in db.execute(
+                        "SELECT generation, gate_reached, compile_ok, correct_ok, accepted, "
+                        "step_time_ms, incumbent_step_time_ms FROM candidates "
+                        "WHERE generation > 0 ORDER BY id")]
+            except sqlite3.Error:
+                record["archive_evidence"] = "unavailable or incompatible"
         records.append(record)
     return {"schema": "top-k-molab-benchmark-evidence-v1", "repositories": records}
 
