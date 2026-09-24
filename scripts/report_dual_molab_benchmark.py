@@ -56,7 +56,7 @@ def publish(report: dict, evidence_path: Path) -> str:
                                for mode in ("kernel", "architecture")) else "partial")
     run = wandb.init(entity=os.environ["WANDB_ENTITY"],
                      project=os.environ["WANDB_PROJECT"],
-                     name=f"25-repo-kernel-and-architecture-{phase}-{snapshot}",
+                     name=f"{report['repositories_total']}-repo-kernel-and-architecture-{phase}-{snapshot}",
                      job_type="repo-benchmark-summary",
                      tags=["repo-benchmark", "molab", "kernel", "architecture", phase],
                      config={"repository_count": report["repositories_total"],
@@ -65,7 +65,8 @@ def publish(report: dict, evidence_path: Path) -> str:
                              "snapshot_utc": snapshot})
     try:
         columns = ["repo", "commit", "workload", "kernel_model", "kernel_status",
-                   "kernel_accepted", "baseline_ms", "candidate_ms", "kernel_speedup_pct",
+                   "kernel_accepted", "baseline_ms", "candidate_ms",
+                   "kernel_step_time_reduction_pct",
                    "kernel_reason", "architecture_model", "architecture_status",
                    "architecture_accepted", "baseline_val_loss", "candidate_val_loss",
                    "architecture_loss_improvement_pct", "architecture_reason"]
