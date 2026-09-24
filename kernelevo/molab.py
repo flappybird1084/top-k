@@ -29,7 +29,9 @@ import urllib.request
 from kernelevo import relay_policy
 
 REMOTE_DEPS = ["triton", "numpy", "pandas", "python-dotenv", "wandb", "weave",
-               "anthropic", "openai", "datasets", "tiktoken"]
+               "anthropic", "openai", "datasets", "tiktoken",
+               # Pinned current Transformers source requires this newer ABI3 wheel.
+               "tokenizers>=0.23.1,<0.24.0"]
 UPLOAD_CHUNK = 400_000  # base64 chars per execute call
 EXCLUDE_DIRS = {".git", "__pycache__", "runs", "jobs", ".venv", "venv", "wandb",
                 "notebooks"}
