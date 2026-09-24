@@ -114,6 +114,23 @@ def test_molab_retry_refuses_a_still_running_gpu_job():
     assert previous_job_finished(client, "12345678" + "a" * 24)
 
 
+def test_generated_adapter_receives_nested_batches_on_model_device(tmp_path):
+    import torch
+    from kernelevo.ingest import load_adapter
+
+    path = tmp_path / "adapter.py"
+    path.write_text("""import torch
+def build_model(): return torch.nn.Linear(1, 1)
+def get_dataloader(split): return []
+def loss_fn(model, batch):
+    return batch['x'][0].device.type, batch['x'][1][0].device.type
+""")
+    adapter, _ = load_adapter(str(path))
+    model = torch.nn.Linear(1, 1, device="meta")
+    batch = {"x": [torch.zeros(1), (torch.ones(1),)]}
+    assert adapter.loss_fn(model, batch) == ("meta", "meta")
+
+
 def test_repository_job_does_not_inherit_operator_credentials(monkeypatch, tmp_path):
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "operator-secret")
     monkeypatch.setenv("WANDB_API_KEY", "inference-key")

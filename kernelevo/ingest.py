@@ -33,6 +33,20 @@ def load_adapter(path_or_module: str):
     for fn in ("build_model", "get_dataloader", "loss_fn"):
         if not hasattr(mod, fn):
             raise SystemExit(f"adapter {path_or_module} missing contract function {fn}()")
+    if os.path.basename(path_or_module) == "adapter.py":
+        # Generated repo adapters frequently yield CPU batches while the
+        # harness has already moved their model to CUDA. Apply the same device
+        # transfer on every use of the adapter, not just the ingest check.
+        from torch.utils._pytree import tree_map
+        original_loss = mod.loss_fn
+
+        def loss_with_device(model, batch):
+            device = next(model.parameters()).device
+            moved = tree_map(lambda value: value.to(device) if isinstance(value, torch.Tensor)
+                             else value, batch)
+            return original_loss(model, moved)
+
+        mod.loss_fn = loss_with_device
     return mod, name
 
 

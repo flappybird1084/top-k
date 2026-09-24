@@ -148,11 +148,16 @@ exposes the harness contract for the repo shown below:
 Hard requirements:
 - Importing the file must be cheap: no training, no downloads at import time.
 - build_model() returns the model on CPU; the harness moves it to the device.
+- The harness moves tensor leaves in each batch to the model's device before
+  loss_fn(). Keep them on that device through the forward and loss.
 - Deterministic: seed everything; get_dataloader must yield the SAME batches in
   the SAME order every time it is called. Constant shapes across steps strongly
   preferred (pad/crop if needed). The harness consumes ~60 consecutive steps per
   measurement — yield at least 100 batches (it cycles the loader if exhausted).
-- DATA: ALWAYS search the repo for its real data pipeline FIRST — prepare/
+- DATA: If the user's comments explicitly request synthetic benchmark data,
+  use deterministic in-memory batches with valid inputs and targets for the
+  real repository model. Skip downloads in that case. Otherwise, ALWAYS search
+  the repo for its real data pipeline FIRST — prepare/
   download scripts, dataset builders, shard loaders, HF dataset references —
   and USE it. Internet access and the `datasets`/`tiktoken` libraries are
   available. Fetch ONLY A SMALL SUBSET: hard cap ~25M tokens / ~50MB. NEVER
@@ -165,9 +170,9 @@ Hard requirements:
   Reserve a held-out split for get_dataloader("val") and never train on it.
   Only read data from paths you have VERIFIED exist on THIS machine
   (os.path.isdir) — never assume cluster mount points from the repo's docs
-  or configs are present here. Synthetic data is a LAST resort, allowed only
-  after an actual download attempt in this environment has failed — put the
-  caught error verbatim in a comment next to the fallback.
+  or configs are present here. For normal runs, synthetic data is a LAST
+  resort, allowed only after an actual download attempt in this environment
+  has failed — put the caught error verbatim in a comment next to the fallback.
 - Pick a batch size that comfortably fits one GPU — but err LARGE: a training
   step should take at least ~20-50ms on a modern GPU, or the harness's timing
   gates have poor signal-to-noise and utilization looks idle. Unless the user's
