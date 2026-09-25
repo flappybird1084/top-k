@@ -21,6 +21,6 @@ Kernel results compare the full training-step time, including host-to-GPU transf
 
 **Totals:** kernel: 3 measured, 2 accepted improvements, 7 failed before a completed comparison. Architecture: 6 measured, 4 accepted positive-loss gate improvements, 4 failed before comparison. The PPO row also passed the structural gate but has a negative baseline, so no percentage gain or validated RL improvement is claimed.
 
-The two accepted kernel candidates were slower than eager PyTorch despite beating the compiled incumbent: timm by approximately 4.8%, nanochat by approximately 0.5%. Transformers and LitGPT architecture percentages are dominated by near-zero synthetic validation losses. The Molab endpoint returned HTTP 410 during LitGPT's kernel retry; the dispatcher stopped without launching the next GPU job. W&B Inference credit exhaustion was not observed.
+The two accepted kernel candidates beat the compiled incumbents. Eager PyTorch timings are not included in the published evidence, so no speedup over eager is claimed. Transformers and LitGPT architecture percentages are dominated by near-zero synthetic validation losses. LitGPT's kernel retry ended in an infrastructure failure, and the dispatcher stopped. W&B Inference credit exhaustion was not observed.
 
 Architecture rows here all used the original recipe v1 acceptance protocol. A later correction to nonpositive-baseline acceptance and percentage logging is versioned separately and was not mixed into this report.
