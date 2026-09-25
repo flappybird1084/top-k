@@ -65,6 +65,14 @@ def test_wandb_job_can_only_request_its_selected_model(tmp_path):
         ask(kind='wandb_inference', model='some-expensive-model'))
 
 
+def test_deepseek_benchmark_job_is_pinned_to_its_model(tmp_path):
+    model = 'deepseek-ai/DeepSeek-V4-Pro-0813'
+    p = policy(tmp_path, llm=f'wandb:{model}')
+    assert p.check_llm(ask(kind='wandb_inference', model=model)) is None
+    assert 'not available' in p.check_llm(ask(
+        kind='wandb_inference', model='Qwen/Qwen3-235B-A22B-Instruct-2507'))
+
+
 def test_malformed_and_oversized_prompts_are_refused(tmp_path, monkeypatch):
     monkeypatch.setenv('KEVO_ALLOW_OPERATOR_LLM_RELAY', '1')
     p = policy(tmp_path, visitor='github:7')

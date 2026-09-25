@@ -36,6 +36,7 @@ def test_wandb_inference_sends_output_limit_and_project(monkeypatch):
 
 def test_default_wandb_model_uses_inference_pricing():
     assert config.price_for("deepseek-ai/DeepSeek-V4-Flash-0731") == (0.13, 0.28)
+    assert config.price_for("deepseek-ai/DeepSeek-V4-Pro-0813") == (1.31, 3.96)
     assert config.price_for("Qwen/Qwen3-235B-A22B-Instruct-2507") == (0.10, 0.10)
     assert config.price_for("Qwen/Qwen3-Coder-480B-A35B-Instruct") == (1.00, 1.50)
 

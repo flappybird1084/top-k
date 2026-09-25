@@ -48,6 +48,7 @@ DEFAULT_MODELS = frozenset({
 WANDB_RELAY_MODELS = frozenset({
     'Qwen/Qwen3-235B-A22B-Instruct-2507',
     'Qwen/Qwen3-Coder-480B-A35B-Instruct',
+    'deepseek-ai/DeepSeek-V4-Pro-0813',
 })
 
 TRUSTED_LIMITS = dict(max_requests=2000, max_tokens=50_000_000, max_searches=500,
