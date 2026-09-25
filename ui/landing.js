@@ -241,6 +241,7 @@
     const proposals = A.candidates.filter(c => c.gen >= 1 && c.gen <= 3);
     $('#arch-summary').textContent = `${proposals.length} proposals across ${new Set(proposals.map(c => c.gen)).size} generations. Lower is better; hover any point to see what an agent tried.`;
     $('#crash-total').textContent = proposals.length;
+    // Fixed display scale and generation labels for recorded run 75890bd0.
     const W = 1000, H = 500, X = [80, 290, 490, 690, 880], CRASH = 44, TOP = 84, BOT = 418, HI = 7.0, LO = 5.3;
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
     const y = l => TOP + (HI - l) / (HI - LO) * (BOT - TOP);
@@ -318,7 +319,7 @@
     const trav = S('circle', { r: 4, class: 'traveler', opacity: 0 }, svg);
 
     // "What crashed" tab: the real last line of each crash, typed out the first time it's opened.
-    const list = $('#crash-list'), crashes = [...nodes.values()].filter(n => n.crash);
+    const list = $('#crash-list'), crashes = [...nodes.values()].filter(n => n.crash && n.gen >= 1 && n.gen <= 3);
     $('#crash-n').textContent = crashes.length;
     const typeInto = (el, msg) => new Promise(done => {
       let i = 0;
@@ -396,7 +397,7 @@
         }
         const ok = list.filter(n => !n.crash), best = ok.reduce((a, b) => b.loss < a.loss ? b : a, ok[0]);
         if (my !== token) return;
-        if (g < 4) readout.innerHTML = `${GEN[g][0]} · best <b>${L3(best.loss)}</b> vs. baseline ${L3(B[best.secs])}`;
+        if (g < 4 && best) readout.innerHTML = `${GEN[g][0]} · best <b>${L3(best.loss)}</b> vs. baseline ${L3(B[best.secs])}`;
         await sleep(620);
         if (my !== token) return;
       }
@@ -784,7 +785,7 @@
   /* 02: the recipe that won, walked from the winner back through its parents */
   (function recipe() {
     const A = R.arch, host = $('#steps'), byId = new Map(A.candidates.map(c => [c.id, c]));
-    // Short names for the four real strategies on the winning line (full text on hover).
+    // Short names for the four real strategies in recorded run 75890bd0 (full text on hover).
     const TITLE = { 8: 'Parallel attention + MLP block', 16: 'One shared key/value head', 24: 'Cyclic learning-rate schedule', 29: 'Re-trained for the full 300 s' };
     const GEN = ['Baseline', 'Gen 1', 'Gen 2', 'Gen 3', 'Finals'];
     const win = archFinal;

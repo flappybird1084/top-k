@@ -70,18 +70,18 @@
     </div>
     <div class="panel tabbed reveal" data-tabs>
       <div class="tabbar" role="tablist">
-        <button type="button" role="tab" data-tab="cands" class="on" aria-selected="true">Every candidate</button>
-        <button type="button" role="tab" data-tab="recipe" aria-selected="false">The recipe that won</button>
-        <button type="button" role="tab" data-tab="crashes" aria-selected="false">What crashed</button>
+        <button type="button" id="arch-tab-cands" role="tab" data-tab="cands" class="on" aria-selected="true" aria-controls="arch-panel-cands">Every candidate</button>
+        <button type="button" id="arch-tab-recipe" role="tab" data-tab="recipe" aria-selected="false" aria-controls="arch-panel-recipe">The recipe that won</button>
+        <button type="button" id="arch-tab-crashes" role="tab" data-tab="crashes" aria-selected="false" aria-controls="arch-panel-crashes">What crashed</button>
       </div>
-      <div class="pane" data-pane="cands" role="tabpanel">
+      <div class="pane" id="arch-panel-cands" data-pane="cands" role="tabpanel" aria-labelledby="arch-tab-cands">
         <div class="chart-bar"><span id="arch-readout">&nbsp;</span><button id="arch-replay" class="ghost" type="button" aria-label="Replay">↻</button></div>
         <svg id="arch-svg" role="img" aria-label="Validation loss of every candidate in the architecture search, by generation, against the baseline's loss for the same training time. Crashed candidates sit on a separate lane."></svg>
       </div>
-      <div class="pane" data-pane="recipe" role="tabpanel" hidden>
+      <div class="pane" id="arch-panel-recipe" data-pane="recipe" role="tabpanel" aria-labelledby="arch-tab-recipe" hidden>
         <div class="steps" id="steps"><span class="glide" aria-hidden="true"></span></div>
       </div>
-      <div class="pane" data-pane="crashes" role="tabpanel" hidden>
+      <div class="pane" id="arch-panel-crashes" data-pane="crashes" role="tabpanel" aria-labelledby="arch-tab-crashes" hidden>
         <p class="pane-note"><span id="crash-n">—</span> of <span id="crash-total">—</span> proposals crashed when they ran. The last line of each error:</p>
         <ul class="crashes" id="crash-list"></ul>
       </div>
@@ -97,12 +97,12 @@
     </div>
     <div class="panel tabbed reveal" data-tabs>
       <div class="tabbar" role="tablist">
-        <button type="button" role="tab" data-tab="funnel" class="on" aria-selected="true">The funnel</button>
-        <button type="button" role="tab" data-tab="checks" aria-selected="false">The four checks</button>
-        <button type="button" role="tab" data-tab="shipped" aria-selected="false">What shipped</button>
-        <button type="button" role="tab" data-tab="measured" aria-selected="false">How it was measured</button>
+        <button type="button" id="kernel-tab-funnel" role="tab" data-tab="funnel" class="on" aria-selected="true" aria-controls="kernel-panel-funnel">The funnel</button>
+        <button type="button" id="kernel-tab-checks" role="tab" data-tab="checks" aria-selected="false" aria-controls="kernel-panel-checks">The four checks</button>
+        <button type="button" id="kernel-tab-shipped" role="tab" data-tab="shipped" aria-selected="false" aria-controls="kernel-panel-shipped">What shipped</button>
+        <button type="button" id="kernel-tab-measured" role="tab" data-tab="measured" aria-selected="false" aria-controls="kernel-panel-measured">How it was measured</button>
       </div>
-      <div class="pane funnel" data-pane="funnel" role="tabpanel">
+      <div class="pane funnel" id="kernel-panel-funnel" data-pane="funnel" role="tabpanel" aria-labelledby="kernel-tab-funnel">
         <ol class="stages" id="stages"></ol>
         <svg id="funnel-svg" aria-hidden="true"></svg>
         <div class="funnel-foot">
@@ -110,7 +110,7 @@
           <button id="k-replay" class="ghost" type="button" aria-label="Replay">↻</button>
         </div>
       </div>
-      <div class="pane" data-pane="checks" role="tabpanel" hidden>
+      <div class="pane" id="kernel-panel-checks" data-pane="checks" role="tabpanel" aria-labelledby="kernel-tab-checks" hidden>
         <div class="checks">
           <article class="check"><canvas data-kind="compile" aria-hidden="true"></canvas><span class="n">Check 1</span><h4>Compiles</h4><p>Built in a CPU process pool, off the GPU’s critical path, and cached by source.</p></article>
           <article class="check"><canvas data-kind="eager" aria-hidden="true"></canvas><span class="n">Check 2</span><h4>Matches eager</h4><p>Outputs and gradients against PyTorch eager, on common shapes plus one it has never seen.</p></article>
@@ -122,12 +122,12 @@
           <span>The checks are tested too: two planted cheating kernels, one that caches its outputs and one that hard-codes shapes, go through them before every run. If either passes, the run aborts.</span>
         </p>
       </div>
-      <div class="pane lineage" data-pane="shipped" role="tabpanel" hidden>
+      <div class="pane lineage" id="kernel-panel-shipped" data-pane="shipped" role="tabpanel" aria-labelledby="kernel-tab-shipped" hidden>
         <ol id="k-lineage"></ol>
         <div class="chips" id="k-chips"></div>
         <p class="fine" id="k-fine"></p>
       </div>
-      <div class="pane blocks" data-pane="measured" role="tabpanel" hidden>
+      <div class="pane blocks" id="kernel-panel-measured" data-pane="measured" role="tabpanel" aria-labelledby="kernel-tab-measured" hidden>
         <svg id="blocks-svg" role="img"></svg>
         <p id="blocks-cap"></p>
       </div>
