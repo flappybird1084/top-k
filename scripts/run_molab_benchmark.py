@@ -36,9 +36,20 @@ WORKLOAD_GUIDANCE = {
         "Choose a small timm Vision Transformer for classification so its "
         "LayerNorm and MLP blocks are part of the measured training step.",
     "facebookresearch/detectron2":
-        "Build a small detector from a programmatic config with random "
-        "weights and synthetic in-memory Images/Instances. Avoid Model Zoo "
-        "config paths, pretrained weights, and dataset downloads.",
+        "Build a small Mask R-CNN from programmatic get_cfg() with random "
+        "weights: BACKBONE.NAME='build_resnet_fpn_backbone', RESNETS.OUT_FEATURES "
+        "and FPN.IN_FEATURES=['res2','res3','res4','res5'], RPN.IN_FEATURES="
+        "['p2','p3','p4','p5','p6'], ROI_HEADS.NAME='StandardROIHeads', "
+        "ROI_HEADS.IN_FEATURES=['p2','p3','p4','p5'], ROI_BOX_HEAD.NAME="
+        "'FastRCNNConvFCHead', ROI_MASK_HEAD.NAME='MaskRCNNConvUpsampleHead', "
+        "and MODEL.MASK_ON=True. Wrap each training forward in EventStorage(). "
+        "Feed a direct in-memory list of {'image': CHW tensor, 'instances': "
+        "Instances} dictionaries. Each Instances needs gt_boxes as Boxes, "
+        "gt_classes as integer tensors, and gt_masks as BitMasks from a Boolean "
+        "(N,H,W) tensor. Use deterministic synthetic training and held-out "
+        "images with boxes and masks. Avoid Model Zoo paths, DatasetCatalog/"
+        "mappers, ResizeShortestEdge, polygon masks, pretrained weights, and "
+        "dataset downloads.",
 }
 RECIPE_BENCHMARK = {
     "phases": [
