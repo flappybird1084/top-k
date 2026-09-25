@@ -1,7 +1,7 @@
 <!doctype html>
-<!-- Landing page for top-k.dev (static prototype). Every animation is driven by real data extracted
-     from assets/recorded-data.js into landing-data.js and landing-timeline.js; the only other numbers
-     are nanochat's, from findings/01-results.md. The repo form does not start runs yet: wiring it to
+<!-- Landing page for top-k.dev (static prototype). The walkthrough uses recorded data in
+     landing-data.js and landing-timeline.js. The project graph is generated from the public
+     ten-repository benchmark in landing-benchmarks.js. The repo form does not start runs yet: wiring it to
      front.js / live-api.js is required before this can replace index.html.
      Preview: uv run --no-project python -m http.server 8799 --directory ui, then open /landing.html -->
 <html lang="en">
@@ -39,9 +39,9 @@
       <p class="note" role="status"></p>
     </form>
     <div class="results reveal" style="--d:.3s">
-      <div><b data-count="7.21" data-dec="2">−7.21%</b><span>val loss · 481M model</span></div>
+      <div><b id="hero-arch-gain" data-dec="2">—</b><span id="hero-arch-model">val loss</span></div>
       <i aria-hidden="true"></i>
-      <div><b data-count="3.3" data-dec="1">−3.3%</b><span>step time · vs torch.compile</span></div>
+      <div><b id="hero-kernel-gain" data-dec="1">—</b><span>step time · vs torch.compile</span></div>
     </div>
   </div>
 </header>
@@ -82,7 +82,7 @@
         <div class="steps" id="steps"><span class="glide" aria-hidden="true"></span></div>
       </div>
       <div class="pane" data-pane="crashes" role="tabpanel" hidden>
-        <p class="pane-note"><span id="crash-n">7</span> of 24 proposals crashed when they ran. The last line of each error:</p>
+        <p class="pane-note"><span id="crash-n">—</span> of <span id="crash-total">—</span> proposals crashed when they ran. The last line of each error:</p>
         <ul class="crashes" id="crash-list"></ul>
       </div>
     </div>
@@ -175,7 +175,7 @@
   <div class="wrap">
     <span class="brand">Top-K<small>ernel</small></span>
     <span><img src="assets/coreweave-sprite.png" alt="">Built at CoreWeave Hacks</span>
-    <a href="pitch.html">Pitch walkthrough ↗</a>
+    <a href="#loop">How it works ↑</a>
   </div>
 </footer>
 

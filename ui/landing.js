@@ -27,6 +27,11 @@
   const C = { ink: '237,237,240', gray: '107,107,117', coral: '239,122,109', amber: '242,181,96', accent: '139,151,255', accent2: '196,202,255' };
   const FATE = { unfinished: C.gray, nocompile: C.coral, wrong: C.coral, slower: C.amber, noise: C.amber, accepted: C.accent };
   const kernelFates = R.kernel.candidates.filter(c => c.kind !== 'seed').map(c => c.kind);
+  const archFinal = R.arch.candidates.filter(c => c.gen === 4 && Number.isFinite(c.gain)).sort((a, b) => b.gain - a.gain)[0];
+  const archGain = $('#hero-arch-gain'), kernelGain = $('#hero-kernel-gain');
+  archGain.dataset.count = archFinal.gain;
+  kernelGain.dataset.count = R.kernel.paired_median * 100;
+  $('#hero-arch-model').textContent = `val loss · ${R.arch.model.split('·').pop().trim()} model`;
 
   /* ---------------- chrome ---------------- */
   document.querySelectorAll('.reveal').forEach(n => once(n, () => n.classList.add('in'), .12));
@@ -234,6 +239,7 @@
     const A = R.arch, svg = $('#arch-svg');
     const proposals = A.candidates.filter(c => c.gen >= 1 && c.gen <= 3);
     $('#arch-summary').textContent = `${proposals.length} proposals across ${new Set(proposals.map(c => c.gen)).size} generations. Lower is better; hover any point to see what an agent tried.`;
+    $('#crash-total').textContent = proposals.length;
     const W = 1000, H = 500, X = [80, 290, 490, 690, 880], CRASH = 44, TOP = 84, BOT = 418, HI = 7.0, LO = 5.3;
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
     const y = l => TOP + (HI - l) / (HI - LO) * (BOT - TOP);
@@ -534,7 +540,7 @@
         let detail = `${loss(a.baseline_val_loss)} → ${loss(a.candidate_val_loss)} after equal ${a.budget_s} s training; structural change verified.`;
         if (a.caveat === 'near-zero') detail += ' Near-zero synthetic loss makes the relative gain large.';
         if (a.caveat === 'loss-floor') detail += ' This synthetic-task floor effect is not evidence of downstream quality.';
-        metrics.push({ value: a.caveat === 'loss-floor' ? `${loss(a.baseline_val_loss)} → 0` : `${a.improvement_pct.toFixed(3)}%`,
+        metrics.push({ value: a.caveat === 'loss-floor' ? `${loss(a.baseline_val_loss)} → ${loss(a.candidate_val_loss)}` : `${a.improvement_pct.toFixed(3)}%`,
           label: a.caveat === 'loss-floor' ? 'validation loss' : 'lower validation loss', detail });
       }
       let chip = result.kernel ? 'kernel' : 'architecture';

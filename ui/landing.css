@@ -66,7 +66,6 @@ form.repo{width:min(580px,100%);margin:0 auto}
 .ghost:hover{color:var(--ink);border-color:var(--line-2);transform:rotate(-120deg)}
 
 /* 01 — architecture chart */
-.chart{margin:0;padding:14px 18px 6px}
 .chart-bar{display:flex;justify-content:space-between;align-items:center;min-height:34px;font:12px var(--mono);color:var(--muted)}
 .chart-bar b{color:var(--accent-2);font-weight:400}
 #arch-svg{display:block;width:100%;height:auto;overflow:visible}
@@ -313,10 +312,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
 .stair-lab{fill:var(--muted);font-size:10.5px}
 
 /* Repos web */
-.final{padding:140px 0 60px;background:radial-gradient(50% 55% at 50% 64%,rgba(139,151,255,.07),transparent 70%)}
 .sec-head.center{text-align:center;margin:0 auto 8px}
 .sec-head.center .sub{max-width:600px;margin-left:auto;margin-right:auto}
-.web{position:relative;height:min(600px,80vw);min-height:420px;overflow:hidden}
 #web-canvas{position:absolute;inset:0;display:block;width:100%;height:100%}
 #web-nodes{position:absolute;inset:0}
 .rnode{position:absolute;left:0;top:0;display:flex;flex-direction:column;align-items:center;gap:7px;padding:6px;border:0;background:none;color:var(--muted);font:12px var(--mono);cursor:pointer;will-change:transform,opacity}
@@ -326,7 +323,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
 .rnode:hover i{border-color:var(--ink)}
 .rnode.run{color:var(--ink)}
 .rnode.run i{width:15px;height:15px;border:0;background:var(--accent);box-shadow:0 0 0 4px rgba(139,151,255,.14),0 0 18px rgba(139,151,255,.7)}
-.hub{position:absolute;left:50%;top:50%;z-index:300;display:grid;place-items:center;width:112px;height:112px;transform:translate(-50%,-50%);border:1px solid rgba(196,202,255,.45);border-radius:50%;background:radial-gradient(circle at 50% 35%,#20234a,#101126);color:var(--ink);font:400 17px var(--serif);cursor:pointer;box-shadow:0 0 0 10px rgba(139,151,255,.05),0 0 60px rgba(139,151,255,.25);transition:border-color .2s}
+.hub{position:absolute;left:50%;top:50%;z-index:300;display:grid;place-items:center;width:132px;height:132px;transform:translate(-50%,-50%);border:1px solid rgba(196,202,255,.45);border-radius:50%;background:radial-gradient(circle at 50% 35%,#20234a,#101126);color:var(--ink);font:400 19px var(--serif);cursor:pointer;box-shadow:0 0 0 10px rgba(139,151,255,.05),0 0 60px rgba(139,151,255,.25);transition:border-color .2s}
 .hub:hover{border-color:var(--accent-2)}
 .hub span{position:relative;z-index:1;white-space:nowrap}
 .hub i{position:absolute;inset:0;border-radius:50%;background:#15172e;opacity:0;transform:scale(1);transition:transform .65s cubic-bezier(.6,0,.3,1),opacity .3s}
@@ -337,21 +334,12 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
 
 @media(max-width:700px){
   .pane[data-pane="cands"]{overflow-x:auto}
-  .web{height:460px}
-  .hub{width:92px;height:92px;font-size:15px}
-  .rnode{font-size:11px}
   .crashes li{flex-direction:column;gap:4px}
 }
 @media(prefers-reduced-motion:reduce){
   .pane{animation:none}
   .hub::after{animation:none}
 }
-@media(max-width:560px){
-  .hub{width:72px;height:72px;font-size:13px}
-  .rnode{font-size:10.5px;gap:5px}
-  .rnode:not(.run) span{display:none}
-}
-
 /* ================= v5: the repo web as the closing showpiece ================= */
 #repos.final{padding:120px 0 40px;background:radial-gradient(60% 55% at 50% 58%,rgba(139,151,255,.08),transparent 72%)}
 .web{position:relative;height:auto;min-height:0;overflow:visible}
@@ -359,7 +347,6 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
 .web-head{position:absolute;left:0;right:0;top:28px;z-index:2;padding:0 24px;text-align:center;pointer-events:none}
 .web-head h2{font-size:clamp(34px,4.6vw,56px)}
 .web-head .sub{max-width:640px;margin:14px auto 0}
-.hub{width:132px;height:132px;font-size:19px}
 .rnode.run{gap:6px;font-size:13px}
 .rnode.run i{width:18px;height:18px}
 .rnode .chip{display:block;margin-top:-2px;font:11px var(--mono);font-style:normal;color:var(--accent-2);white-space:nowrap}
@@ -389,10 +376,12 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   .web-head{position:static;padding:0 16px 6px}
   .web-stage{height:400px}
   .hub{width:84px;height:84px;font-size:14px}
+  .rnode.run{font-size:11px}
   .run-card{position:static;width:auto;margin:6px 16px 0}
   .web-evidence{position:static;margin:18px 16px 0}
 }
 @media(max-width:560px){
   .hub{width:74px;height:74px;font-size:13px}
+  .rnode.run{font-size:10.5px}
   .rnode .chip{display:none}
 }
