@@ -243,6 +243,51 @@ def loss_fn(model, batch):
     assert samples_per_batch(batch) == 1
 
 
+def test_recipe_adapter_prompt_keeps_native_model_as_baseline():
+    from kernelevo.prompts import adapter_writer_prompt
+
+    recipe = adapter_writer_prompt("repo survey", "synthetic benchmark data", "cuda",
+                                   mode="recipe")[0]["content"]
+    kernel = adapter_writer_prompt("repo survey", "synthetic benchmark data", "cuda",
+                                   mode="kernel")[0]["content"]
+    assert "Do not import kernelevo.ops" in recipe
+    assert "ops.gelu_mlp" not in recipe
+    assert "ops.gelu_mlp" in kernel
+
+
+def test_recipe_adapter_rejects_kernel_rewrites_and_cross_mode_cache(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from kernelevo import adapter_writer
+
+    assert adapter_writer.recipe_adapter_violation("from kernelevo import ops\n")
+    assert adapter_writer.recipe_adapter_violation("block.forward = lambda x: x\n")
+    assert adapter_writer.recipe_adapter_violation(
+        "setattr(block, 'forward', lambda x: x)\n")
+    assert adapter_writer.recipe_adapter_violation("def build_model(): return None\n") is None
+
+    adapter = tmp_path / "adapter.py"
+    adapter.write_text("from kernelevo import ops\n")
+    (tmp_path / "adapter.py.ok").write_text(adapter.read_text())
+    (tmp_path / "adapter.py.mode").write_text("kernel\n")
+    monkeypatch.setattr(adapter_writer, "fetch_repo", lambda *args: str(tmp_path))
+    monkeypatch.setattr(adapter_writer, "survey_repo", lambda *args: "survey")
+    monkeypatch.setattr(adapter_writer, "_run_ingest", lambda *args, **kwargs: (
+        {"n_params": 1, "samples_per_batch": 1, "loss0": 1.0}, ""))
+
+    class LLM:
+        calls = 0
+        def complete(self, messages, meta=None):
+            self.calls += 1
+            return SimpleNamespace(text="```python\ndef build_model(): return None\n```")
+
+    llm = LLM()
+    adapter_writer.prepare("example/repo", "", 1, str(tmp_path), llm, "cuda",
+                           mode="recipe")
+    assert llm.calls == 1
+    assert (tmp_path / "adapter.py.mode").read_text().strip() == "recipe"
+    assert "kernelevo import ops" not in adapter.read_text()
+
+
 def test_ingest_rejects_loss_without_model_gradient():
     import torch
     from kernelevo.ingest import check_training_signal
@@ -253,6 +298,36 @@ def test_ingest_rejects_loss_without_model_gradient():
     with pytest.raises(SystemExit, match="only zero"):
         check_training_signal((model.weight * 0).sum(), model)
     check_training_signal((model.weight ** 2).sum(), model)
+
+
+def test_recipe_ingest_checks_native_model_and_heldout_loader(monkeypatch):
+    import torch
+    from kernelevo.ingest import ingest
+    from kernelevo import patch
+
+    def routed(*args):
+        raise AssertionError("recipe ingest must not route the native model")
+
+    monkeypatch.setattr(patch, "auto_route", routed)
+
+    class Adapter:
+        @staticmethod
+        def build_model():
+            return torch.nn.Linear(2, 2)
+
+        @staticmethod
+        def get_dataloader(split):
+            if split == "val":
+                raise RuntimeError("broken validation loader")
+            return [torch.ones(4, 2)]
+
+        @staticmethod
+        def loss_fn(model, batch):
+            return model(batch).square().mean()
+
+    cfg = {"seed": 1, "device": "cpu", "mode": "recipe"}
+    with pytest.raises(RuntimeError, match="broken validation loader"):
+        ingest(Adapter, cfg)
 
 
 def test_repository_job_does_not_inherit_operator_credentials(monkeypatch, tmp_path):
