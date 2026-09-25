@@ -66,7 +66,7 @@
   <div class="wrap">
     <div class="sec-head reveal">
       <h2>Every candidate from that run.</h2>
-      <p class="sub">24 proposals across three generations. Lower is better; hover any point to see what an agent tried.</p>
+      <p class="sub" id="arch-summary">Lower is better; hover any point to see what an agent tried.</p>
     </div>
     <div class="panel tabbed reveal" data-tabs>
       <div class="tabbar" role="tablist">
@@ -114,7 +114,7 @@
         <div class="checks">
           <article class="check"><canvas data-kind="compile" aria-hidden="true"></canvas><span class="n">Check 1</span><h4>Compiles</h4><p>Built in a CPU process pool, off the GPU’s critical path, and cached by source.</p></article>
           <article class="check"><canvas data-kind="eager" aria-hidden="true"></canvas><span class="n">Check 2</span><h4>Matches eager</h4><p>Outputs and gradients against PyTorch eager, on common shapes plus one it has never seen.</p></article>
-          <article class="check"><canvas data-kind="alone" aria-hidden="true"></canvas><span class="n">Check 3</span><h4>Faster alone</h4><p>Re-timed against the current best in the same session. Inputs rotate, so it can’t memorize.</p></article>
+          <article class="check"><canvas data-kind="alone" aria-hidden="true"></canvas><span class="n">Check 3</span><h4>Enters timing</h4><p>Correct candidates proceed to timing. The recording does not separate standalone timing failures from full-step timing failures.</p></article>
           <article class="check"><canvas data-kind="step" aria-hidden="true"></canvas><span class="n">Check 4</span><h4>Faster in the step</h4><p>Timed inside a real training step, interleaved with the incumbent. Within noise counts as no.</p></article>
         </div>
         <p class="cheat">
@@ -167,7 +167,7 @@
       <button class="hub" id="hub" type="button" aria-label="Your repo: go to the search box"><i aria-hidden="true"></i><span>Your repo</span></button>
     </div>
     <article class="run-card" id="run-card" aria-live="polite"></article>
-    <p class="web-evidence">Real tests were run on these projects using deterministic synthetic training batches on a Molab GPU. Kernel gains are measured against compiled baselines; architecture gains use held-out loss after equal training time. <a href="https://github.com/flappybird1084/top-k/tree/main/benchmarks/results/top10-2026-09-25" target="_blank" rel="noopener noreferrer">Read the full ten-project results and limitations ↗</a></p>
+    <p class="web-evidence">Real tests were run on these projects using deterministic synthetic training batches on a Molab GPU. Kernel gains are measured against compiled baselines; architecture gains use held-out loss after equal training time. <a id="benchmark-evidence" href="#repos" target="_blank" rel="noopener noreferrer">Read the full ten-project results and limitations ↗</a></p>
   </div>
 </section>
 
@@ -182,6 +182,7 @@
 <div id="tip" role="tooltip" hidden></div>
 <script src="landing-data.js"></script>
 <script src="landing-timeline.js"></script>
+<script src="landing-benchmarks.js"></script>
 <script src="landing.js"></script>
 </body>
 </html>

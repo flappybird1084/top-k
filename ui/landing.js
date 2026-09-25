@@ -52,7 +52,9 @@
       t.tabIndex = t.classList.contains('on') ? 0 : -1;
       t.addEventListener('click', () => show(t.dataset.tab));
       t.addEventListener('keydown', e => {
-        const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+        let step = 0;
+        if (e.key === 'ArrowRight') step = 1;
+        if (e.key === 'ArrowLeft') step = -1;
         if (!step) return;
         const n = tabs[(i + step + tabs.length) % tabs.length];
         show(n.dataset.tab); n.focus();
@@ -127,7 +129,11 @@
     const GATE = { unfinished: 0, nocompile: 1, wrong: 2, slower: 4, noise: 4, accepted: 5 };
     let W = 0, H = 0, parts = [], sparks = [], clock = 0, spawnAt = 0, next = 0;
     const pulse = [0, 0, 0, 0], pulseCol = [C.ink, C.ink, C.ink, C.ink], spin = [0, 1.7, 3.1, 4.4];
-    const stopOf = p => p.g === 0 ? p.fz : p.g === 5 ? Infinity : RX[p.g - 1];
+    const stopOf = p => {
+      if (p.g === 0) return p.fz;
+      if (p.g === 5) return Infinity;
+      return RX[p.g - 1];
+    };
     const depthA = d => Math.max(.16, Math.min(1, (10 - d) / 4.5));
     cam.yaw = .62; cam.pitch = .2;
 
@@ -178,7 +184,9 @@
           const t = j / 72 * 6.2832, cur = cam.project(RX[i], RR * Math.cos(t), RR * Math.sin(t));
           const rel = ((t - spin[i]) % 6.2832 + 6.2832) % 6.2832, arc = rel < 1.1 ? 1 - rel / 1.1 : 0;
           const a = (.12 + pulse[i] * .55 + arc * .5) * depthA((prev[2] + cur[2]) / 2);
-          const col = pulse[i] > .05 ? pulseCol[i] : arc > 0 ? C.accent2 : C.ink;
+          let col = C.ink;
+          if (arc > 0) col = C.accent2;
+          if (pulse[i] > .05) col = pulseCol[i];
           ctx.strokeStyle = `rgba(${col},${a.toFixed(3)})`; ctx.lineWidth = 1 + pulse[i] * 1.2 + arc * .7;
           ctx.beginPath(); ctx.moveTo(prev[0], prev[1]); ctx.lineTo(cur[0], cur[1]); ctx.stroke();
           prev = cur;
@@ -188,7 +196,10 @@
         const kept = p.g === 5 && p.passed >= 4;
         const col = p.dead || kept ? FATE[p.kind] : C.ink;
         const h = cam.project(p.x, p.y, p.z);
-        const a = (p.dead ? .95 : kept ? 1 : .62) * Math.max(0, p.a) * depthA(h[2]);
+        let alpha = .62;
+        if (kept) alpha = 1;
+        if (p.dead) alpha = .95;
+        const a = alpha * Math.max(0, p.a) * depthA(h[2]);
         if (!p.dead) {
           const tl = cam.project(p.x - (kept ? .9 : .35), p.y, p.z);
           const g = ctx.createLinearGradient(tl[0], tl[1], h[0], h[1]);
@@ -221,6 +232,8 @@
      only if it sits below the step for its own budget. */
   (function arch() {
     const A = R.arch, svg = $('#arch-svg');
+    const proposals = A.candidates.filter(c => c.gen >= 1 && c.gen <= 3);
+    $('#arch-summary').textContent = `${proposals.length} proposals across ${new Set(proposals.map(c => c.gen)).size} generations. Lower is better; hover any point to see what an agent tried.`;
     const W = 1000, H = 500, X = [80, 290, 490, 690, 880], CRASH = 44, TOP = 84, BOT = 418, HI = 7.0, LO = 5.3;
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
     const y = l => TOP + (HI - l) / (HI - LO) * (BOT - TOP);
@@ -257,14 +270,14 @@
       const list = cands.filter(c => c.gen === g).sort((a, b) => a.id - b.id);
       const gap = g === 4 ? 44 : 17;
       list.forEach((c, i) => {
-        const crash = c.loss == null;
+        const crash = c.loss === null || c.loss === undefined;
         nodes.set(c.id, { ...c, crash, x: X[g] + (i - (list.length - 1) / 2) * gap, y: crash ? CRASH : y(c.loss) });
       });
     }
-    const parentOf = n => (n.parent == null || n.parent <= 3) ? 'base' : n.parent;
-    const finals = cands.filter(c => c.gen === 4 && c.gain != null).sort((a, b) => b.gain - a.gain);
+    const parentOf = n => (n.parent === null || n.parent === undefined || n.parent <= 3) ? 'base' : n.parent;
+    const finals = cands.filter(c => c.gen === 4 && c.gain !== null && c.gain !== undefined).sort((a, b) => b.gain - a.gain);
     const win = nodes.get(finals[0].id);
-    const lead3 = nodes.get(cands.filter(c => c.gen === 3 && c.gain != null).sort((a, b) => b.gain - a.gain)[0].id);
+    const lead3 = nodes.get(cands.filter(c => c.gen === 3 && c.gain !== null && c.gain !== undefined).sort((a, b) => b.gain - a.gain)[0].id);
     const leadFinal = finals.map(f => nodes.get(f.id)).find(f => f.parent === lead3.id);
     const chain = id => { const out = []; let n = nodes.get(id); while (n && !n.base) { out.push(n); n = nodes.get(parentOf(n)); } return out; };
 
@@ -385,7 +398,8 @@
       lead3.el.classList.add('lead');
       if (leadFinal) { leadFinal.el.classList.add('lead'); leadFinal.edge.classList.add('lead'); }
       tags.forEach(t => t.classList.add('on'));
-      readout.innerHTML = `Reported <b>${L3(B[300])} → ${L3(win.loss)}</b> after 300 s (${pct(win.gain)}) · the 120 s leader ended at <span style="color:var(--amber)">${L3(leadFinal.loss)}</span>`;
+      readout.innerHTML = `Reported <b>${L3(B[300])} → ${L3(win.loss)}</b> after 300 s (${pct(win.gain)})`
+        + (leadFinal ? ` · the 120 s leader ended at <span style="color:var(--amber)">${L3(leadFinal.loss)}</span>` : '');
       played = true; travel();
     }
     reset();
@@ -403,7 +417,7 @@
     $('#k-rejected').textContent = all.length - kept;
     const FINAL = [all.length, compiled, correct, correct, kept];
     const ol = $('#stages');
-    const nums = ['Proposed', 'Compiles', 'Matches eager', 'Faster alone', 'Faster in the step'].map(l => {
+    const nums = ['Proposed', 'Compiles', 'Matches eager', 'Enters timing', 'Faster in the step'].map(l => {
       const li = document.createElement('li');
       li.innerHTML = `<b>0</b><span class="l">${l}</span>`;
       ol.appendChild(li);
@@ -415,9 +429,10 @@
     for (let i = 1; i < 5; i++) S('line', { x1: GX[i], x2: GX[i], y1: 12, y2: H - 6, class: 'gate' }, svg);
     const gDots = S('g', {}, svg);
     const FAIL = { unfinished: 1, nocompile: 1, wrong: 2, slower: 4, noise: 4 };
-    const HEX = { unfinished: '#6b6b75', nocompile: '#ef7a6d', wrong: '#ef7a6d', slower: '#f2b560', noise: '#f2b560', accepted: '#8b97ff' };
+    const hex = rgb => '#' + rgb.split(',').map(part => Number(part).toString(16).padStart(2, '0')).join('');
+    const HEX = Object.fromEntries(Object.entries(FATE).map(([kind, color]) => [kind, hex(color)]));
 
-    let dots = [], counts, piles, keptN, T, raf = 0, lastT = 0, visible = false, pending = false, loop = 0;
+    let dots = [], counts, piles, keptN, T, raf = 0, lastT = 0;
     function build() {
       gDots.innerHTML = ''; dots = []; counts = [0, 0, 0, 0, 0]; piles = [0, 0, 0, 0, 0]; keptN = 0; T = 0;
       nums.forEach(b => { b.textContent = '0'; });
@@ -468,12 +483,11 @@
       raf = 0; settle();
     }
     function play() {
-      cancelAnimationFrame(raf); clearTimeout(loop); pending = false; build();
+      cancelAnimationFrame(raf); build();
       if (reduce) { for (let i = 0; i < 4000 && step(1 / 30); i++); settle(); return; }
       lastT = performance.now(); raf = requestAnimationFrame(frame);
     }
     const box = $('.funnel');
-    watch(box, v => { visible = v; if (v && pending) play(); });
     once(box, play, .35);
     $('#k-replay').addEventListener('click', play);
   })();
@@ -491,8 +505,15 @@
   (function web() {
     const box = $('#web'), stage = $('#web-stage'), cv = $('#web-canvas'), layer = $('#web-nodes'), hub = $('#hub'), card = $('#run-card');
     if (!box) return;
-    // Values are copied from benchmarks/results/top10-2026-09-25/summary.json.
-    // Include only accepted, measured improvements; the LitGPT loss floor is explicitly qualified.
+    const benchmark = window.TOPK_BENCHMARKS;
+    if (!benchmark?.results?.length) return;
+    $('#benchmark-evidence').href = benchmark.evidence_url;
+    const loss = value => {
+      if (value === 0) return '0';
+      if (value < 1e-6) return value.toExponential(2).replace('e-', 'e−');
+      if (value < 1e-3) return value.toFixed(8);
+      return value.toFixed(5);
+    };
     const go = url => {
       const input = $('#repo-hero');
       if (url) input.value = url;
@@ -501,29 +522,34 @@
       setTimeout(() => $('#hero').scrollIntoView({ behavior: 'smooth', block: 'start' }), 520);
       setTimeout(() => { input.focus({ preventScroll: true }); box.classList.remove('expanding'); }, 1400);
     };
-    const RUNS = [
-      { name: 'huggingface/pytorch-image-models', short: 'timm', chip: 'kernel + architecture',
-        metrics: [
-          { value: '9.499%', label: 'faster kernel step', detail: '16.8612 → 15.2596 ms versus the compiled baseline; 2 kernel generations.' },
-          { value: '4.535%', label: 'lower validation loss', detail: '7.30554 → 6.97424 after equal 120 s training; structural change verified.' },
-        ] },
-      { name: 'karpathy/nanochat', short: 'nanochat', chip: 'kernel',
-        metrics: [{ value: '1.736%', label: 'faster kernel step', detail: '48.3519 → 47.5122 ms versus the compiled baseline; 2 kernel generations.' }] },
-      { name: 'huggingface/transformers', short: 'Transformers', chip: 'architecture',
-        metrics: [{ value: '64.154%', label: 'lower validation loss', detail: '0.00007215 → 0.00002586 after equal 120 s training; near-zero synthetic loss makes the relative gain large.' }] },
-      { name: 'huggingface/diffusers', short: 'Diffusers', chip: 'architecture',
-        metrics: [{ value: '13.324%', label: 'lower validation loss', detail: '0.56563 → 0.49026 after equal 120 s training; structural change verified.' }] },
-      { name: 'Lightning-AI/litgpt', short: 'LitGPT', chip: 'architecture · loss floor',
-        metrics: [{ value: '4.35e−8 → 0', label: 'validation loss', detail: 'Accepted structural candidate at equal 120 s training. This synthetic-task floor effect is not evidence of downstream quality.' }] },
-    ];
+    const RUNS = benchmark.results.map(result => {
+      const metrics = [];
+      if (result.kernel) {
+        const k = result.kernel;
+        metrics.push({ value: `${k.improvement_pct.toFixed(3)}%`, label: 'faster kernel step',
+          detail: `${k.baseline_ms.toFixed(4)} → ${k.candidate_ms.toFixed(4)} ms versus the compiled baseline; ${k.generations} kernel generations.` });
+      }
+      if (result.architecture) {
+        const a = result.architecture;
+        let detail = `${loss(a.baseline_val_loss)} → ${loss(a.candidate_val_loss)} after equal ${a.budget_s} s training; structural change verified.`;
+        if (a.caveat === 'near-zero') detail += ' Near-zero synthetic loss makes the relative gain large.';
+        if (a.caveat === 'loss-floor') detail += ' This synthetic-task floor effect is not evidence of downstream quality.';
+        metrics.push({ value: a.caveat === 'loss-floor' ? `${loss(a.baseline_val_loss)} → 0` : `${a.improvement_pct.toFixed(3)}%`,
+          label: a.caveat === 'loss-floor' ? 'validation loss' : 'lower validation loss', detail });
+      }
+      let chip = result.kernel ? 'kernel' : 'architecture';
+      if (result.kernel && result.architecture) chip = 'kernel + architecture';
+      if (result.architecture?.caveat === 'loss-floor') chip = 'architecture · loss floor';
+      return { name: result.name, short: result.short, chip, metrics };
+    });
     const RIN = 1.5;
     const nodes = [];
     RUNS.forEach((r, i) => {
       const a = i / RUNS.length * 6.2832 + .5;
-      nodes.push({ ...r, run: true, idx: i, x: Math.cos(a) * RIN, y: Math.sin(i * 1.7) * .14, z: Math.sin(a) * RIN });
+      nodes.push({ ...r, idx: i, x: Math.cos(a) * RIN, y: Math.sin(i * 1.7) * .14, z: Math.sin(a) * RIN });
     });
     const O = { x: 0, y: 0, z: 0 }, links = [];
-    nodes.forEach(n => links.push([O, n, 'run', n]));
+    nodes.forEach(n => links.push([O, n]));
 
     hub.addEventListener('click', () => go(''));
     nodes.forEach(n => {
@@ -549,7 +575,7 @@
     if (document.fonts) document.fonts.ready.then(measure);
 
     // The run card: cycles through measured runs until someone picks one.
-    let sel = 0, t = 0, lastSwitch = 0, userAt = -1e9;
+    let sel = 0, t = 0, lastSwitch = 0, userAt = -1e9, redrawStatic = null;
     function show(i, user) {
       sel = i; lastSwitch = t;
       if (user) userAt = t;
@@ -557,11 +583,12 @@
       card.innerHTML = `<div class="body"><span class="k">Accepted benchmark result</span><h3>${esc(r.name)}</h3>`
         + r.metrics.map(m => `<div class="run-metric"><div class="big">${esc(m.value)}<small>${esc(m.label)}</small></div><p>${esc(m.detail)}</p></div>`).join('')
         + `<p class="search-detail">Kernel search checked candidate correctness and full-step time against torch.compile. Architecture search tested structural changes, then compared held-out loss at the same training budget. Only improved domains are shown for this project.</p></div>`
-        + `<div class="act"><a class="go" href="https://github.com/flappybird1084/top-k/tree/main/benchmarks/results/top10-2026-09-25" target="_blank" rel="noopener noreferrer">View measured evidence ↗</a><div class="pager">`
+        + `<div class="act"><a class="go" href="${esc(benchmark.evidence_url)}" target="_blank" rel="noopener noreferrer">View measured evidence ↗</a><div class="pager">`
         + RUNS.map((q, k) => `<button type="button" class="${k === i ? 'on' : ''}" aria-label="Show ${esc(q.name)}"></button>`).join('')
         + '</div></div>';
       card.querySelectorAll('.pager button').forEach((b, k) => b.addEventListener('click', () => show(k, true)));
       nodes.forEach(n => n.el.classList.toggle('sel', n.idx === i));
+      if (reduce && redrawStatic) redrawStatic();
     }
     card.addEventListener('pointerenter', () => { userAt = t; });
     show(0, false);
@@ -593,23 +620,22 @@
     function draw(ctx) {
       ctx.clearRect(0, 0, W, H);
       ctx.lineWidth = 1; ring(ctx, RIN);
-      for (const [a, b, kind, n] of links) {
+      for (const [a, b] of links) {
         const pa = cam.project(a.x, a.y, a.z), pb = cam.project(b.x, b.y, b.z), dep = (depthOf(pa[2]) + depthOf(pb[2])) / 2;
-        const hot = kind === 'run' && n.idx === sel;
+        const hot = b.idx === sel;
         ctx.lineWidth = hot ? 2.2 : 1.4;
         ctx.strokeStyle = `rgba(${C.accent},${((hot ? .55 : .2) + .4 * dep).toFixed(3)})`;
         ctx.beginPath(); ctx.moveTo(pa[0], pa[1]); ctx.lineTo(pb[0], pb[1]); ctx.stroke();
       }
-      ctx.setLineDash([]);
-      nodes.filter(n => n.run).forEach((n, i) => {
-        const k = (t * .35 + i / 3) % 1, p = cam.project(n.x * k, n.y * k, n.z * k), hot = n.idx === sel;
+      nodes.forEach((n, i) => {
+        const k = (t * .35 + i / nodes.length) % 1, p = cam.project(n.x * k, n.y * k, n.z * k), hot = n.idx === sel;
         ctx.fillStyle = `rgba(${C.accent2},${(Math.sin(k * Math.PI) * (hot ? 1 : .6)).toFixed(3)})`;
         ctx.beginPath(); ctx.arc(p[0], p[1], (hot ? 3.2 : 2.2) * p[3], 0, 6.2832); ctx.fill();
       });
       for (const n of nodes) {
         const p = cam.project(n.x, n.y, n.z), dep = depthOf(p[2]);
         n.el.style.transform = `translate(${(p[0] - n.ax).toFixed(1)}px,${(p[1] - n.ay).toFixed(1)}px) scale(${(.7 + .42 * p[3]).toFixed(3)})`;
-        n.el.style.opacity = ((n.run ? .55 : .22) + (n.run ? .45 : .6) * dep).toFixed(3);
+        n.el.style.opacity = (.55 + .45 * dep).toFixed(3);
         n.el.style.zIndex = String(Math.round(dep * 100));
       }
     }
@@ -624,6 +650,13 @@
       },
       step, draw,
     });
+    redrawStatic = () => {
+      yaw = frontYaw(nodes[sel]);
+      cam.yaw = yaw;
+      cam.pitch = -.62;
+      draw(cv.getContext('2d'));
+    };
+    if (reduce) redrawStatic();
   })();
 
   /* ================= v3 additions ================= */
@@ -685,7 +718,7 @@
       const ok = g.agents.filter(a => !a.crash), best = ok.reduce((a, b) => b.gain > a.gain ? b : a, ok[0]);
       g.agents.forEach((a, k) => {
         const r = bar(a.s, a.d, agentY(k), 9, 'b-agent');
-        bindTip(r, () => `<div class="h">Sub-agent · wrote for ${Math.round(a.d)} s</div>${esc(a.strategy)}…<div class="r ${a.crash ? 'bad' : ''}">${a.crash ? 'crashed when it ran' : pct(a.gain) + ' val loss vs. baseline'}</div>`);
+        bindTip(r, () => `<div class="h">Sub-agent · wrote for ${Math.round(a.d)} s</div>${esc(a.strategy)}<div class="r ${a.crash ? 'bad' : ''}">${a.crash ? 'crashed when it ran' : pct(a.gain) + ' val loss vs. baseline'}</div>`);
         const x = X(g.train[1]) - 10, y0 = agentY(k);
         let m;
         if (a.crash) { m = S('text', { x, y: y0 + 4.5, class: 'o-crash', 'text-anchor': 'middle' }, gOut); m.textContent = '×'; }
@@ -699,7 +732,7 @@
       });
       bar(g.train[0], g.train[1] - g.train[0], Y.gpu, 13, 'b-gpu', { fill: 'url(#tl-stripes)' });
       bar(g.curate[0], g.curate[1], Y.cur, 10, 'b-cur');
-      spend.textContent = g.spend_before != null ? `$${g.spend_before.toFixed(2)}` : '—';
+      spend.textContent = g.spend_before !== null && g.spend_before !== undefined ? `$${g.spend_before.toFixed(2)}` : '—';
       sel = { X, start, end, span };
     }
     function update(ts) {
@@ -733,7 +766,7 @@
     // Short names for the four real strategies on the winning line (full text on hover).
     const TITLE = { 8: 'Parallel attention + MLP block', 16: 'One shared key/value head', 24: 'Cyclic learning-rate schedule', 29: 'Re-trained for the full 300 s' };
     const GEN = ['Baseline', 'Gen 1', 'Gen 2', 'Gen 3', 'Finals'];
-    const win = A.candidates.filter(c => c.gen === 4 && c.gain != null).sort((a, b) => b.gain - a.gain)[0];
+    const win = A.candidates.filter(c => c.gen === 4 && c.gain !== null && c.gain !== undefined).sort((a, b) => b.gain - a.gain)[0];
     const path = [];
     for (let c = win; c && c.gen > 0; c = byId.get(c.parent)) path.unshift(c);
     path.forEach((c, i) => {
@@ -832,11 +865,13 @@
     path.forEach((c, i) => {
       const li = document.createElement('li'), ms = Number(c.ms), inc = Number(c.inc);
       if (i === path.length - 1) li.className = 'best';
-      li.innerHTML = c.kind === 'seed'
-        ? `<span class="ms">${ms.toFixed(2)} ms</span><span class="id">starting point</span><p>torch.compile (inductor), the incumbent to beat.</p>`
-        : c.kind === 'accepted'
-          ? `<span class="ms">${ms.toFixed(2)} ms</span><span class="id">#${esc(c.id)}</span><span class="dx">${pct((inc - ms) / inc * 100)} vs. incumbent</span><p>${esc(c.strategy)}</p>`
-          : `<span class="ms">${ms.toFixed(2)} ms</span><span class="id">#${esc(c.id)} · within noise, kept as a parent</span><p>${esc(c.strategy)}</p>`;
+      if (c.kind === 'seed') {
+        li.innerHTML = `<span class="ms">${ms.toFixed(2)} ms</span><span class="id">starting point</span><p>torch.compile (inductor), the incumbent to beat.</p>`;
+      } else if (c.kind === 'accepted') {
+        li.innerHTML = `<span class="ms">${ms.toFixed(2)} ms</span><span class="id">#${esc(c.id)}</span><span class="dx">${pct((inc - ms) / inc * 100)} vs. incumbent</span><p>${esc(c.strategy)}</p>`;
+      } else {
+        li.innerHTML = `<span class="ms">${ms.toFixed(2)} ms</span><span class="id">#${esc(c.id)} · within noise, kept as a parent</span><p>${esc(c.strategy)}</p>`;
+      }
       lin.appendChild(li);
     });
     // The three Triton kernels the final version installs in the backward pass (from the verification record).
@@ -877,7 +912,7 @@
     const tiles = MODELS.map(m => {
       const el = document.createElement('div');
       el.className = 'tile';
-      el.innerHTML = (m.img ? `<img src="${m.img}" alt="">` : `<span class="mono">${m.mono}</span>`) + `<b>${esc(m.name)}</b><span>${esc(m.via)}</span>`;
+      el.innerHTML = `<img src="${esc(m.img)}" alt=""><b>${esc(m.name)}</b><span>${esc(m.via)}</span>`;
       stage.appendChild(el);
       return el;
     });
