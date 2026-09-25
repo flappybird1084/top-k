@@ -64,10 +64,10 @@ def publish(report: dict, evidence_path: Path) -> str:
                              "architecture_metric": "held-out validation loss after fixed training seconds; lower is better",
                              "snapshot_utc": snapshot})
     try:
-        columns = ["repo", "commit", "workload", "kernel_model", "kernel_status",
+        columns = ["repo", "commit", "workload", "kernel_model", "kernel_inference_mode", "kernel_status",
                    "kernel_accepted", "baseline_ms", "candidate_ms",
                    "kernel_step_time_reduction_pct",
-                   "kernel_reason", "architecture_model", "architecture_status",
+                   "kernel_reason", "architecture_model", "architecture_inference_mode", "architecture_status",
                    "architecture_accepted", "baseline_val_loss", "candidate_val_loss",
                    "architecture_loss_improvement_pct", "architecture_reason"]
         data = []
@@ -75,10 +75,10 @@ def publish(report: dict, evidence_path: Path) -> str:
             k, a = row["kernel"], row["architecture"]
             km, am = k.get("result") or {}, a.get("result") or {}
             data.append([row["repo"], row["commit"], row["workload"],
-                         k.get("llm"), k["status"], km.get("accepted"),
+                         k.get("llm"), k.get("inference_mode"), k["status"], km.get("accepted"),
                          km.get("baseline_ms"), km.get("candidate_ms"),
                          km.get("improvement_pct"), k.get("reason", km.get("reason")),
-                         a.get("llm"), a["status"], am.get("accepted"),
+                         a.get("llm"), a.get("inference_mode"), a["status"], am.get("accepted"),
                          am.get("baseline_val_loss"), am.get("candidate_val_loss"),
                          am.get("improvement_pct"), a.get("reason", am.get("reason"))])
         run.log({"repositories": wandb.Table(columns=columns, data=data)})
