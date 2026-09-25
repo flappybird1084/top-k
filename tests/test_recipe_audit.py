@@ -70,9 +70,9 @@ def test_subagent_prompt_carries_model_report_and_no_smuggling_rule():
     assert "Do not bundle extras" in body
 
 
-def test_precision_cast_policy():
+def test_precision_autocast_policy():
     import torch
-    from kernelevo.recipe_worker import _apply_precision
+    from kernelevo.recipe_worker import _apply_precision, _precision_context
     m = nn.Linear(4, 4)
     # cpu: never cast (keeps stub/CPU harness tests exact)
     out = _apply_precision(m, {"precision": "bf16"}, "cpu")
@@ -80,12 +80,13 @@ def test_precision_cast_policy():
     # explicit off: no cast even on cuda-labelled device strings
     out = _apply_precision(nn.Linear(4, 4), {"precision": "off"}, "cuda")
     assert out.weight.dtype == torch.float32
-    # bf16 + cuda device string: cast (no GPU needed for a dtype conversion)
+    # bf16 + cuda device string: fp32 parameters and bf16 operations
     out = _apply_precision(nn.Linear(4, 4), {"precision": "bf16"}, "cuda")
-    assert out.weight.dtype == torch.bfloat16
+    assert out.weight.dtype == torch.float32
+    assert _precision_context({"precision": "bf16"}, "cuda").fast_dtype == torch.bfloat16
     # default when key absent is bf16
     out = _apply_precision(nn.Linear(4, 4), {}, "cuda")
-    assert out.weight.dtype == torch.bfloat16
+    assert out.weight.dtype == torch.float32
 
 
 def test_author_recipe_accumulates_tokens(tmp_path):
