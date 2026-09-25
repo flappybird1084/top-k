@@ -265,3 +265,9 @@ def author_recipe(llm, phase, job, base_source, parent_source, loss_source,
 def is_better_final(loss, accepted, winner):
     """Finals compare accepted candidates at the same finals budget."""
     return bool(accepted) and (winner is None or loss < winner['final_val_loss'])
+
+
+def accepts_architecture_final(loss, baseline_loss, margin, arch_fp, baseline_arch_fp):
+    """A recipe final must improve loss and retain a changed model structure."""
+    return bool(arch_fp and baseline_arch_fp and arch_fp != baseline_arch_fp and
+                loss < baseline_loss * (1 - margin))

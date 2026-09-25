@@ -43,6 +43,12 @@ def test_architecture_fingerprint_detects_module_structure_change():
     assert recipes.arch_fingerprint(base) != recipes.arch_fingerprint(changed)
 
 
+def test_final_acceptance_requires_structure_and_loss():
+    assert recipes.accepts_architecture_final(0.8, 1.0, 0.01, "changed", "base")
+    assert not recipes.accepts_architecture_final(0.8, 1.0, 0.01, "base", "base")
+    assert not recipes.accepts_architecture_final(1.1, 1.0, 0.01, "changed", "base")
+
+
 def test_model_report_contains_structure_and_source():
     rep = recipes.model_report(TinyModel())
     assert "total parameters" in rep

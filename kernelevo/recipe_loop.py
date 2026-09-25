@@ -502,7 +502,9 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
         if not r.get("ok"):
             print(f"[finals] candidate {fr['id']} failed: {r.get('note')}")
             continue
-        accepted = r["val_loss"] < baseline[fsecs] * (1 - rc["loss_margin_rel"])
+        accepted = recipes.accepts_architecture_final(
+            r["val_loss"], baseline[fsecs], rc["loss_margin_rel"],
+            r["arch_fp"], baseline_arch_fp)
         cid = archive.add_candidate(
             lineage_id=lineage_ids["finals"], generation=gen_index + 1,
             strategy=f"FINAL @{fsecs}s of: {fr['strategy']}"[:400],
