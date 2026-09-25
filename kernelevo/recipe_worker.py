@@ -17,6 +17,7 @@ import json
 import os
 import sys
 import time
+from contextlib import nullcontext
 
 import torch
 
@@ -27,12 +28,16 @@ from kernelevo.recipes import arch_fingerprint
 
 def _apply_precision(model, job, device):
     """HARNESS-OWNED precision policy: the same dtype for baseline and every
-    candidate, so throughput levers are equal. Run ef48abdf's Muon lineage won
-    largely by autocasting bf16 against an fp32 baseline — with a uniform cast,
-    candidate-side dtype games are moot (casting bf16 twice is a no-op)."""
+    candidate, so throughput levers are equal. Keep parameters in fp32 because
+    generated adapters often supply fp32 input tensors; the matching bf16
+    autocast context handles operations for both baseline and candidates."""
+    return model.float()
+
+
+def _precision_context(job, device):
     if job.get("precision", "bf16") == "bf16" and device.startswith("cuda"):
-        model = model.bfloat16()
-    return model
+        return torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+    return nullcontext()
 
 
 def _load_recipe(path):
@@ -54,7 +59,7 @@ def _cycled(adapter):
             it = iter(adapter.get_dataloader("train"))
 
 
-def _holdout_loss(adapter, model, n_batches):
+def _holdout_loss(adapter, model, n_batches, job=None, device="cpu"):
     # grad stays ENABLED (never backward, detach immediately): the adapter
     # contract requires loss to require grad, and generated adapters
     # legitimately assert that inside loss_fn — no_grad here tripped them.
@@ -64,7 +69,8 @@ def _holdout_loss(adapter, model, n_batches):
     for i, batch in enumerate(adapter.get_dataloader("val")):
         if i >= n_batches:
             break
-        losses.append(float(adapter.loss_fn(model, batch).detach()))
+        with _precision_context(job or {}, device):
+            losses.append(float(adapter.loss_fn(model, batch).detach()))
     model.train(was_training)
     return sum(losses) / len(losses)
 
@@ -172,7 +178,8 @@ def main():
         while time.time() < deadline or (job.get("check_only") and step < 2):
             batch = next(batches)
             opt.zero_grad(set_to_none=True)
-            loss = adapter.loss_fn(model, batch)
+            with _precision_context(job, device):
+                loss = adapter.loss_fn(model, batch)
             if first_loss is None:
                 first_loss = float(loss)
                 if not torch.isfinite(loss):
@@ -216,7 +223,7 @@ def main():
     if job.get("check_only"):
         res.update(ok=True, gate="loaded")
         return out()
-    val = _holdout_loss(adapter, model, job["eval_batches"])
+    val = _holdout_loss(adapter, model, job["eval_batches"], job, device)
     if not (val == val and abs(val) < 1e6):  # NaN/inf guard
         res.update(gate="sanity", note=f"validation loss not finite: {val}")
         return out()
