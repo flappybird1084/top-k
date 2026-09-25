@@ -310,7 +310,7 @@
     };
     for (const n of nodes.values()) {
       const status = [n === win && 'Reported result.', n === lead3 && 'Led at 120 seconds.', n === leadFinal && 'Retested at 300 seconds.'].filter(Boolean).join(' ');
-      const spoken = n.base ? `Baseline: ${nodeDetail(n, true)}` : `Candidate ${n.id}, ${GEN[n.gen][0]}: ${n.strategy}. ${n.crash ? 'Crashed: ' : ''}${nodeDetail(n, true)} ${status}`;
+      const spoken = n.base ? `Baseline: ${nodeDetail(n, true)}` : [`Candidate ${n.id}, ${GEN[n.gen][0]}: ${n.strategy}.`, `${n.crash ? 'Crashed: ' : ''}${nodeDetail(n, true)}`, status].filter(Boolean).join(' ');
       const g = S('g', { class: 'node' + (n.base ? ' base' : '') + (n.crash ? ' crash' : ''), tabindex: 0, role: 'img', 'aria-label': spoken }, gNodes);
       if (n.crash) {
         S('line', { x1: n.x - 4.5, y1: n.y - 4.5, x2: n.x + 4.5, y2: n.y + 4.5 }, g);
