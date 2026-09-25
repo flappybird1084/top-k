@@ -51,6 +51,7 @@ def main():
 
     import config
     cfg = config.load(args.profile)
+    cfg["mode"] = args.mode
     if args.llm:
         cfg["llm"] = args.llm
         cfg["planner_llm"] = cfg["subagent_llm"] = cfg["curator_llm"] = None

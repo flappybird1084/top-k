@@ -21,7 +21,8 @@ def main():
     print(f"{HEARTBEAT} loading adapter (may download a data subset)", flush=True)
     adapter, _ = ingest.load_adapter(job["adapter"])
     print(f"{HEARTBEAT} adapter loaded — running ingest step", flush=True)
-    info = ingest.ingest(adapter, dict(seed=job.get("seed", 1234), device=job["device"]))
+    info = ingest.ingest(adapter, dict(seed=job.get("seed", 1234),
+                                       device=job["device"], mode=job.get("mode", "kernel")))
     print("KEVO_RESULT " + json.dumps(info))
     # Hard-exit: adapters may leave non-daemon threads behind (e.g. a
     # `datasets` streaming pool), and interpreter shutdown would join them

@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib
 import importlib.util
 from functools import wraps
+from itertools import islice
 import os
 import sys
 
@@ -100,6 +101,26 @@ def ingest(adapter, cfg) -> dict:
     assert torch.isfinite(loss).item(), "loss is not finite on the first batch"
     assert loss.requires_grad, "loss does not require grad"
     check_training_signal(loss, model)
+    if cfg.get("mode") == "recipe":
+        # Recipe training is scored on held-out loss. Check that path before
+        # accepting the adapter, so a broken val loader gets repair feedback.
+        was_training = model.training
+        model.eval()
+        val_losses = []
+        for val_batch in islice(adapter.get_dataloader("val"),
+                                cfg.get("recipe", {}).get("eval_batches", 8)):
+            val_loss = adapter.loss_fn(model, val_batch)
+            if not isinstance(val_loss, torch.Tensor) or val_loss.dim() != 0:
+                raise SystemExit("recipe validation loss must be a scalar tensor")
+            if not bool(torch.isfinite(val_loss).item()):
+                raise SystemExit("recipe validation loss is not finite")
+            val_losses.append(float(val_loss.detach()))
+        if not val_losses:
+            raise SystemExit("recipe validation loader yielded no batches")
+        model.train(was_training)
+        info_val_loss = sum(val_losses) / len(val_losses)
+    else:
+        info_val_loss = None
     n_params = sum(p.numel() for p in model.parameters())
     info = dict(
         n_params=n_params,
@@ -107,6 +128,8 @@ def ingest(adapter, cfg) -> dict:
         dtype=str(next(model.parameters()).dtype),
         loss0=float(loss.detach()),
     )
+    if info_val_loss is not None:
+        info["val_loss0"] = info_val_loss
     del model, batch, loss
     torch.cuda.empty_cache()
     return info

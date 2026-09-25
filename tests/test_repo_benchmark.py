@@ -300,6 +300,30 @@ def test_ingest_rejects_loss_without_model_gradient():
     check_training_signal((model.weight ** 2).sum(), model)
 
 
+def test_recipe_ingest_checks_heldout_loader_before_accepting_adapter():
+    import torch
+    from kernelevo.ingest import ingest
+
+    class Adapter:
+        @staticmethod
+        def build_model():
+            return torch.nn.Linear(2, 2)
+
+        @staticmethod
+        def get_dataloader(split):
+            if split == "val":
+                raise RuntimeError("broken validation loader")
+            return [torch.ones(4, 2)]
+
+        @staticmethod
+        def loss_fn(model, batch):
+            return model(batch).square().mean()
+
+    cfg = {"seed": 1, "device": "cpu", "mode": "recipe"}
+    with pytest.raises(RuntimeError, match="broken validation loader"):
+        ingest(Adapter, cfg)
+
+
 def test_repository_job_does_not_inherit_operator_credentials(monkeypatch, tmp_path):
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "operator-secret")
     monkeypatch.setenv("WANDB_API_KEY", "inference-key")
