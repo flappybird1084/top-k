@@ -266,7 +266,8 @@ def test_training_repo_dependencies_are_isolated_and_source_scoped():
     cases = {
         "DLR-RM/stable-baselines3": ("gymnasium", "farama-notifications"),
         "Lightning-AI/litgpt": ("lightning", "lightning-utilities", "torchmetrics"),
-        "facebookresearch/detectron2": ("fvcore", "iopath", "omegaconf"),
+        "facebookresearch/detectron2": ("fvcore", "iopath", "omegaconf",
+                                       "tabulate", "pycocotools"),
     }
     for repo, names in cases.items():
         deps = repo_runtime_deps("https://github.com/" + repo + "/commit/" + "a" * 40)

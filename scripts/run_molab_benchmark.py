@@ -35,6 +35,10 @@ WORKLOAD_GUIDANCE = {
     "huggingface/pytorch-image-models":
         "Choose a small timm Vision Transformer for classification so its "
         "LayerNorm and MLP blocks are part of the measured training step.",
+    "facebookresearch/detectron2":
+        "Build a small detector from a programmatic config with random "
+        "weights and synthetic in-memory Images/Instances. Avoid Model Zoo "
+        "config paths, pretrained weights, and dataset downloads.",
 }
 RECIPE_BENCHMARK = {
     "phases": [
