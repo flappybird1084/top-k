@@ -131,7 +131,7 @@ class OwnerLedger:
         finally:
             os.close(fd)
 
-    def charge(self, owner, requests=0, tokens=0, searches=0):
+    def charge(self, owner, requests=0, tokens=0, searches=0, check_fields=()):
         """Add usage and report which per-owner cap it crossed, if any."""
         def mutate(state):
             row = state.setdefault(owner, {'started': time.time(), 'requests': 0,
@@ -139,12 +139,13 @@ class OwnerLedger:
             row['requests'] += requests
             row['tokens'] += tokens
             row['searches'] += searches
-            # Each quota governs its own resource. An exhausted search budget
-            # must not refuse an unrelated model completion in a later run.
+            # Admission can check an already-exhausted related quota before
+            # any more of that resource is billed (e.g. tokens on a new LLM
+            # request). Search quota is unrelated to model admission.
             for field, cap, increment in (('requests', 'max_requests', requests),
                                           ('tokens', 'max_tokens', tokens),
                                           ('searches', 'max_searches', searches)):
-                if increment and self.limits.get(cap) is not None and row[field] > self.limits[cap]:
+                if (increment or field in check_fields) and self.limits.get(cap) is not None and row[field] > self.limits[cap]:
                     return field
             return None
         try:
@@ -244,7 +245,8 @@ class RelayPolicy:
         if self.requests >= self.limits['max_requests']:
             return self._stop('this run reached its relay request budget')
         self.requests += 1
-        crossed = self.ledger.charge(self.owner, requests=1)
+        crossed = self.ledger.charge(self.owner, requests=1,
+                                     check_fields=('requests', 'tokens'))
         if crossed == LEDGER_UNAVAILABLE:
             return self._stop('relay usage accounting is unavailable')
         if crossed:
