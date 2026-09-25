@@ -300,7 +300,9 @@
         : `<div class="r">val loss ${L3(n.loss)} · ${pct(n.gain)} vs. the ${n.secs} s baseline</div>`);
     };
     for (const n of nodes.values()) {
-      const g = S('g', { class: 'node' + (n.base ? ' base' : '') + (n.crash ? ' crash' : ''), tabindex: 0, role: 'img', 'aria-label': n.base ? 'Baseline' : `Candidate ${n.id}` }, gNodes);
+      const spoken = n.base ? `Baseline: validation loss ${L3(B[60])} at 60 seconds, ${L3(B[120])} at 120 seconds, ${L3(B[300])} at 300 seconds.`
+        : `Candidate ${n.id}, ${GEN[n.gen][0]}: ${n.strategy}. ${n.crash ? `Crashed: ${n.err}` : `Validation loss ${L3(n.loss)}, ${pct(n.gain)} versus the ${n.secs} second baseline.`}`;
+      const g = S('g', { class: 'node' + (n.base ? ' base' : '') + (n.crash ? ' crash' : ''), tabindex: 0, role: 'img', 'aria-label': spoken }, gNodes);
       if (n.crash) {
         S('line', { x1: n.x - 4.5, y1: n.y - 4.5, x2: n.x + 4.5, y2: n.y + 4.5 }, g);
         S('line', { x1: n.x - 4.5, y1: n.y + 4.5, x2: n.x + 4.5, y2: n.y - 4.5 }, g);
@@ -328,6 +330,8 @@
     });
     for (const n of crashes) {
       const li = document.createElement('li');
+      li.tabIndex = 0;
+      li.setAttribute('aria-label', `${GEN[n.gen][0]}, candidate ${n.id}: ${n.strategy}. Error: ${n.err}`);
       li.innerHTML = `<span class="g">${GEN[n.gen][0]} · #${n.id}</span><code></code>`;
       bindTip(li, () => `<div class="h">What the agent tried</div>${esc(n.strategy)}`);
       list.appendChild(li);
@@ -715,11 +719,11 @@
     const head = S('line', { class: 'playhead', y1: 6, y2: Y.cur + 14 }, svg);
     const clock = $('#tl-clock'), spend = $('#tl-spend'), tabs = [...document.querySelectorAll('#tl-tabs button')];
     const SWEEP = 7000, HOLD = 2600;
-    let gi = 0, sel = null, items = [], raf = 0, visible = false, t0 = 0;
+    let gi = 0, sel = null, items = [], raf = 0, visible = false, t0 = 0, manualUntil = 0;
     const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
     function build(i) {
-      gi = i; tabs.forEach((b, k) => b.classList.toggle('on', k === i));
+      gi = i; tabs.forEach((b, k) => { b.classList.toggle('on', k === i); b.setAttribute('aria-pressed', String(k === i)); });
       gGrid.innerHTML = ''; gBars.innerHTML = ''; gOut.innerHTML = ''; items = [];
       const g = T.gens[i], start = g.planner[0], end = g.curate[0] + g.curate[1], span = end - start;
       const X = t => L + (t - start) / span * (RT - L);
@@ -772,12 +776,12 @@
       if (el < SWEEP) update(sel.start + el / SWEEP * sel.span);
       else {
         update(sel.end);
-        if (el > SWEEP + HOLD) { build((gi + 1) % T.gens.length); t0 = now; }
+        if (el > SWEEP + HOLD && now > manualUntil) { build((gi + 1) % T.gens.length); t0 = now; }
       }
       raf = visible ? requestAnimationFrame(frame) : 0;
     }
     const start = () => { if (!raf && !reduce) { t0 = performance.now(); raf = requestAnimationFrame(frame); } };
-    tabs.forEach((b, k) => b.addEventListener('click', () => { build(k); t0 = performance.now(); update(reduce ? sel.end : sel.start); }));
+    tabs.forEach((b, k) => b.addEventListener('click', () => { build(k); t0 = performance.now(); manualUntil = t0 + 30000; update(reduce ? sel.end : sel.start); }));
     build(0); update(reduce ? sel.end : sel.start);
     watch(svg, v => { visible = v; if (v) start(); });
   })();
