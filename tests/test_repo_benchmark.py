@@ -249,6 +249,21 @@ def test_transformers_runtime_dependency_is_scoped_to_its_job():
     assert repo_runtime_deps("https://github.com.evil/huggingface/transformers") == []
 
 
+def test_training_repo_dependencies_are_isolated_and_source_scoped():
+    from kernelevo.molab import REMOTE_DEPS, repo_runtime_deps
+
+    cases = {
+        "DLR-RM/stable-baselines3": ("gymnasium", "farama-notifications"),
+        "Lightning-AI/litgpt": ("lightning", "lightning-utilities", "torchmetrics"),
+        "facebookresearch/detectron2": ("fvcore", "iopath", "omegaconf"),
+    }
+    for repo, names in cases.items():
+        deps = repo_runtime_deps("https://github.com/" + repo + "/commit/" + "a" * 40)
+        assert all(any(dep.startswith(name) for dep in deps) for name in names)
+        assert all(not any(dep.startswith(name) for dep in REMOTE_DEPS) for name in names)
+    assert repo_runtime_deps("https://github.com.evil/DLR-RM/stable-baselines3") == []
+
+
 def test_generated_adapter_receives_nested_batches_on_model_device(tmp_path):
     import torch
     from kernelevo.ingest import load_adapter
