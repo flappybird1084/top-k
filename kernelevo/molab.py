@@ -37,10 +37,24 @@ def repo_runtime_deps(repo_url: str) -> list[str]:
     from urllib.parse import urlparse
 
     parsed = urlparse(repo_url)
-    if (parsed.hostname == "github.com" and
-            parsed.path.strip("/").split("/")[:2] == ["huggingface", "transformers"]):
-        return ["tokenizers>=0.23.1,<0.24.0"]
-    return []
+    if parsed.hostname != "github.com":
+        return []
+    owner_repo = tuple(parsed.path.strip("/").split("/")[:2])
+    # Install only the packages each pinned repository imports. The dispatcher
+    # uses --no-deps in a per-job target, so explicitly list small transitive
+    # imports instead of pulling a second PyTorch into the notebook runtime.
+    return {
+        ("huggingface", "transformers"): ["tokenizers>=0.23.1,<0.24.0"],
+        ("DLR-RM", "stable-baselines3"): [
+            "gymnasium>=0.29.1,<2.0", "farama-notifications>=0.0.4", "cloudpickle"],
+        ("Lightning-AI", "litgpt"): [
+            "lightning>=2.6.1,<3", "lightning-utilities>=0.14,<1",
+            "torchmetrics>=1.3,<2", "fsspec", "packaging", "PyYAML"],
+        ("facebookresearch", "detectron2"): [
+            "fvcore>=0.1.5,<0.1.6", "iopath>=0.1.7,<0.1.10",
+            "omegaconf>=2.1,<2.4", "yacs>=0.1.8", "hydra-core>=1.1",
+            "termcolor>=1.1", "portalocker", "antlr4-python3-runtime==4.9.3"],
+    }.get(owner_repo, [])
 UPLOAD_CHUNK = 400_000  # base64 chars per execute call
 EXCLUDE_DIRS = {".git", "__pycache__", "runs", "jobs", ".venv", "venv", "wandb",
                 "notebooks"}
