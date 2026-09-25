@@ -10,6 +10,7 @@ run it only on a box you'd run the repo itself on.
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
@@ -30,6 +31,35 @@ INGEST_TIMEOUT_S = 1800       # hard ceiling: first ingest may download a data s
 INGEST_IDLE_TIMEOUT_S = 600   # kill if silent this long (worker heartbeats keep it alive)
 
 _SCORE_WORDS = ("train", "model", "main", "data", "dataset", "loss", "config", "net")
+
+
+def recipe_adapter_violation(source: str) -> str | None:
+    """Reject edits that would change the repository model before recipe search."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return None  # The ingest check reports syntax errors with line numbers.
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (
+                node.module in ("kernelevo.ops", "kernelevo.patch") or
+                (node.module == "kernelevo" and any(
+                    item.name in ("ops", "patch") for item in node.names))):
+            return "Recipe adapters must not import kernelevo.ops or kernelevo.patch."
+        if isinstance(node, ast.Import) and any(
+                item.name in ("kernelevo.ops", "kernelevo.patch")
+                for item in node.names):
+            return "Recipe adapters must not import kernelevo.ops or kernelevo.patch."
+        targets = node.targets if isinstance(node, ast.Assign) else (
+            [node.target] if isinstance(node, (ast.AnnAssign, ast.AugAssign)) else [])
+        if any(isinstance(target, ast.Attribute) and target.attr == "forward"
+               for target in targets):
+            return "Recipe adapters must not monkeypatch model.forward."
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and
+                node.func.id == "setattr" and len(node.args) > 1 and
+                isinstance(node.args[1], ast.Constant) and
+                node.args[1].value == "forward"):
+            return "Recipe adapters must not monkeypatch model.forward."
+    return None
 
 
 def fetch_repo(repo: str, dest_dir: str, log=print) -> str:
@@ -152,11 +182,16 @@ def prepare(repo: str, comments: str, max_debug_turns: int, out_dir: str,
     survey = survey_repo(repo_dir)
     adapter_path = os.path.join(out_dir, "adapter.py")
     verified_path = adapter_path + ".ok"  # last version that passed ingest
+    mode_path = adapter_path + ".mode"
+    cached_mode = open(mode_path).read().strip() if os.path.exists(mode_path) else "kernel"
     for candidate in (verified_path, adapter_path):
-        if os.path.exists(candidate):
+        if os.path.exists(candidate) and cached_mode == mode:
             if candidate != adapter_path:
                 shutil.copyfile(candidate, adapter_path)
-            info, _ = _run_ingest(adapter_path, device, seed)
+            violation = (recipe_adapter_violation(open(adapter_path).read())
+                         if mode == "recipe" else None)
+            info, _ = ((None, violation) if violation else
+                       _run_ingest(adapter_path, device, seed))
             if info is not None:
                 log(f"[adapter] reusing previously verified adapter "
                     f"({info['n_params']/1e6:.1f}M params) — skipping the writing agent")
@@ -188,7 +223,9 @@ def prepare(repo: str, comments: str, max_debug_turns: int, out_dir: str,
         src = re.sub(r"^from __future__ import .*$\n?", "", src, flags=re.MULTILINE)
         with open(adapter_path, "w") as f:
             f.write("".join(f + "\n" for f in futures) + header + src)
-        info, err = _run_ingest(adapter_path, device, seed, log=log)
+        violation = recipe_adapter_violation(src) if mode == "recipe" else None
+        info, err = ((None, violation) if violation else
+                     _run_ingest(adapter_path, device, seed, log=log))
         if info is not None:
             trail.append(dict(attempt=attempt + 1, ok=True, kind=None, note=None,
                               elapsed_s=round(time.time() - t0, 1)))
@@ -201,6 +238,8 @@ def prepare(repo: str, comments: str, max_debug_turns: int, out_dir: str,
                 log(f"[adapter] VERIFIED on attempt {attempt + 1} — recovered from "
                     f"{len(trail) - 1} failed attempt(s): {fails}")
             shutil.copyfile(adapter_path, verified_path)
+            with open(mode_path, "w") as f:
+                f.write(mode + "\n")
             return adapter_path, info
         last_err = err
         kind = _classify(err)
