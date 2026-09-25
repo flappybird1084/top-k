@@ -292,16 +292,17 @@
     const gEdges = S('g', {}, svg), gNodes = S('g', {}, svg), gTags = S('g', {}, svg);
     const curve = (a, b) => { const mx = (a.x + b.x) / 2; return `M${a.x},${a.y} C${mx},${a.y} ${mx},${b.y} ${b.x},${b.y}`; };
     for (const n of nodes.values()) if (!n.base) n.edge = S('path', { d: curve(nodes.get(parentOf(n)), n), class: 'edge' + (n.crash ? ' crash' : '') }, gEdges);
+    const nodeDetail = n => n.base ? `Val loss ${L3(B[60])} after 60 s, ${L3(B[120])} after 120 s, ${L3(B[300])} after 300 s.`
+      : n.crash ? n.err : `val loss ${L3(n.loss)} · ${pct(n.gain)} vs. the ${n.secs} s baseline`;
     const tipFor = n => {
-      if (n.base) return `<div class="h">Baseline · the repo's model + AdamW</div>Val loss ${L3(B[60])} after 60 s, ${L3(B[120])} after 120 s, ${L3(B[300])} after 300 s.`;
+      if (n.base) return `<div class="h">Baseline · the repo's model + AdamW</div>${nodeDetail(n)}`;
       const head = `<div class="h">#${n.id} · ${GEN[n.gen][0]} · ${GEN[n.gen][1]}</div>`;
       return head + esc(n.strategy) + (n.crash
-        ? `<div class="r bad">${esc(n.err)}</div>`
-        : `<div class="r">val loss ${L3(n.loss)} · ${pct(n.gain)} vs. the ${n.secs} s baseline</div>`);
+        ? `<div class="r bad">${esc(nodeDetail(n))}</div>`
+        : `<div class="r">${nodeDetail(n)}</div>`);
     };
     for (const n of nodes.values()) {
-      const spoken = n.base ? `Baseline: validation loss ${L3(B[60])} at 60 seconds, ${L3(B[120])} at 120 seconds, ${L3(B[300])} at 300 seconds.`
-        : `Candidate ${n.id}, ${GEN[n.gen][0]}: ${n.strategy}. ${n.crash ? `Crashed: ${n.err}` : `Validation loss ${L3(n.loss)}, ${pct(n.gain)} versus the ${n.secs} second baseline.`}`;
+      const spoken = n.base ? `Baseline: ${nodeDetail(n)}` : `Candidate ${n.id}, ${GEN[n.gen][0]}: ${n.strategy}. ${n.crash ? 'Crashed: ' : ''}${nodeDetail(n)}`;
       const g = S('g', { class: 'node' + (n.base ? ' base' : '') + (n.crash ? ' crash' : ''), tabindex: 0, role: 'img', 'aria-label': spoken }, gNodes);
       if (n.crash) {
         S('line', { x1: n.x - 4.5, y1: n.y - 4.5, x2: n.x + 4.5, y2: n.y + 4.5 }, g);
@@ -718,7 +719,7 @@
     const gGrid = S('g', {}, svg), gBars = S('g', {}, svg), gOut = S('g', {}, svg);
     const head = S('line', { class: 'playhead', y1: 6, y2: Y.cur + 14 }, svg);
     const clock = $('#tl-clock'), spend = $('#tl-spend'), tabs = [...document.querySelectorAll('#tl-tabs button')];
-    const SWEEP = 7000, HOLD = 2600;
+    const SWEEP = 7000, HOLD = 2600, MANUAL_HOLD = 30000;
     let gi = 0, sel = null, items = [], raf = 0, visible = false, t0 = 0, manualUntil = 0;
     const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
@@ -781,7 +782,7 @@
       raf = visible ? requestAnimationFrame(frame) : 0;
     }
     const start = () => { if (!raf && !reduce) { t0 = performance.now(); raf = requestAnimationFrame(frame); } };
-    tabs.forEach((b, k) => b.addEventListener('click', () => { build(k); t0 = performance.now(); manualUntil = t0 + 30000; update(reduce ? sel.end : sel.start); }));
+    tabs.forEach((b, k) => b.addEventListener('click', () => { build(k); t0 = performance.now(); manualUntil = t0 + MANUAL_HOLD; update(reduce ? sel.end : sel.start); }));
     build(0); update(reduce ? sel.end : sel.start);
     watch(svg, v => { visible = v; if (v) start(); });
   })();
