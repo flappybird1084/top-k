@@ -135,6 +135,8 @@ def main() -> int:
                     "generations": args.generations if args.mode == "kernel" else None,
                     "spend_cap_usd": args.spend_cap, "execution_target": "molab",
                     "mode": args.mode,
+                    "precision_policy": ("fp32-params-cuda-bf16-autocast-v1"
+                                         if args.mode == "recipe" else None),
                     "recipe": RECIPE_BENCHMARK if args.mode == "recipe" else None}
         if state_path.exists():
             old = json.loads(state_path.read_text())
