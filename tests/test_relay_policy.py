@@ -53,6 +53,26 @@ def test_only_configured_models_may_be_named(tmp_path, monkeypatch):
     assert 'not available' in p.check_llm(ask(model='some-expensive-model'))
 
 
+def test_wandb_job_can_only_request_its_selected_model(tmp_path):
+    model = 'Qwen/Qwen3-Coder-480B-A35B-Instruct'
+    p = policy(tmp_path, llm=f'wandb:{model}')
+    assert p.check_llm(ask(kind='wandb_inference', model=model)) is None
+    assert 'not available' in p.check_llm(ask(kind='wandb_inference', model='Qwen/Qwen3-235B-A22B-Instruct-2507'))
+    assert 'not available' in p.check_llm(ask(kind='wandb_inference'))
+    assert p.check_llm(ask(kind='codex_oauth', model='gpt-5')) is None
+    disallowed = policy(tmp_path, llm='wandb:some-expensive-model')
+    assert 'not available' in disallowed.check_llm(
+        ask(kind='wandb_inference', model='some-expensive-model'))
+
+
+def test_deepseek_benchmark_job_is_pinned_to_its_model(tmp_path):
+    model = 'deepseek-ai/DeepSeek-V4-Pro-0813'
+    p = policy(tmp_path, llm=f'wandb:{model}')
+    assert p.check_llm(ask(kind='wandb_inference', model=model)) is None
+    assert 'not available' in p.check_llm(ask(
+        kind='wandb_inference', model='Qwen/Qwen3-235B-A22B-Instruct-2507'))
+
+
 def test_malformed_and_oversized_prompts_are_refused(tmp_path, monkeypatch):
     monkeypatch.setenv('KEVO_ALLOW_OPERATOR_LLM_RELAY', '1')
     p = policy(tmp_path, visitor='github:7')
@@ -110,6 +130,29 @@ def test_search_queries_are_bounded(tmp_path, monkeypatch):
     p = policy(tmp_path, visitor='github:7')
     long_query = 'x' * (p.limits['max_query_chars'] + 1)
     assert 'too long' in p.check_search(dict(relay_token='relay-secret', query=long_query))
+
+
+def test_exhausted_search_quota_does_not_block_later_model_run(tmp_path):
+    ledger = OwnerLedger(tmp_path / 'ledger.json', limits=dict(max_requests=10,
+                                                              max_tokens=1000,
+                                                              max_searches=1))
+    first = RelayPolicy({'id': 'a' * 32}, 'relay-secret', ledger)
+    assert first.check_search(dict(relay_token='relay-secret', query='one')) is None
+    assert 'searches budget' in first.check_search(dict(relay_token='relay-secret', query='two'))
+    later = RelayPolicy({'id': 'b' * 32}, 'relay-secret', ledger)
+    assert later.check_llm(ask()) is None
+    assert 'searches budget' in later.check_search(dict(relay_token='relay-secret', query='three'))
+
+
+def test_exhausted_token_quota_blocks_next_runs_model_request(tmp_path):
+    ledger = OwnerLedger(tmp_path / 'ledger.json', limits=dict(max_requests=10,
+                                                              max_tokens=10,
+                                                              max_searches=10))
+    first = RelayPolicy({'id': 'a' * 32}, 'relay-secret', ledger)
+    assert first.check_llm(ask()) is None
+    first.record_usage({'input_tokens': 11, 'output_tokens': 0})
+    later = RelayPolicy({'id': 'b' * 32}, 'relay-secret', ledger)
+    assert 'tokens budget' in later.check_llm(ask())
 
 
 # ---- the dispatcher honours the policy before it touches a credential ----

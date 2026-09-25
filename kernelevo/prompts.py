@@ -148,11 +148,19 @@ exposes the harness contract for the repo shown below:
 Hard requirements:
 - Importing the file must be cheap: no training, no downloads at import time.
 - build_model() returns the model on CPU; the harness moves it to the device.
+- The harness moves tensor leaves in each batch to the model's device before
+  loss_fn(). Keep them on that device through the forward and loss.
+- loss_fn() must use the real model output and yield a nonzero, finite gradient
+  for at least one trainable model parameter. A standalone requires_grad=True
+  tensor, a constant loss, or model output multiplied by zero is invalid.
 - Deterministic: seed everything; get_dataloader must yield the SAME batches in
   the SAME order every time it is called. Constant shapes across steps strongly
   preferred (pad/crop if needed). The harness consumes ~60 consecutive steps per
   measurement — yield at least 100 batches (it cycles the loader if exhausted).
-- DATA: ALWAYS search the repo for its real data pipeline FIRST — prepare/
+- DATA: If the user's comments explicitly request synthetic benchmark data,
+  use deterministic in-memory batches with valid inputs and targets for the
+  real repository model. Skip downloads in that case. Otherwise, ALWAYS search
+  the repo for its real data pipeline FIRST — prepare/
   download scripts, dataset builders, shard loaders, HF dataset references —
   and USE it. Internet access and the `datasets`/`tiktoken` libraries are
   available. Fetch ONLY A SMALL SUBSET: hard cap ~25M tokens / ~50MB. NEVER
@@ -165,9 +173,9 @@ Hard requirements:
   Reserve a held-out split for get_dataloader("val") and never train on it.
   Only read data from paths you have VERIFIED exist on THIS machine
   (os.path.isdir) — never assume cluster mount points from the repo's docs
-  or configs are present here. Synthetic data is a LAST resort, allowed only
-  after an actual download attempt in this environment has failed — put the
-  caught error verbatim in a comment next to the fallback.
+  or configs are present here. For normal runs, synthetic data is a LAST
+  resort, allowed only after an actual download attempt in this environment
+  has failed — put the caught error verbatim in a comment next to the fallback.
 - Pick a batch size that comfortably fits one GPU — but err LARGE: a training
   step should take at least ~20-50ms on a modern GPU, or the harness's timing
   gates have poor signal-to-noise and utilization looks idle. Unless the user's
@@ -206,13 +214,27 @@ Hard requirements:
 """
 
 
-def adapter_writer_prompt(survey: str, comments: str, device: str):
+def adapter_writer_prompt(survey: str, comments: str, device: str,
+                          mode: str = "kernel"):
+    if mode not in ("kernel", "recipe"):
+        raise ValueError(f"unknown adapter mode: {mode}")
+    contract = ADAPTER_CONTRACT
+    if mode == "recipe":
+        # Recipe mode changes the model and optimizer. Its baseline must be the
+        # repository model, without kernel-registry rewrites or monkeypatches.
+        contract = ADAPTER_CONTRACT.split(
+            "- After constructing the model in build_model()", 1)[0]
+        contract += ("- Keep the repository model and its loss function native. "
+                     "Do not import kernelevo.ops or kernelevo.patch, reroute "
+                     "layers through the kernel registry, or monkeypatch model "
+                     "forwards. Architecture candidates will modify this "
+                     "verified baseline in a separate phase.\n")
     return [
         {"role": "system", "content":
-         "You are the adapter-writing agent of a kernel-evolution harness. Your "
+         f"You are the adapter-writing agent of a {mode}-optimization harness. Your "
          "output is verified by running one real training step (model build, one "
          "batch, loss, gradient check); raw tracebacks come back to you until it "
-         "passes or attempts run out. " + ADAPTER_CONTRACT},
+         "passes or attempts run out. " + contract},
         {"role": "user", "content":
          f"Target device (after harness moves the model): {device}\n\n"
          f"## User comments / guidance\n{comments or '(none)'}\n\n"

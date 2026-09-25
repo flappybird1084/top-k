@@ -30,6 +30,32 @@ from kernelevo import relay_policy
 
 REMOTE_DEPS = ["triton", "numpy", "pandas", "python-dotenv", "wandb", "weave",
                "anthropic", "openai", "datasets", "tiktoken"]
+
+
+def repo_runtime_deps(repo_url: str) -> list[str]:
+    """Dependencies needed by upstream source, isolated from the notebook Python."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(repo_url)
+    if parsed.hostname != "github.com":
+        return []
+    owner_repo = tuple(parsed.path.strip("/").split("/")[:2])
+    # Install only the packages each pinned repository imports. The dispatcher
+    # uses --no-deps in a per-job target, so explicitly list small transitive
+    # imports instead of pulling a second PyTorch into the notebook runtime.
+    return {
+        ("huggingface", "transformers"): ["tokenizers>=0.23.1,<0.24.0"],
+        ("DLR-RM", "stable-baselines3"): [
+            "gymnasium>=0.29.1,<2.0", "farama-notifications>=0.0.4", "cloudpickle"],
+        ("Lightning-AI", "litgpt"): [
+            "lightning>=2.6.1,<3", "lightning-utilities>=0.14,<1",
+            "torchmetrics>=1.3,<2", "fsspec", "packaging", "PyYAML"],
+        ("facebookresearch", "detectron2"): [
+            "fvcore>=0.1.5,<0.1.6", "iopath>=0.1.7,<0.1.10",
+            "omegaconf>=2.1,<2.4", "yacs>=0.1.8", "hydra-core>=1.1",
+            "termcolor>=1.1", "portalocker", "tabulate", "pycocotools",
+            "antlr4-python3-runtime==4.9.3"],
+    }.get(owner_repo, [])
 UPLOAD_CHUNK = 400_000  # base64 chars per execute call
 EXCLUDE_DIRS = {".git", "__pycache__", "runs", "jobs", ".venv", "venv", "wandb",
                 "notebooks"}
@@ -335,6 +361,30 @@ class MolabTarget:
             write_line(f"[molab] dependency install failed:\n{out[-500:]}\n{err[-500:]}")
             return 1
 
+        job_deps = repo_runtime_deps(job.get("repo", ""))
+        job_deps_dir = os.path.join(work, "runtime-deps")
+        if job_deps:
+            write_line(f"[molab] installing isolated repository dependencies: {job_deps}")
+            ok, out, err = client.run(
+                "import subprocess, sys, os, shutil\n"
+                f"_target = {job_deps_dir!r}\n"
+                f"_deps = {job_deps!r}\n"
+                "os.makedirs(_target, exist_ok=True)\n"
+                "_r = None\n"
+                "if shutil.which('uv'):\n"
+                "    _r = subprocess.run(['uv', 'pip', 'install', '-q', '--python', "
+                "sys.executable, '--no-deps', '--target', _target, *_deps], "
+                "capture_output=True, text=True)\n"
+                "if _r is None or _r.returncode != 0:\n"
+                "    _r = subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', "
+                "'--no-deps', '--target', _target, *_deps], capture_output=True, text=True)\n"
+                "print('JOB_DEPS', _r.returncode)\n"
+                "print((_r.stderr or '')[-1200:])\n", timeout=900)
+            if not ok or "JOB_DEPS 0" not in out:
+                write_line(f"[molab] isolated dependency install failed:\n"
+                           f"{out[-500:]}\n{err[-500:]}")
+                return 1
+
         args = ["search.py", "--profile", job["profile"], "--out",
                 os.path.join(work, "run")]
         if job.get("repo"):
@@ -382,18 +432,41 @@ class MolabTarget:
                 f"_cmd = ['/usr/bin/timeout', '--signal=TERM', '--kill-after=10', {str(remaining)!r}] + _cmd\n"
             )
         ok, out, err = client.run(
-            "import subprocess, os, sys, json, shlex\n"
+            "import subprocess, os, sys, json, shlex, time\n"
             f"_w = {work!r}\n"
             "for _stale in ('job.exit', 'job.log'):\n"
             "    _p = os.path.join(_w, _stale)\n"
             "    if os.path.exists(_p):\n"
             "        os.remove(_p)  # a stale exit file makes the poller think the new run died\n"
             f"_env = dict(os.environ); _env.update(json.loads({json.dumps(env_updates)!r}))\n"
+            + (f"_env['PYTHONPATH'] = {job_deps_dir!r} + os.pathsep + "
+               "_env.get('PYTHONPATH', '')\n" if job_deps else "") +
             f"_cmd = [sys.executable, '-u'] + json.loads({json.dumps(args)!r})\n"
             + sandbox_setup +
-            "_sh = ' '.join(shlex.quote(c) for c in _cmd) + ' > job.log 2>&1; echo $? > job.exit'\n"
-            "_p = subprocess.Popen(['bash', '-c', _sh], cwd=_w, env=_env,"
+            "_lease = '/tmp/kevo_gpu_lease'\n"
+            "try:\n"
+            "    os.mkdir(_lease)  # atomic across website and benchmark dispatchers\n"
+            "except FileExistsError:\n"
+            "    _old_owner = os.path.join(_lease, 'owner')\n"
+            "    _old_id = open(_old_owner).read().strip() if os.path.isfile(_old_owner) else ''\n"
+            "    _old_work = '/tmp/kevo_' + _old_id[:8]\n"
+            "    _live = subprocess.run(['pgrep', '-af', _old_work], capture_output=True, text=True).stdout.strip() if len(_old_id) == 32 else 'unknown'\n"
+            "    _gpu = subprocess.run(['nvidia-smi', '--query-compute-apps=pid', '--format=csv,noheader'], capture_output=True, text=True).stdout.strip()\n"
+            "    if time.time() - os.stat(_lease).st_mtime < 60 or _live or _gpu:\n"
+            "        raise RuntimeError('GPU is leased to another notebook job')\n"
+            "    if os.path.isfile(_old_owner): os.unlink(_old_owner)\n"
+            "    os.rmdir(_lease); os.mkdir(_lease)\n"
+            "_owner = os.path.join(_lease, 'owner')\n"
+            f"open(_owner, 'w').write({job['id']!r})\n"
+            "_sh = ' '.join(shlex.quote(c) for c in _cmd) + "
+            "' > job.log 2>&1; _rc=$?; echo $_rc > job.exit; "
+            f"if [ \"$(cat /tmp/kevo_gpu_lease/owner 2>/dev/null)\" = \"{job['id']}\" ]; then "
+            "rm -f /tmp/kevo_gpu_lease/owner; rmdir /tmp/kevo_gpu_lease; fi; exit $_rc'\n"
+            "try:\n"
+            "    _p = subprocess.Popen(['bash', '-c', _sh], cwd=_w, env=_env,"
             " start_new_session=True)\n"
+            "except BaseException:\n"
+            "    os.unlink(_owner); os.rmdir(_lease); raise\n"
             "print('LAUNCHED', _p.pid)\n"
             "try:\n"
             "    import marimo as mo\n"
@@ -407,8 +480,10 @@ class MolabTarget:
 
         from kernelevo.claude_oauth import Relay as ClaudeRelay
         from kernelevo.codex_oauth import Relay, RELAY_STALE_S
+        from kernelevo.wandb_relay import Relay as WandbRelay
         oauth_relay = Relay()
         claude_relay = ClaudeRelay()
+        wandb_relay = WandbRelay()
         served_searches: dict = {}
         offset, misses = 0, 0
         last_archive_sync = 0.0
@@ -481,7 +556,8 @@ class MolabTarget:
                 try:
                     oauth_relay.service(client, work, [r for r in status["relay"] if r.get("kind")=="codex_oauth"], write_line, relay_dir=relay_dir, policy=policy)
                     claude_relay.service(client, work, [r for r in status["relay"] if r.get("kind")=="claude_oauth"], write_line, relay_dir=relay_dir, policy=policy)
-                    _service_relay(client, work, [r for r in status["relay"] if r.get("kind") not in ("codex_oauth", "claude_oauth")], write_line, relay_dir=relay_dir, policy=policy, served=served_searches)
+                    wandb_relay.service(client, work, [r for r in status["relay"] if r.get("kind")=="wandb_inference"], write_line, relay_dir=relay_dir, policy=policy)
+                    _service_relay(client, work, [r for r in status["relay"] if r.get("kind") not in ("codex_oauth", "claude_oauth", "wandb_inference")], write_line, relay_dir=relay_dir, policy=policy, served=served_searches)
                 except Exception as e:  # noqa: BLE001 — relay is best-effort
                     write_line(f"[research-relay] servicing failed: {e}")
             if status["exit"] is not None:

@@ -51,6 +51,7 @@ def main():
 
     import config
     cfg = config.load(args.profile)
+    cfg["mode"] = args.mode
     if args.llm:
         cfg["llm"] = args.llm
         cfg["planner_llm"] = cfg["subagent_llm"] = cfg["curator_llm"] = None
@@ -99,7 +100,8 @@ def main():
             adapter_spec, _ = adapter_writer.prepare(
                 args.repo, args.comments,
                 args.max_debug_turns or cfg["max_debug_turns"],
-                out_dir, pool.adapter, cfg["device"], cfg["seed"])
+                out_dir, pool.adapter, cfg["device"], cfg["seed"], mode=args.mode,
+                eval_batches=cfg["recipe"]["eval_batches"])
         if args.mode == "recipe":
             from kernelevo import recipe_loop
             recipe_loop.run(cfg, adapter_spec, out_dir, pool=pool)

@@ -37,6 +37,30 @@ def test_module_inventory_and_diff():
     assert recipes.inventory_diff(inv, dict(inv)) == ""
 
 
+def test_architecture_fingerprint_detects_module_structure_change():
+    base = nn.Sequential(nn.Linear(4, 4), nn.Identity())
+    changed = nn.Sequential(nn.Linear(4, 4), nn.Dropout(0.1))
+    assert recipes.arch_fingerprint(base) != recipes.arch_fingerprint(changed)
+
+
+def test_final_acceptance_requires_structure_and_loss():
+    assert recipes.accepts_architecture_final(0.8, 1.0, 0.01, "changed", "base")
+    assert not recipes.accepts_architecture_final(0.8, 1.0, 0.01, "base", "base")
+    assert not recipes.accepts_architecture_final(1.1, 1.0, 0.01, "changed", "base")
+    assert recipes.accepts_architecture_final(-0.8, -0.5, 0.01, "changed", "base")
+    assert not recipes.accepts_architecture_final(-0.499, -0.5, 0.01,
+                                                  "changed", "base")
+    assert not recipes.beats_loss_margin(-0.504, -0.5, 0.01)
+    assert recipes.beats_loss_margin(-0.506, -0.5, 0.01)
+
+
+def test_nonpositive_loss_change_has_no_percentage():
+    from kernelevo.recipe_loop import _loss_change_label
+
+    assert _loss_change_label(-0.5, -0.8) == "loss change -0.3000; percentage n/a"
+    assert _loss_change_label(1.0, 0.8) == "+20.00%"
+
+
 def test_model_report_contains_structure_and_source():
     rep = recipes.model_report(TinyModel())
     assert "total parameters" in rep
@@ -70,9 +94,9 @@ def test_subagent_prompt_carries_model_report_and_no_smuggling_rule():
     assert "Do not bundle extras" in body
 
 
-def test_precision_cast_policy():
+def test_precision_autocast_policy():
     import torch
-    from kernelevo.recipe_worker import _apply_precision
+    from kernelevo.recipe_worker import _apply_precision, _precision_context
     m = nn.Linear(4, 4)
     # cpu: never cast (keeps stub/CPU harness tests exact)
     out = _apply_precision(m, {"precision": "bf16"}, "cpu")
@@ -80,12 +104,13 @@ def test_precision_cast_policy():
     # explicit off: no cast even on cuda-labelled device strings
     out = _apply_precision(nn.Linear(4, 4), {"precision": "off"}, "cuda")
     assert out.weight.dtype == torch.float32
-    # bf16 + cuda device string: cast (no GPU needed for a dtype conversion)
+    # bf16 + cuda device string: fp32 parameters and bf16 operations
     out = _apply_precision(nn.Linear(4, 4), {"precision": "bf16"}, "cuda")
-    assert out.weight.dtype == torch.bfloat16
+    assert out.weight.dtype == torch.float32
+    assert _precision_context({"precision": "bf16"}, "cuda").fast_dtype == torch.bfloat16
     # default when key absent is bf16
     out = _apply_precision(nn.Linear(4, 4), {}, "cuda")
-    assert out.weight.dtype == torch.bfloat16
+    assert out.weight.dtype == torch.float32
 
 
 def test_author_recipe_accumulates_tokens(tmp_path):

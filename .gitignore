@@ -4,6 +4,7 @@ __pycache__/
 .venv/
 venv/
 runs/
+benchmark-runs/
 jobs/
 wandb/
 *.sqlite

@@ -1,0 +1,52 @@
+[
+  {
+    "repo": "ultralytics/ultralytics",
+    "model": "YOLO detection and segmentation",
+    "sha": "82904556e5ffea417e60be217035b58b5703da13"
+  },
+  {
+    "repo": "huggingface/pytorch-image-models",
+    "model": "CNN and vision-transformer classification",
+    "sha": "f2bcd50406a375f684b558d87d21acbcd20c3144"
+  },
+  {
+    "repo": "karpathy/nanochat",
+    "model": "GPT pretraining and post-training",
+    "sha": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd"
+  },
+  {
+    "repo": "vwxyzjn/cleanrl",
+    "model": "single-file reinforcement learning",
+    "sha": "fe8d8a03c41a7ef5b523e2e354bd01c363e786bb"
+  },
+  {
+    "repo": "pytorch/vision",
+    "model": "vision training references",
+    "sha": "7b0e250acf82aac5a2389f54c6855da17bfeace9"
+  },
+  {
+    "repo": "huggingface/transformers",
+    "model": "BERT, GPT, T5, or other transformer training",
+    "sha": "98d39824ed30e684e5122d04a2d9564efffc4965"
+  },
+  {
+    "repo": "huggingface/diffusers",
+    "model": "diffusion and LoRA fine-tuning",
+    "sha": "4295ee3ec58efa6577bc459e9b84ca3f63aa9a96"
+  },
+  {
+    "repo": "DLR-RM/stable-baselines3",
+    "model": "PPO, SAC, or DQN reinforcement learning",
+    "sha": "7cfb4dd6055e74b5caa4ed4d6777492209946e26"
+  },
+  {
+    "repo": "Lightning-AI/litgpt",
+    "model": "LLM pretraining and fine-tuning",
+    "sha": "18c931c15c2398621d35371a12d2b1785e855bb6"
+  },
+  {
+    "repo": "facebookresearch/detectron2",
+    "model": "detection and instance segmentation",
+    "sha": "a2f4a8771ab77e8411c26b27f24f9489a28a2453"
+  }
+]

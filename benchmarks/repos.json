@@ -1,0 +1,127 @@
+[
+  {
+    "repo": "ultralytics/ultralytics",
+    "model": "YOLO detection and segmentation",
+    "sha": "82904556e5ffea417e60be217035b58b5703da13"
+  },
+  {
+    "repo": "huggingface/pytorch-image-models",
+    "model": "CNN and vision-transformer classification",
+    "sha": "f2bcd50406a375f684b558d87d21acbcd20c3144"
+  },
+  {
+    "repo": "karpathy/nanochat",
+    "model": "GPT pretraining and post-training",
+    "sha": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd"
+  },
+  {
+    "repo": "vwxyzjn/cleanrl",
+    "model": "single-file reinforcement learning",
+    "sha": "fe8d8a03c41a7ef5b523e2e354bd01c363e786bb"
+  },
+  {
+    "repo": "pytorch/vision",
+    "model": "vision training references",
+    "sha": "7b0e250acf82aac5a2389f54c6855da17bfeace9"
+  },
+  {
+    "repo": "huggingface/transformers",
+    "model": "BERT, GPT, T5, or other transformer training",
+    "sha": "98d39824ed30e684e5122d04a2d9564efffc4965"
+  },
+  {
+    "repo": "huggingface/diffusers",
+    "model": "diffusion and LoRA fine-tuning",
+    "sha": "4295ee3ec58efa6577bc459e9b84ca3f63aa9a96"
+  },
+  {
+    "repo": "DLR-RM/stable-baselines3",
+    "model": "PPO, SAC, or DQN reinforcement learning",
+    "sha": "7cfb4dd6055e74b5caa4ed4d6777492209946e26"
+  },
+  {
+    "repo": "Lightning-AI/litgpt",
+    "model": "LLM pretraining and fine-tuning",
+    "sha": "18c931c15c2398621d35371a12d2b1785e855bb6"
+  },
+  {
+    "repo": "facebookresearch/detectron2",
+    "model": "detection and instance segmentation",
+    "sha": "a2f4a8771ab77e8411c26b27f24f9489a28a2453"
+  },
+  {
+    "repo": "speechbrain/speechbrain",
+    "model": "speech recognition and audio models",
+    "sha": "89ead74d163463d30c62329a09cfdb4c54f5abc1"
+  },
+  {
+    "repo": "huggingface/trl",
+    "model": "supervised and preference-based LLM training",
+    "sha": "47cf654c94bf29284c5e3992dd050d95c1bea8b1"
+  },
+  {
+    "repo": "karpathy/nanoGPT",
+    "model": "GPT training on the Shakespeare starter",
+    "sha": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291"
+  },
+  {
+    "repo": "espnet/espnet",
+    "model": "speech recognition, synthesis, or translation",
+    "sha": "a362ef2e18277ec07ba597b8dc73f1e98c2030f3"
+  },
+  {
+    "repo": "pytorch/examples",
+    "model": "small CNN, VAE, GAN, or transformer",
+    "sha": "acc295dc7b90714f1bf47f06004fc19a7fe235c4"
+  },
+  {
+    "repo": "open-mmlab/mmdetection",
+    "model": "detection and instance segmentation",
+    "sha": "cfd5d3a985b0249de009b67d04f37263e11cdf3d"
+  },
+  {
+    "repo": "open-mmlab/mmsegmentation",
+    "model": "semantic segmentation",
+    "sha": "b040e147adfa027bbc071b624bedf0ae84dfc922"
+  },
+  {
+    "repo": "NVIDIA-NeMo/Speech",
+    "model": "speech recognition and synthesis",
+    "sha": "cf724ac337d1ebc7d0dda1e23fb80916f52927a5"
+  },
+  {
+    "repo": "pytorch/torchtitan",
+    "model": "generative model training on one GPU",
+    "sha": "0e4a2803b6730f8184d0d3eed5842939db7bddce"
+  },
+  {
+    "repo": "EleutherAI/gpt-neox",
+    "model": "language-model pretraining on one GPU",
+    "sha": "cf40e42142694e40aab158b6c81ff3f1d4fc921a"
+  },
+  {
+    "repo": "facebookresearch/dinov2",
+    "model": "self-supervised vision transformer",
+    "sha": "7764ea0f912e53c92e82eb78a2a1631e92725fc8"
+  },
+  {
+    "repo": "facebookresearch/detr",
+    "model": "transformer object detection",
+    "sha": "29901c51d7fe8712168b8d0d64351170bc0f83e0"
+  },
+  {
+    "repo": "meta-pytorch/torchtune",
+    "model": "LLM fine-tuning and memory-efficient recipes",
+    "sha": "bd2a0fc7c31430972728494fa01aaeeb0ebf1ba1"
+  },
+  {
+    "repo": "NVIDIA/DeepLearningExamples",
+    "model": "optimized training reference implementation",
+    "sha": "729963dd47e7c8bd462ad10bfac7a7b0b604e6dd"
+  },
+  {
+    "repo": "CompVis/stable-diffusion",
+    "model": "latent diffusion training",
+    "sha": "21f890f9da3cfbeaba8e2ac3c425ee9e998d5229"
+  }
+]

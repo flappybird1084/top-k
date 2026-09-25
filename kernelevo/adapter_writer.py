@@ -10,6 +10,7 @@ run it only on a box you'd run the repo itself on.
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
@@ -32,20 +33,66 @@ INGEST_IDLE_TIMEOUT_S = 600   # kill if silent this long (worker heartbeats keep
 _SCORE_WORDS = ("train", "model", "main", "data", "dataset", "loss", "config", "net")
 
 
+def recipe_adapter_violation(source: str) -> str | None:
+    """Reject edits that would change the repository model before recipe search."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return None  # The ingest check reports syntax errors with line numbers.
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (
+                node.module in ("kernelevo.ops", "kernelevo.patch") or
+                (node.module == "kernelevo" and any(
+                    item.name in ("ops", "patch") for item in node.names))):
+            return "Recipe adapters must not import kernelevo.ops or kernelevo.patch."
+        if isinstance(node, ast.Import) and any(
+                item.name in ("kernelevo.ops", "kernelevo.patch")
+                for item in node.names):
+            return "Recipe adapters must not import kernelevo.ops or kernelevo.patch."
+        targets = node.targets if isinstance(node, ast.Assign) else (
+            [node.target] if isinstance(node, (ast.AnnAssign, ast.AugAssign)) else [])
+        if any(isinstance(target, ast.Attribute) and target.attr == "forward"
+               for target in targets):
+            return "Recipe adapters must not monkeypatch model.forward."
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and
+                node.func.id == "setattr" and len(node.args) > 1 and
+                isinstance(node.args[1], ast.Constant) and
+                node.args[1].value == "forward"):
+            return "Recipe adapters must not monkeypatch model.forward."
+    return None
+
+
 def fetch_repo(repo: str, dest_dir: str, log=print) -> str:
-    """Accepts a git URL or an existing local path."""
+    """Accept a git URL, a GitHub branch/commit URL, or a local path."""
     if os.path.isdir(repo):
         return os.path.abspath(repo)
     target = os.path.join(dest_dir, "repo")
-    if os.path.isdir(os.path.join(target, ".git")):
-        return target
-    log(f"[adapter] cloning {repo}")
     from urllib.parse import urlsplit, unquote
     u = urlsplit(repo)
     base, marker, ref = repo.partition('/tree/') if u.hostname == 'github.com' else (repo, '', '')
-    branch_args = ['--branch', unquote(ref), '--single-branch'] if marker else []
-    subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "clone", "--depth", "1", *branch_args, '--', base, target],
-                   check=True, capture_output=True, text=True, timeout=600)
+    commit = None
+    if u.hostname == 'github.com' and not marker:
+        base, marker, ref = repo.partition('/commit/')
+        if marker:
+            commit = unquote(ref)
+            if not re.fullmatch(r'[0-9a-fA-F]{40}', commit):
+                raise ValueError('GitHub commit URLs require a full 40-character SHA')
+    branch_args = ['--branch', unquote(ref), '--single-branch'] if marker and not commit else []
+    cached = os.path.isdir(os.path.join(target, ".git"))
+    if not cached:
+        log(f"[adapter] cloning {repo}")
+        subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "clone", "--depth", "1", *branch_args, '--', base, target],
+                       check=True, capture_output=True, text=True, timeout=600)
+        if commit:
+            subprocess.run(["git", "-C", target, "fetch", "--depth", "1", "origin", commit],
+                           check=True, capture_output=True, text=True, timeout=600)
+            subprocess.run(["git", "-C", target, "checkout", "--detach", commit],
+                           check=True, capture_output=True, text=True, timeout=60)
+    actual = subprocess.run(["git", "-C", target, "rev-parse", "HEAD"],
+                            check=True, capture_output=True, text=True, timeout=30).stdout.strip()
+    if commit and actual.lower() != commit.lower():
+        raise ValueError(f"Cached repository commit {actual} differs from requested {commit}")
+    log(f"[adapter] source commit {actual}")
     return target
 
 
@@ -88,11 +135,12 @@ def survey_repo(repo_dir: str) -> str:
 
 
 def _run_ingest(adapter_path: str, device: str, seed: int,
-                log=None) -> tuple[dict | None, str]:
+                log=None, mode: str = "kernel", eval_batches: int = 8) -> tuple[dict | None, str]:
     from kernelevo.procstream import HEARTBEAT_PREFIX, run_result_worker
     job_path = adapter_path + ".ingest.json"
     with open(job_path, "w") as f:
-        json.dump(dict(adapter=adapter_path, device=device, seed=seed), f)
+        json.dump(dict(adapter=adapter_path, device=device, seed=seed, mode=mode,
+                       eval_batches=eval_batches), f)
 
     def on_line(line):
         if log and line.startswith(HEARTBEAT_PREFIX):
@@ -126,7 +174,8 @@ def _classify(err: str) -> str:
 
 @weave_op
 def prepare(repo: str, comments: str, max_debug_turns: int, out_dir: str,
-            llm, device: str, seed: int = 1234, log=print) -> tuple[str, dict]:
+            llm, device: str, seed: int = 1234, log=print,
+            mode: str = "kernel", eval_batches: int = 8) -> tuple[str, dict]:
     """Returns (adapter_path, ingest_info) or raises SystemExit with the last error."""
     os.makedirs(out_dir, exist_ok=True)
     repo_dir = fetch_repo(repo, out_dir, log)
@@ -134,11 +183,17 @@ def prepare(repo: str, comments: str, max_debug_turns: int, out_dir: str,
     survey = survey_repo(repo_dir)
     adapter_path = os.path.join(out_dir, "adapter.py")
     verified_path = adapter_path + ".ok"  # last version that passed ingest
+    mode_path = adapter_path + ".mode"
+    cached_mode = open(mode_path).read().strip() if os.path.exists(mode_path) else "kernel"
     for candidate in (verified_path, adapter_path):
-        if os.path.exists(candidate):
+        if os.path.exists(candidate) and cached_mode == mode:
             if candidate != adapter_path:
                 shutil.copyfile(candidate, adapter_path)
-            info, _ = _run_ingest(adapter_path, device, seed)
+            violation = (recipe_adapter_violation(open(adapter_path).read())
+                         if mode == "recipe" else None)
+            info, _ = ((None, violation) if violation else
+                       _run_ingest(adapter_path, device, seed, mode=mode,
+                                   eval_batches=eval_batches))
             if info is not None:
                 log(f"[adapter] reusing previously verified adapter "
                     f"({info['n_params']/1e6:.1f}M params) — skipping the writing agent")
@@ -147,7 +202,7 @@ def prepare(repo: str, comments: str, max_debug_turns: int, out_dir: str,
         log("[adapter] existing adapter no longer passes ingest; rewriting")
     header = (f"import sys\nsys.path.insert(0, {repo_dir!r})\n"
               f"sys.path.insert(0, {os.path.join(repo_dir, 'src')!r})\n\n")
-    messages = prompts.adapter_writer_prompt(survey, comments, device)
+    messages = prompts.adapter_writer_prompt(survey, comments, device, mode=mode)
     last_err = "no attempts made"
     # self-repair trail: every attempt's outcome, written incrementally so the
     # mid-run artifact sync (and the web UI / W&B mirror) can show fail->recovery
@@ -170,7 +225,10 @@ def prepare(repo: str, comments: str, max_debug_turns: int, out_dir: str,
         src = re.sub(r"^from __future__ import .*$\n?", "", src, flags=re.MULTILINE)
         with open(adapter_path, "w") as f:
             f.write("".join(f + "\n" for f in futures) + header + src)
-        info, err = _run_ingest(adapter_path, device, seed, log=log)
+        violation = recipe_adapter_violation(src) if mode == "recipe" else None
+        info, err = ((None, violation) if violation else
+                     _run_ingest(adapter_path, device, seed, log=log, mode=mode,
+                                 eval_batches=eval_batches))
         if info is not None:
             trail.append(dict(attempt=attempt + 1, ok=True, kind=None, note=None,
                               elapsed_s=round(time.time() - t0, 1)))
@@ -183,6 +241,8 @@ def prepare(repo: str, comments: str, max_debug_turns: int, out_dir: str,
                 log(f"[adapter] VERIFIED on attempt {attempt + 1} — recovered from "
                     f"{len(trail) - 1} failed attempt(s): {fails}")
             shutil.copyfile(adapter_path, verified_path)
+            with open(mode_path, "w") as f:
+                f.write(mode + "\n")
             return adapter_path, info
         last_err = err
         kind = _classify(err)

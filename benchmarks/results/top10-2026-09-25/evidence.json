@@ -1,0 +1,988 @@
+{
+  "repositories": [
+    {
+      "architecture": {
+        "acceptance_policy": null,
+        "attempt": 1,
+        "commit": "82904556e5ffea417e60be217035b58b5703da13",
+        "data_source": "deterministic synthetic batches",
+        "exit_code": 1,
+        "finished_at": 1790318874.5185585,
+        "index": 1,
+        "inference_mode": "chat-no-thinking",
+        "llm": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+        "mode": "recipe",
+        "model": "YOLO detection and segmentation",
+        "precision_policy": "fp32-bf16-autocast-structural-final-v2",
+        "repo": "ultralytics/ultralytics",
+        "result": {
+          "measured": false
+        },
+        "started_at": 1790318738.8242354,
+        "status": "failed",
+        "timing_scope": "fixed wall-clock training budget; held-out validation loss"
+      },
+      "commit": "82904556e5ffea417e60be217035b58b5703da13",
+      "index": 1,
+      "kernel": {
+        "acceptance_policy": null,
+        "attempt": 1,
+        "candidate_gates": [],
+        "commit": "82904556e5ffea417e60be217035b58b5703da13",
+        "data_source": "deterministic synthetic batches",
+        "exit_code": 1,
+        "finished_at": 1790317065.9204504,
+        "index": 1,
+        "inference_mode": "chat-no-thinking",
+        "llm": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+        "mode": "kernel",
+        "model": "YOLO detection and segmentation",
+        "precision_policy": null,
+        "repo": "ultralytics/ultralytics",
+        "result": {
+          "measured": false
+        },
+        "started_at": 1790316934.493909,
+        "status": "failed",
+        "timing_scope": "full training step including host-to-GPU transfer"
+      },
+      "repo": "ultralytics/ultralytics"
+    },
+    {
+      "architecture": {
+        "acceptance_policy": null,
+        "attempt": 1,
+        "candidate_gates": [
+          {
+            "accepted": 0,
+            "compile_ok": 0,
+            "correct_ok": 0,
+            "gate_reached": 0,
+            "generation": 1,
+            "model_params": null,
+            "phase": "architecture",
+            "train_secs": 60.0,
+            "val_loss": null
+          },
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 3,
+            "generation": 1,
+            "model_params": 5722024,
+            "phase": "architecture",
+            "train_secs": 60.0,
+            "val_loss": 7.14324951171875
+          },
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 0,
+            "gate_reached": 1,
+            "generation": 2,
+            "model_params": null,
+            "phase": "hyperparam",
+            "train_secs": 60.0,
+            "val_loss": null
+          },
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 0,
+            "gate_reached": 1,
+            "generation": 2,
+            "model_params": null,
+            "phase": "hyperparam",
+            "train_secs": 60.0,
+            "val_loss": null
+          },
+          {
+            "accepted": 1,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 4,
+            "generation": 3,
+            "model_params": 5722024,
+            "phase": "finals",
+            "train_secs": 120.0,
+            "val_loss": 6.9742431640625
+          }
+        ],
+        "commit": "f2bcd50406a375f684b558d87d21acbcd20c3144",
+        "data_source": "deterministic synthetic batches",
+        "exit_code": 0,
+        "finished_at": 1790319475.0804768,
+        "index": 2,
+        "inference_mode": "chat-no-thinking",
+        "llm": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+        "mode": "recipe",
+        "model": "CNN and vision-transformer classification",
+        "precision_policy": "fp32-bf16-autocast-structural-final-v2",
+        "repo": "huggingface/pytorch-image-models",
+        "result": {
+          "accepted": 1,
+          "architecture_changed": true,
+          "baseline_val_loss": 7.3055419921875,
+          "candidate_val_loss": 6.9742431640625,
+          "final_budget_s": 120.0,
+          "improvement_pct": 4.535,
+          "measured": true,
+          "winner_val_loss": 6.9742431640625
+        },
+        "started_at": 1790318874.6719594,
+        "status": "done",
+        "timing_scope": "fixed wall-clock training budget; held-out validation loss"
+      },
+      "commit": "f2bcd50406a375f684b558d87d21acbcd20c3144",
+      "index": 2,
+      "kernel": {
+        "acceptance_policy": null,
+        "attempt": 1,
+        "candidate_gates": [
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 0,
+            "gate_reached": 1,
+            "generation": 1,
+            "incumbent_step_time_ms": null,
+            "step_time_ms": null
+          },
+          {
+            "accepted": 1,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 4,
+            "generation": 1,
+            "incumbent_step_time_ms": 16.861248016357422,
+            "step_time_ms": 15.259600162506104
+          },
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 2,
+            "generation": 2,
+            "incumbent_step_time_ms": null,
+            "step_time_ms": null
+          },
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 2,
+            "generation": 2,
+            "incumbent_step_time_ms": null,
+            "step_time_ms": null
+          }
+        ],
+        "commit": "f2bcd50406a375f684b558d87d21acbcd20c3144",
+        "data_source": "deterministic synthetic batches",
+        "exit_code": 0,
+        "finished_at": 1790317413.8603878,
+        "index": 2,
+        "inference_mode": "chat-no-thinking",
+        "llm": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+        "mode": "kernel",
+        "model": "CNN and vision-transformer classification",
+        "precision_policy": null,
+        "repo": "huggingface/pytorch-image-models",
+        "result": {
+          "accepted": 1,
+          "baseline_ms": 16.861248016357422,
+          "candidate_ms": 15.259600162506104,
+          "improvement_pct": 9.499,
+          "measured": true
+        },
+        "started_at": 1790317162.4197319,
+        "status": "done",
+        "timing_scope": "full training step including host-to-GPU transfer"
+      },
+      "repo": "huggingface/pytorch-image-models"
+    },
+    {
+      "architecture": {
+        "acceptance_policy": null,
+        "attempt": 1,
+        "candidate_gates": [],
+        "commit": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",
+        "data_source": "deterministic synthetic batches",
+        "exit_code": 1,
+        "finished_at": 1790319558.0072112,
+        "index": 3,
+        "inference_mode": "chat-no-thinking",
+        "llm": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+        "mode": "recipe",
+        "model": "GPT pretraining and post-training",
+        "precision_policy": "fp32-bf16-autocast-structural-final-v2",
+        "repo": "karpathy/nanochat",
+        "result": {
+          "measured": false
+        },
+        "started_at": 1790319475.0878947,
+        "status": "failed",
+        "timing_scope": "fixed wall-clock training budget; held-out validation loss"
+      },
+      "commit": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",
+      "index": 3,
+      "kernel": {
+        "acceptance_policy": null,
+        "attempt": 3,
+        "candidate_gates": [
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 0,
+            "gate_reached": 1,
+            "generation": 1,
+            "incumbent_step_time_ms": null,
+            "step_time_ms": null
+          },
+          {
+            "accepted": 1,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 4,
+            "generation": 1,
+            "incumbent_step_time_ms": 48.35185623168945,
+            "step_time_ms": 47.51223945617676
+          },
+          {
+            "accepted": 0,
+            "compile_ok": 0,
+            "correct_ok": 0,
+            "gate_reached": 0,
+            "generation": 2,
+            "incumbent_step_time_ms": null,
+            "step_time_ms": null
+          },
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 0,
+            "gate_reached": 1,
+            "generation": 2,
+            "incumbent_step_time_ms": null,
+            "step_time_ms": null
+          }
+        ],
+        "commit": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",
+        "data_source": "deterministic synthetic batches",
+        "exit_code": 0,
+        "finished_at": 1790325390.8524065,
+        "index": 3,
+        "inference_mode": "chat-no-thinking",
+        "llm": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+        "mode": "kernel",
+        "model": "GPT pretraining and post-training",
+        "precision_policy": null,
+        "repo": "karpathy/nanochat",
+        "result": {
+          "accepted": 1,
+          "baseline_ms": 48.35185623168945,
+          "candidate_ms": 47.51223945617676,
+          "improvement_pct": 1.736,
+          "measured": true
+        },
+        "started_at": 1790324933.362374,
+        "status": "done",
+        "timing_scope": "full training step including host-to-GPU transfer"
+      },
+      "repo": "karpathy/nanochat"
+    },
+    {
+      "architecture": {
+        "acceptance_policy": null,
+        "attempt": 1,
+        "commit": "fe8d8a03c41a7ef5b523e2e354bd01c363e786bb",
+        "data_source": "deterministic synthetic batches",
+        "exit_code": 1,
+        "finished_at": 1790319706.642965,
+        "index": 4,
+        "inference_mode": "chat-no-thinking",
+        "llm": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+        "mode": "recipe",
+        "model": "single-file reinforcement learning",
+        "precision_policy": "fp32-bf16-autocast-structural-final-v2",
+        "repo": "vwxyzjn/cleanrl",
+        "result": {
+          "measured": false
+        },
+        "started_at": 1790319558.1611457,
+        "status": "failed",
+        "timing_scope": "fixed wall-clock training budget; held-out validation loss"
+      },
+      "commit": "fe8d8a03c41a7ef5b523e2e354bd01c363e786bb",
+      "index": 4,
+      "kernel": {
+        "acceptance_policy": null,
+        "attempt": 1,
+        "candidate_gates": [],
+        "commit": "fe8d8a03c41a7ef5b523e2e354bd01c363e786bb",
+        "data_source": "deterministic synthetic batches",
+        "exit_code": 1,
+        "finished_at": 1790317638.003553,
+        "index": 4,
+        "inference_mode": "chat-no-thinking",
+        "llm": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+        "mode": "kernel",
+        "model": "single-file reinforcement learning",
+        "precision_policy": null,
+        "repo": "vwxyzjn/cleanrl",
+        "result": {
+          "measured": false
+        },
+        "started_at": 1790317572.2994864,
+        "status": "failed",
+        "timing_scope": "full training step including host-to-GPU transfer"
+      },
+      "repo": "vwxyzjn/cleanrl"
+    },
+    {
+      "architecture": {
+        "acceptance_policy": null,
+        "attempt": 1,
+        "candidate_gates": [
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 3,
+            "generation": 1,
+            "model_params": 1454090,
+            "phase": "architecture",
+            "train_secs": 60.0,
+            "val_loss": 2.775482177734375
+          },
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 3,
+            "generation": 1,
+            "model_params": 11181642,
+            "phase": "architecture",
+            "train_secs": 60.0,
+            "val_loss": 3.26812744140625
+          },
+          {
+            "accepted": 1,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 4,
+            "generation": 2,
+            "model_params": 11181642,
+            "phase": "hyperparam",
+            "train_secs": 60.0,
+            "val_loss": 2.34539794921875
+          },
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 3,
+            "generation": 2,
+            "model_params": 11181642,
+            "phase": "hyperparam",
+            "train_secs": 60.0,
+            "val_loss": 2.64306640625
+          },
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 3,
+            "generation": 3,
+            "model_params": 1454090,
+            "phase": "finals",
+            "train_secs": 120.0,
+            "val_loss": 2.7569580078125
+          }
+        ],
+        "commit": "7b0e250acf82aac5a2389f54c6855da17bfeace9",
+        "data_source": "deterministic synthetic batches",
+        "exit_code": 0,
+        "finished_at": 1790320421.5364192,
+        "index": 5,
+        "inference_mode": "chat-no-thinking",
+        "llm": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+        "mode": "recipe",
+        "model": "vision training references",
+        "precision_policy": "fp32-bf16-autocast-structural-final-v2",
+        "repo": "pytorch/vision",
+        "result": {
+          "accepted": 0,
+          "architecture_changed": true,
+          "baseline_val_loss": 2.571380615234375,
+          "candidate_val_loss": 2.7569580078125,
+          "final_budget_s": 120.0,
+          "improvement_pct": -7.217,
+          "measured": true
+        },
+        "started_at": 1790319706.8124225,
+        "status": "done",
+        "timing_scope": "fixed wall-clock training budget; held-out validation loss"
+      },
+      "commit": "7b0e250acf82aac5a2389f54c6855da17bfeace9",
+      "index": 5,
+      "kernel": {
+        "acceptance_policy": null,
+        "attempt": 1,
+        "candidate_gates": [],
+        "commit": "7b0e250acf82aac5a2389f54c6855da17bfeace9",
+        "data_source": "deterministic synthetic batches",
+        "exit_code": 1,
+        "finished_at": 1790317709.513815,
+        "index": 5,
+        "inference_mode": "chat-no-thinking",
+        "llm": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+        "mode": "kernel",
+        "model": "vision training references",
+        "precision_policy": null,
+        "repo": "pytorch/vision",
+        "result": {
+          "measured": false
+        },
+        "started_at": 1790317638.2848606,
+        "status": "failed",
+        "timing_scope": "full training step including host-to-GPU transfer"
+      },
+      "repo": "pytorch/vision"
+    },
+    {
+      "architecture": {
+        "acceptance_policy": null,
+        "attempt": 1,
+        "candidate_gates": [
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 3,
+            "generation": 1,
+            "model_params": 11103290,
+            "phase": "architecture",
+            "train_secs": 60.0,
+            "val_loss": 0.00029587745666503906
+          },
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 3,
+            "generation": 1,
+            "model_params": 11103290,
+            "phase": "architecture",
+            "train_secs": 60.0,
+            "val_loss": 0.05933431163430214
+          },
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 3,
+            "generation": 2,
+            "model_params": 11103290,
+            "phase": "hyperparam",
+            "train_secs": 60.0,
+            "val_loss": 0.0066507975570857525
+          },
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 3,
+            "generation": 2,
+            "model_params": 11103290,
+            "phase": "hyperparam",
+            "train_secs": 60.0,
+            "val_loss": 0.0043852063827216625
+          },
+          {
+            "accepted": 1,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 4,
+            "generation": 3,
+            "model_params": 11103290,
+            "phase": "finals",
+            "train_secs": 120.0,
+            "val_loss": 2.5864441340672784e-05
+          }
+        ],
+        "commit": "98d39824ed30e684e5122d04a2d9564efffc4965",
+        "data_source": "deterministic synthetic batches",
+        "exit_code": 0,
+        "finished_at": 1790321179.0521212,
+        "index": 6,
+        "inference_mode": "chat-no-thinking",
+        "llm": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+        "mode": "recipe",
+        "model": "BERT, GPT, T5, or other transformer training",
+        "precision_policy": "fp32-bf16-autocast-structural-final-v2",
+        "repo": "huggingface/transformers",
+        "result": {
+          "accepted": 1,
+          "architecture_changed": true,
+          "baseline_val_loss": 7.21547330613248e-05,
+          "candidate_val_loss": 2.5864441340672784e-05,
+          "final_budget_s": 120.0,
+          "improvement_pct": 64.154,
+          "measured": true,
+          "winner_val_loss": 2.5864441340672784e-05
+        },
+        "started_at": 1790320421.5419292,
+        "status": "done",
+        "timing_scope": "fixed wall-clock training budget; held-out validation loss"
+      },
+      "commit": "98d39824ed30e684e5122d04a2d9564efffc4965",
+      "index": 6,
+      "kernel": {
+        "acceptance_policy": null,
+        "attempt": 1,
+        "candidate_gates": [
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 0,
+            "gate_reached": 1,
+            "generation": 1,
+            "incumbent_step_time_ms": null,
+            "step_time_ms": null
+          },
+          {
+            "accepted": 0,
+            "compile_ok": 0,
+            "correct_ok": 0,
+            "gate_reached": 0,
+            "generation": 1,
+            "incumbent_step_time_ms": null,
+            "step_time_ms": null
+          },
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 0,
+            "gate_reached": 1,
+            "generation": 2,
+            "incumbent_step_time_ms": null,
+            "step_time_ms": null
+          },
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 3,
+            "generation": 2,
+            "incumbent_step_time_ms": 11.064031600952148,
+            "step_time_ms": 11.096240043640137
+          }
+        ],
+        "commit": "98d39824ed30e684e5122d04a2d9564efffc4965",
+        "data_source": "deterministic synthetic batches",
+        "exit_code": 0,
+        "finished_at": 1790317924.9678755,
+        "index": 6,
+        "inference_mode": "chat-no-thinking",
+        "llm": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+        "mode": "kernel",
+        "model": "BERT, GPT, T5, or other transformer training",
+        "precision_policy": null,
+        "repo": "huggingface/transformers",
+        "result": {
+          "accepted": 0,
+          "measured": true,
+          "reason": "no accepted kernel"
+        },
+        "started_at": 1790317709.674135,
+        "status": "done",
+        "timing_scope": "full training step including host-to-GPU transfer"
+      },
+      "repo": "huggingface/transformers"
+    },
+    {
+      "architecture": {
+        "acceptance_policy": null,
+        "attempt": 1,
+        "candidate_gates": [
+          {
+            "accepted": 1,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 4,
+            "generation": 1,
+            "model_params": 4081059,
+            "phase": "architecture",
+            "train_secs": 60.0,
+            "val_loss": 0.49762921780347824
+          },
+          {
+            "accepted": 1,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 4,
+            "generation": 1,
+            "model_params": 4076611,
+            "phase": "architecture",
+            "train_secs": 60.0,
+            "val_loss": 0.4907925985753536
+          },
+          {
+            "accepted": 1,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 4,
+            "generation": 2,
+            "model_params": 4076611,
+            "phase": "hyperparam",
+            "train_secs": 60.0,
+            "val_loss": 0.4897831752896309
+          },
+          {
+            "accepted": 1,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 4,
+            "generation": 2,
+            "model_params": 4081059,
+            "phase": "hyperparam",
+            "train_secs": 60.0,
+            "val_loss": 0.49659188091754913
+          },
+          {
+            "accepted": 1,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 4,
+            "generation": 3,
+            "model_params": 4076611,
+            "phase": "finals",
+            "train_secs": 120.0,
+            "val_loss": 0.49026428535580635
+          }
+        ],
+        "commit": "4295ee3ec58efa6577bc459e9b84ca3f63aa9a96",
+        "data_source": "deterministic synthetic batches",
+        "exit_code": 0,
+        "finished_at": 1790322178.454345,
+        "index": 7,
+        "inference_mode": "chat-no-thinking",
+        "llm": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+        "mode": "recipe",
+        "model": "diffusion and LoRA fine-tuning",
+        "precision_policy": "fp32-bf16-autocast-structural-final-v2",
+        "repo": "huggingface/diffusers",
+        "result": {
+          "accepted": 1,
+          "architecture_changed": true,
+          "baseline_val_loss": 0.5656265020370483,
+          "candidate_val_loss": 0.49026428535580635,
+          "final_budget_s": 120.0,
+          "improvement_pct": 13.324,
+          "measured": true,
+          "winner_val_loss": 0.49026428535580635
+        },
+        "started_at": 1790321318.297634,
+        "status": "done",
+        "timing_scope": "fixed wall-clock training budget; held-out validation loss"
+      },
+      "commit": "4295ee3ec58efa6577bc459e9b84ca3f63aa9a96",
+      "index": 7,
+      "kernel": {
+        "acceptance_policy": null,
+        "attempt": 2,
+        "commit": "4295ee3ec58efa6577bc459e9b84ca3f63aa9a96",
+        "data_source": "deterministic synthetic batches",
+        "exit_code": 1,
+        "finished_at": 1790325686.29046,
+        "index": 7,
+        "inference_mode": "chat-no-thinking",
+        "llm": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+        "mode": "kernel",
+        "model": "diffusion and LoRA fine-tuning",
+        "precision_policy": null,
+        "repo": "huggingface/diffusers",
+        "result": {
+          "measured": false
+        },
+        "started_at": 1790325428.2138371,
+        "status": "failed",
+        "timing_scope": "full training step including host-to-GPU transfer"
+      },
+      "repo": "huggingface/diffusers"
+    },
+    {
+      "architecture": {
+        "acceptance_policy": null,
+        "attempt": 1,
+        "candidate_gates": [
+          {
+            "accepted": 1,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 4,
+            "generation": 1,
+            "model_params": 4899,
+            "phase": "architecture",
+            "train_secs": 60.0,
+            "val_loss": -2.345383405685425
+          },
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 3,
+            "generation": 1,
+            "model_params": 2531,
+            "phase": "architecture",
+            "train_secs": 60.0,
+            "val_loss": 0.9101975113153458
+          },
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 0,
+            "gate_reached": 1,
+            "generation": 2,
+            "model_params": null,
+            "phase": "hyperparam",
+            "train_secs": 60.0,
+            "val_loss": null
+          },
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 0,
+            "gate_reached": 1,
+            "generation": 2,
+            "model_params": null,
+            "phase": "hyperparam",
+            "train_secs": 60.0,
+            "val_loss": null
+          },
+          {
+            "accepted": 1,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 4,
+            "generation": 3,
+            "model_params": 4899,
+            "phase": "finals",
+            "train_secs": 120.0,
+            "val_loss": -7.445997357368469
+          }
+        ],
+        "commit": "7cfb4dd6055e74b5caa4ed4d6777492209946e26",
+        "data_source": "deterministic synthetic batches",
+        "exit_code": 0,
+        "finished_at": 1790322849.9903173,
+        "index": 8,
+        "inference_mode": "chat-no-thinking",
+        "llm": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+        "mode": "recipe",
+        "model": "PPO, SAC, or DQN reinforcement learning",
+        "precision_policy": "fp32-bf16-autocast-structural-final-v2",
+        "repo": "DLR-RM/stable-baselines3",
+        "result": {
+          "accepted": 1,
+          "architecture_changed": true,
+          "baseline_val_loss": -0.6660617291927338,
+          "candidate_val_loss": -7.445997357368469,
+          "final_budget_s": 120.0,
+          "measured": true,
+          "reason": "baseline validation loss is not positive",
+          "winner_val_loss": -7.445997357368469
+        },
+        "started_at": 1790322178.4589062,
+        "status": "done",
+        "timing_scope": "fixed wall-clock training budget; held-out validation loss"
+      },
+      "commit": "7cfb4dd6055e74b5caa4ed4d6777492209946e26",
+      "index": 8,
+      "kernel": {
+        "acceptance_policy": null,
+        "attempt": 2,
+        "candidate_gates": [],
+        "commit": "7cfb4dd6055e74b5caa4ed4d6777492209946e26",
+        "data_source": "deterministic synthetic batches",
+        "exit_code": 1,
+        "finished_at": 1790325850.7426841,
+        "index": 8,
+        "inference_mode": "chat-no-thinking",
+        "llm": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+        "mode": "kernel",
+        "model": "PPO, SAC, or DQN reinforcement learning",
+        "precision_policy": null,
+        "repo": "DLR-RM/stable-baselines3",
+        "result": {
+          "measured": false
+        },
+        "started_at": 1790325686.5841832,
+        "status": "failed",
+        "timing_scope": "full training step including host-to-GPU transfer"
+      },
+      "repo": "DLR-RM/stable-baselines3"
+    },
+    {
+      "architecture": {
+        "acceptance_policy": null,
+        "attempt": 1,
+        "candidate_gates": [
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 3,
+            "generation": 1,
+            "model_params": 590976,
+            "phase": "architecture",
+            "train_secs": 60.0,
+            "val_loss": 5.462788976728916e-08
+          },
+          {
+            "accepted": 0,
+            "compile_ok": 0,
+            "correct_ok": 0,
+            "gate_reached": 0,
+            "generation": 1,
+            "model_params": null,
+            "phase": "architecture",
+            "train_secs": 60.0,
+            "val_loss": null
+          },
+          {
+            "accepted": 1,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 4,
+            "generation": 2,
+            "model_params": 590976,
+            "phase": "hyperparam",
+            "train_secs": 60.0,
+            "val_loss": 0.0
+          },
+          {
+            "accepted": 0,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 3,
+            "generation": 2,
+            "model_params": 590976,
+            "phase": "hyperparam",
+            "train_secs": 60.0,
+            "val_loss": 1.5978002920746803e-08
+          },
+          {
+            "accepted": 1,
+            "compile_ok": 1,
+            "correct_ok": 1,
+            "gate_reached": 4,
+            "generation": 3,
+            "model_params": 590976,
+            "phase": "finals",
+            "train_secs": 120.0,
+            "val_loss": 0.0
+          }
+        ],
+        "commit": "18c931c15c2398621d35371a12d2b1785e855bb6",
+        "data_source": "deterministic synthetic batches",
+        "exit_code": 0,
+        "finished_at": 1790323513.7930477,
+        "index": 9,
+        "inference_mode": "chat-no-thinking",
+        "llm": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+        "mode": "recipe",
+        "model": "LLM pretraining and fine-tuning",
+        "precision_policy": "fp32-bf16-autocast-structural-final-v2",
+        "repo": "Lightning-AI/litgpt",
+        "result": {
+          "accepted": 1,
+          "architecture_changed": true,
+          "baseline_val_loss": 4.348112270236015e-08,
+          "candidate_val_loss": 0.0,
+          "final_budget_s": 120.0,
+          "improvement_pct": 100.0,
+          "measured": true,
+          "winner_val_loss": 0.0
+        },
+        "started_at": 1790322849.9948168,
+        "status": "done",
+        "timing_scope": "fixed wall-clock training budget; held-out validation loss"
+      },
+      "commit": "18c931c15c2398621d35371a12d2b1785e855bb6",
+      "index": 9,
+      "kernel": {
+        "acceptance_policy": null,
+        "attempt": 2,
+        "candidate_gates": [],
+        "commit": "18c931c15c2398621d35371a12d2b1785e855bb6",
+        "data_source": "deterministic synthetic batches",
+        "exit_code": 1,
+        "finished_at": 1790325945.4969256,
+        "index": 9,
+        "inference_mode": "chat-no-thinking",
+        "llm": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+        "mode": "kernel",
+        "model": "LLM pretraining and fine-tuning",
+        "precision_policy": null,
+        "repo": "Lightning-AI/litgpt",
+        "result": {
+          "measured": false
+        },
+        "started_at": 1790325851.040759,
+        "status": "failed",
+        "timing_scope": "full training step including host-to-GPU transfer"
+      },
+      "repo": "Lightning-AI/litgpt"
+    },
+    {
+      "architecture": {
+        "acceptance_policy": null,
+        "attempt": 3,
+        "commit": "a2f4a8771ab77e8411c26b27f24f9489a28a2453",
+        "data_source": "deterministic synthetic batches",
+        "exit_code": 1,
+        "finished_at": 1790324845.8646908,
+        "index": 10,
+        "inference_mode": "chat-no-thinking",
+        "llm": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+        "mode": "recipe",
+        "model": "detection and instance segmentation",
+        "precision_policy": "fp32-bf16-autocast-structural-final-v2",
+        "repo": "facebookresearch/detectron2",
+        "result": {
+          "measured": false
+        },
+        "started_at": 1790324656.5543578,
+        "status": "failed",
+        "timing_scope": "fixed wall-clock training budget; held-out validation loss"
+      },
+      "commit": "a2f4a8771ab77e8411c26b27f24f9489a28a2453",
+      "index": 10,
+      "kernel": {
+        "acceptance_policy": null,
+        "attempt": 1,
+        "commit": "a2f4a8771ab77e8411c26b27f24f9489a28a2453",
+        "data_source": "deterministic synthetic batches",
+        "exit_code": 1,
+        "finished_at": 1790318518.0787368,
+        "index": 10,
+        "inference_mode": "chat-no-thinking",
+        "llm": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+        "mode": "kernel",
+        "model": "detection and instance segmentation",
+        "precision_policy": null,
+        "repo": "facebookresearch/detectron2",
+        "result": {
+          "measured": false
+        },
+        "started_at": 1790318352.8384917,
+        "status": "failed",
+        "timing_scope": "full training step including host-to-GPU transfer"
+      },
+      "repo": "facebookresearch/detectron2"
+    }
+  ],
+  "schema": "top-k-dual-molab-evidence-v1"
+}

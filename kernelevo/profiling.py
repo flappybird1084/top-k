@@ -33,6 +33,24 @@ def _op_time_us(prof) -> dict[str, float]:
     return cpu
 
 
+def _count_flops_per_sample(adapter, model, batch, samples_per_batch: int):
+    """Best-effort utilization metadata; gate timing must not depend on it."""
+    from torch.utils.flop_counter import FlopCounterMode
+
+    try:
+        with FlopCounterMode(display=False) as fc:
+            loss = adapter.loss_fn(model, batch)
+            loss.backward()
+        return fc.get_total_flops() / samples_per_batch
+    except AssertionError as exc:
+        # Some valid SDPA layouts execute and time correctly but PyTorch's FLOP
+        # counter cannot classify their query/key/value shapes. Keep MFU unknown.
+        if "sdpa_flop_count: query/key/value shapes are incompatible" not in str(exc):
+            raise
+        print("[profile] WARNING: SDPA FLOP count unavailable; MFU will be omitted")
+        return None
+
+
 def _extract_inductor_seed(op: ops.OpDef, argspec, device, out_path: str) -> str:
     """Compile the op's eager fn with inductor at the real shape and harvest the
     generated Triton source from PyCodeCache. Best-effort: falls back to the
@@ -107,14 +125,13 @@ def run_profile(adapter, cfg, info: dict, out_dir: str) -> dict:
     per_step = {k: v / cfg["profile_steps"] for k, v in op_times.items()}
 
     # flops_per_sample (spec §4.1.5) — counted here since the model is already up.
-    from torch.utils.flop_counter import FlopCounterMode
     torch.manual_seed(cfg["seed"])
     batch = next(iter(adapter.get_dataloader("train")))
-    with FlopCounterMode(display=False) as fc:
-        loss = adapter.loss_fn(model, batch)
-        loss.backward()
-    flops_per_sample = fc.get_total_flops() / info["samples_per_batch"]
-    opt.zero_grad(set_to_none=True)
+    try:
+        flops_per_sample = _count_flops_per_sample(
+            adapter, model, batch, info["samples_per_batch"])
+    finally:
+        opt.zero_grad(set_to_none=True)
 
     seeds_dir = os.path.join(out_dir, "seeds")
     os.makedirs(seeds_dir, exist_ok=True)
