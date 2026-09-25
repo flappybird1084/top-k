@@ -215,9 +215,20 @@ def test_molab_runner_records_failure_and_continues_sequentially(
     if mode == "recipe":
         assert all(job["recipe"]["phases"][0]["kind"] == "architecture"
                    for job in dispatched)
+        assert all(job["acceptance_policy"] == "absolute-baseline-margin-v2"
+                   for job in dispatched)
     else:
         assert all("recipe" not in job for job in dispatched)
-    assert json.loads((output / "one__train" / "state.json").read_text())["status"] == "failed"
+    first_state = output / "one__train" / "state.json"
+    assert json.loads(first_state.read_text())["status"] == "failed"
+    if mode == "recipe":
+        old = json.loads(first_state.read_text())
+        old.pop("acceptance_policy")
+        first_state.write_text(json.dumps(old))
+        with pytest.raises(RuntimeError, match="different benchmark configuration"):
+            run_molab_benchmark.main()
+    else:
+        assert "acceptance_policy" not in json.loads(first_state.read_text())
     if expected_count == 2:
         assert json.loads((output / "two__train" / "state.json").read_text())[
             "status"] == "failed"

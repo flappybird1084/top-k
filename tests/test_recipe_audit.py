@@ -47,6 +47,18 @@ def test_final_acceptance_requires_structure_and_loss():
     assert recipes.accepts_architecture_final(0.8, 1.0, 0.01, "changed", "base")
     assert not recipes.accepts_architecture_final(0.8, 1.0, 0.01, "base", "base")
     assert not recipes.accepts_architecture_final(1.1, 1.0, 0.01, "changed", "base")
+    assert recipes.accepts_architecture_final(-0.8, -0.5, 0.01, "changed", "base")
+    assert not recipes.accepts_architecture_final(-0.499, -0.5, 0.01,
+                                                  "changed", "base")
+    assert not recipes.beats_loss_margin(-0.504, -0.5, 0.01)
+    assert recipes.beats_loss_margin(-0.506, -0.5, 0.01)
+
+
+def test_nonpositive_loss_change_has_no_percentage():
+    from kernelevo.recipe_loop import _loss_change_label
+
+    assert _loss_change_label(-0.5, -0.8) == "loss change -0.3000; percentage n/a"
+    assert _loss_change_label(1.0, 0.8) == "+20.00%"
 
 
 def test_model_report_contains_structure_and_source():
