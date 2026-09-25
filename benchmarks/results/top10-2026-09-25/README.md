@@ -16,7 +16,7 @@ Kernel results compare the full training-step time, including host-to-GPU transf
 | 6 | Transformers | Measured; no accepted kernel | 0.00007215 → 0.00002586 loss; 64.154% relative reduction near the loss floor |
 | 7 | Diffusers | Failed before comparison | **0.56563 → 0.49026 loss**, 13.324% lower |
 | 8 | Stable-Baselines3 | Failed before comparison | -0.66606 → -7.44600 PPO surrogate objective; not a validated RL performance gain |
-| 9 | LitGPT | Failed before comparison after notebook disconnection | 4.3481e-8 → 0 loss; synthetic-task floor effect |
+| 9 | LitGPT | Failed before comparison (infrastructure/dispatch failure) | 4.3481e-8 → 0 loss; synthetic-task floor effect |
 | 10 | Detectron2 | Failed before comparison | Failed before comparison |
 
 **Totals:** kernel: 3 measured, 2 accepted improvements, 7 failed before a completed comparison. Architecture: 6 measured, 4 accepted positive-loss gate improvements, 4 failed before comparison. The PPO row also passed the structural gate but has a negative baseline, so no percentage gain or validated RL improvement is claimed.
