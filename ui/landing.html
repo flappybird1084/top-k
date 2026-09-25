@@ -155,17 +155,19 @@
   </div>
 </section>
 
-<section class="sec final" id="repos">
-  <div class="wrap">
-    <div class="sec-head center reveal">
-      <h2>Point it at your repo.</h2>
-      <p class="sub">Filled nodes are measured runs. Outlined ones are open PyTorch training repos it hasn’t run yet.</p>
-    </div>
-  </div>
+<section class="final" id="repos">
   <div class="web reveal" id="web">
-    <canvas id="web-canvas" aria-hidden="true"></canvas>
-    <div id="web-nodes"></div>
-    <button class="hub" id="hub" type="button" aria-label="Your repo: go to the search box"><i aria-hidden="true"></i><span>Your repo</span></button>
+    <div class="web-head">
+      <h2>Point it at your repo.</h2>
+      <p class="sub">Filled nodes are measured runs. Outlined ones are open PyTorch training repos it hasn’t run yet. Click the center to add yours.</p>
+    </div>
+    <div class="web-stage" id="web-stage">
+      <canvas id="web-canvas" aria-hidden="true"></canvas>
+      <div id="web-nodes"></div>
+      <button class="hub" id="hub" type="button" aria-label="Your repo: go to the search box"><i aria-hidden="true"></i><span>Your repo</span></button>
+    </div>
+    <article class="run-card" id="run-card" aria-live="polite"></article>
+    <div class="web-legend" aria-hidden="true"><span><i class="f"></i>measured run</span><span><i class="o"></i>not run yet</span></div>
   </div>
 </section>
 

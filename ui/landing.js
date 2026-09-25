@@ -487,46 +487,21 @@
     c.addEventListener('pointerleave', () => { c.style.transform = ''; });
   });
 
-  /* ---------------- repos: measured runs and open repos around "Your repo" ----------------
-     Only filled nodes carry numbers, and each is a measured run. Outlined nodes are open
-     PyTorch training repos that haven't been run; they carry no claims. Clicking the hub
-     (or a repo) grows it to fill the map and hands off to the search box at the top. */
+  /* ---------------- repos: the closing showpiece ----------------
+     "Your repo" sits at the center; measured runs orbit close in, open repos further out.
+     Only measured runs carry numbers, and each has a card with what was actually measured.
+     The card cycles through the runs and the web turns to present each one. Clicking the hub
+     or an open repo grows the hub and hands off to the search box at the top. */
   (function web() {
-    const box = $('#web'), cv = $('#web-canvas'), layer = $('#web-nodes'), hub = $('#hub');
+    const box = $('#web'), stage = $('#web-stage'), cv = $('#web-canvas'), layer = $('#web-nodes'), hub = $('#hub'), card = $('#run-card');
     if (!box) return;
     const A = R.arch, K = R.kernel;
     const win = A.candidates.filter(c => c.gen === 4 && c.gain != null).sort((a, b) => b.gain - a.gain)[0];
-    const RUNS = [
-      // nanochat numbers are from findings/01-results.md (not in the recorded runs).
-      { name: 'karpathy/nanochat', short: 'nanochat', url: 'github.com/karpathy/nanochat', what: 'Kernel search · 11.5M parameters',
-        result: '−4.1% step time vs. per-op torch.compile (8.95 → 8.58 ms); −1.7% vs. eager' },
-      { name: 'modern-lm', short: 'modern-lm', what: 'Architecture search · 480.9M parameters',
-        result: `${pct(win.gain)} val loss at the same 300 s budget (${A.baseline[300].toFixed(3)} → ${win.loss.toFixed(3)})` },
-      { name: 'Top-K demo LM', short: 'demo LM', what: 'Kernel search · 21.6M parameters',
-        result: `${pct(K.paired_median * 100)} step time vs. torch.compile (${K.baseline_ms.toFixed(2)} → ${K.final_ms.toFixed(2)} ms)` },
-    ];
-    const OPEN = ['karpathy/nanoGPT', 'karpathy/minGPT', 'KellerJordan/modded-nanogpt', 'Lightning-AI/litgpt',
-      'allenai/OLMo', 'BlinkDL/RWKV-LM', 'pytorch/torchtitan', 'EleutherAI/gpt-neox'];
-    const nodes = [];
-    RUNS.forEach((r, i) => {
-      const a = i / RUNS.length * 6.2832 + .5;
-      nodes.push({ ...r, run: true, x: Math.cos(a) * 1.05, y: [.2, -.24, .06][i], z: Math.sin(a) * 1.05 });
-    });
-    OPEN.forEach((name, i) => {
-      const a = i / OPEN.length * 6.2832 + .9;
-      nodes.push({ name, short: name.split('/')[1], url: 'github.com/' + name, run: false,
-        x: Math.cos(a) * 1.85, y: Math.sin(i * 1.7) * .45, z: Math.sin(a) * 1.85 });
-    });
-    const links = [];
-    const O = { x: 0, y: 0, z: 0 };
-    nodes.forEach(n => links.push([O, n, n.run ? 'run' : 'hub']));
-    const outer = nodes.filter(n => !n.run);
-    outer.forEach((n, i) => links.push([n, outer[(i + 1) % outer.length], 'ring']));
-    nodes.filter(n => n.run).forEach(r => {
-      const near = outer.slice().sort((a, b) => Math.hypot(a.x - r.x, a.z - r.z) - Math.hypot(b.x - r.x, b.z - r.z))[0];
-      links.push([r, near, 'ring']);
-    });
-
+    const proposed = A.candidates.filter(c => c.gen >= 1 && c.gen <= 3).length;
+    const crashed = A.candidates.filter(c => c.gen >= 1 && c.gen <= 3 && c.loss == null).length;
+    const kAll = K.candidates.filter(c => c.kind !== 'seed'), kKept = kAll.filter(c => c.kind === 'accepted').length;
+    const less = (v, d) => '−' + Math.abs(v).toFixed(d) + '%';
+    const scrollTo = sel => $(sel).scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
     const go = url => {
       const input = $('#repo-hero');
       if (url) input.value = url;
@@ -535,57 +510,137 @@
       setTimeout(() => $('#hero').scrollIntoView({ behavior: 'smooth', block: 'start' }), 520);
       setTimeout(() => { input.focus({ preventScroll: true }); box.classList.remove('expanding'); }, 1400);
     };
+    const RUNS = [
+      // nanochat's numbers come from findings/01-results.md (not part of the recorded runs).
+      { name: 'karpathy/nanochat', short: 'nanochat', chip: '−4.1% step time',
+        kind: 'Kernel search · 11.5M parameters', big: '−4.1%', unit: 'step time',
+        lines: ['8.95 → 8.58 ms per training step against per-op torch.compile; −1.7% against eager.',
+          'Kept: a row-parallel Triton RMSNorm with its forward and backward fused.',
+          'A follow-up that was faster on its own was rejected: its 2.6% gain in the full step sat inside the 3% noise margin.'],
+        act: ['Run it on nanochat', () => go('github.com/karpathy/nanochat')] },
+      { name: 'modern-lm', short: 'modern-lm', chip: `${less(win.gain, 2)} val loss`,
+        kind: 'Architecture search · 480.9M parameters', big: less(win.gain, 2), unit: 'val loss',
+        lines: [`${A.baseline[300].toFixed(3)} → ${win.loss.toFixed(3)} at the same 300 s training budget.`,
+          'Winning line: a parallel attention + MLP block, one shared key/value head, then a cyclic learning-rate schedule.',
+          `${proposed} proposals over three generations; ${crashed} crashed.`],
+        act: ['See every candidate', () => scrollTo('#arch')] },
+      { name: 'Top-K demo LM', short: 'demo LM', chip: `${less(K.paired_median * 100, 1)} step time`,
+        kind: `Kernel search · 21.6M parameters · ${K.generations.length} generations`, big: less(K.paired_median * 100, 1), unit: 'step time',
+        lines: [`${K.baseline_ms.toFixed(2)} → ${K.final_ms.toFixed(2)} ms: the paired median of four interleaved blocks against torch.compile.`,
+          'Shipped three Triton kernels: _down_gelu_backward, _finish_bias and _pack_qkv_backward.',
+          `${kAll.length - kKept} of ${kAll.length} kernel attempts were rejected along the way.`],
+        act: ['See the funnel', () => scrollTo('#kernels')] },
+    ];
+    const OPEN = ['karpathy/nanoGPT', 'karpathy/minGPT', 'KellerJordan/modded-nanogpt', 'Lightning-AI/litgpt',
+      'allenai/OLMo', 'BlinkDL/RWKV-LM', 'pytorch/torchtitan', 'EleutherAI/gpt-neox'];
+    const RIN = 1.15, ROUT = 1.9;
+    const nodes = [];
+    RUNS.forEach((r, i) => {
+      const a = i / RUNS.length * 6.2832 + .5;
+      nodes.push({ ...r, run: true, idx: i, x: Math.cos(a) * RIN, y: [.14, -.16, .05][i], z: Math.sin(a) * RIN });
+    });
+    OPEN.forEach((name, i) => {
+      const a = i / OPEN.length * 6.2832 + .9;
+      nodes.push({ name, short: name.split('/')[1], url: 'github.com/' + name, run: false,
+        x: Math.cos(a) * ROUT, y: Math.sin(i * 1.7) * .3, z: Math.sin(a) * ROUT });
+    });
+    const O = { x: 0, y: 0, z: 0 }, links = [];
+    nodes.forEach(n => links.push([O, n, n.run ? 'run' : 'hub', n]));
+    const outer = nodes.filter(n => !n.run);
+    outer.forEach((n, i) => links.push([n, outer[(i + 1) % outer.length], 'ring']));
+    nodes.filter(n => n.run).forEach(r => {
+      const near = outer.slice().sort((a, b) => Math.hypot(a.x - r.x, a.z - r.z) - Math.hypot(b.x - r.x, b.z - r.z))[0];
+      links.push([r, near, 'ring']);
+    });
+
     hub.addEventListener('click', () => go(''));
     nodes.forEach(n => {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'rnode' + (n.run ? ' run' : '');
-      b.innerHTML = `<i aria-hidden="true"></i><span>${esc(n.short)}</span>`;
-      b.setAttribute('aria-label', n.run ? `${n.name}: ${n.result}` : `${n.name}: not run yet`);
-      bindTip(b, () => n.run
-        ? `<div class="h">${esc(n.name)}</div>${esc(n.what)}<div class="r">${esc(n.result)}</div>`
-        : `<div class="h">${esc(n.name)}</div>Not run yet.${n.url ? '<div class="r">Click to try it</div>' : ''}`);
-      if (n.url) b.addEventListener('click', () => go(n.url));
+      b.innerHTML = `<i aria-hidden="true"></i><span>${esc(n.short)}</span>` + (n.run ? `<em class="chip">${esc(n.chip)}</em>` : '');
+      b.setAttribute('aria-label', n.run ? `${n.name}: ${n.chip}. Show details.` : `${n.name}: not run yet. Put it in the search box.`);
+      if (!n.run) bindTip(b, () => `<div class="h">${esc(n.name)}</div>Not run yet.<div class="r">Click to try it</div>`);
+      b.addEventListener('click', () => n.run ? show(n.idx, true) : go(n.url));
       layer.appendChild(b);
       n.el = b;
     });
 
-    const cam = camera(7), mouse = pointer(box);
-    let W = 0, H = 0, t = 0;
-    cam.pitch = .32;
+    // The run card: cycles through measured runs until someone picks one.
+    let sel = 0, t = 0, lastSwitch = 0, userAt = -1e9;
+    function show(i, user) {
+      sel = i; lastSwitch = t;
+      if (user) userAt = t;
+      const r = RUNS[i];
+      card.innerHTML = `<div class="body"><span class="k">${esc(r.kind)}</span><h3>${esc(r.name)}</h3>`
+        + `<div class="big">${esc(r.big)}<small>${esc(r.unit)}</small></div>${r.lines.map(l => `<p>${esc(l)}</p>`).join('')}</div>`
+        + `<div class="act"><button type="button" class="go">${esc(r.act[0])} →</button><div class="pager">`
+        + RUNS.map((q, k) => `<button type="button" class="${k === i ? 'on' : ''}" aria-label="Show ${esc(q.name)}"></button>`).join('')
+        + '</div></div>';
+      card.querySelector('.go').addEventListener('click', r.act[1]);
+      card.querySelectorAll('.pager button').forEach((b, k) => b.addEventListener('click', () => show(k, true)));
+      nodes.forEach(n => n.el.classList.toggle('sel', n.run && n.idx === i));
+    }
+    card.addEventListener('pointerenter', () => { userAt = t; });
+    show(0, false);
+
+    const cam = camera(7), mouse = pointer(stage);
+    let W = 0, H = 0, yaw = 0;
+    cam.pitch = -.62;   // look down on the web from above
     const depthOf = d => Math.max(0, Math.min(1, (8.9 - d) / 3.8));
+    // Yaw that brings a node to the front, a little right of the hub so it doesn't hide behind it.
+    const frontYaw = n => Math.atan2(n.z, n.x) + Math.PI / 2 - .55;
     function step(dt) {
       t += dt;
-      const ease = Math.min(1, dt * 2);
-      cam.yaw += (t * .11 + mouse.x * .6 - cam.yaw) * ease;
-      cam.pitch += (.32 + mouse.y * .3 - cam.pitch) * ease;
+      if (!reduce && t - lastSwitch > 6.5 && t - userAt > 15) show((sel + 1) % RUNS.length, false);
+      const target = frontYaw(nodes[sel]) + .08 * Math.sin(t * .35);
+      const diff = ((target - yaw) % 6.2832 + 9.4248) % 6.2832 - 3.1416;
+      yaw += diff * Math.min(1, dt * 1.6);
+      cam.yaw = yaw + mouse.x * .35;
+      cam.pitch += (-.62 + mouse.y * .18 - cam.pitch) * Math.min(1, dt * 2);
+    }
+    function ring(ctx, r) {
+      let prev = cam.project(r, 0, 0);
+      for (let j = 1; j <= 90; j++) {
+        const a = j / 90 * 6.2832, cur = cam.project(Math.cos(a) * r, 0, Math.sin(a) * r);
+        ctx.strokeStyle = `rgba(${C.accent2},${(.03 + .09 * depthOf((prev[2] + cur[2]) / 2)).toFixed(3)})`;
+        ctx.beginPath(); ctx.moveTo(prev[0], prev[1]); ctx.lineTo(cur[0], cur[1]); ctx.stroke();
+        prev = cur;
+      }
     }
     function draw(ctx) {
       ctx.clearRect(0, 0, W, H);
-      for (const [a, b, kind] of links) {
+      ctx.lineWidth = 1; ring(ctx, RIN); ring(ctx, ROUT);
+      for (const [a, b, kind, n] of links) {
         const pa = cam.project(a.x, a.y, a.z), pb = cam.project(b.x, b.y, b.z), dep = (depthOf(pa[2]) + depthOf(pb[2])) / 2;
+        const hot = kind === 'run' && n.idx === sel;
         ctx.setLineDash(kind === 'hub' ? [3, 6] : []);
-        ctx.lineWidth = kind === 'run' ? 1.4 : 1;
-        ctx.strokeStyle = kind === 'run' ? `rgba(${C.accent},${(.25 + .45 * dep).toFixed(3)})`
+        ctx.lineWidth = hot ? 2.2 : kind === 'run' ? 1.4 : 1;
+        ctx.strokeStyle = kind === 'run' ? `rgba(${C.accent},${((hot ? .55 : .2) + .4 * dep).toFixed(3)})`
           : `rgba(${C.ink},${((kind === 'hub' ? .1 : .06) + .08 * dep).toFixed(3)})`;
         ctx.beginPath(); ctx.moveTo(pa[0], pa[1]); ctx.lineTo(pb[0], pb[1]); ctx.stroke();
       }
       ctx.setLineDash([]);
-      // a pulse runs out from your repo to each measured run
       nodes.filter(n => n.run).forEach((n, i) => {
-        const k = (t * .35 + i / 3) % 1, p = cam.project(n.x * k, n.y * k, n.z * k);
-        ctx.fillStyle = `rgba(${C.accent2},${(Math.sin(k * Math.PI) * .9).toFixed(3)})`;
-        ctx.beginPath(); ctx.arc(p[0], p[1], 2.4 * p[3], 0, 6.2832); ctx.fill();
+        const k = (t * .35 + i / 3) % 1, p = cam.project(n.x * k, n.y * k, n.z * k), hot = n.idx === sel;
+        ctx.fillStyle = `rgba(${C.accent2},${(Math.sin(k * Math.PI) * (hot ? 1 : .6)).toFixed(3)})`;
+        ctx.beginPath(); ctx.arc(p[0], p[1], (hot ? 3.2 : 2.2) * p[3], 0, 6.2832); ctx.fill();
       });
       for (const n of nodes) {
         const p = cam.project(n.x, n.y, n.z), dep = depthOf(p[2]);
-        n.el.style.transform = `translate(${p[0].toFixed(1)}px,${p[1].toFixed(1)}px) translate(-50%,-50%) scale(${(.7 + .4 * p[3]).toFixed(3)})`;
-        n.el.style.opacity = ((n.run ? .5 : .22) + (n.run ? .5 : .6) * dep).toFixed(3);
+        n.el.style.transform = `translate(${p[0].toFixed(1)}px,${p[1].toFixed(1)}px) translate(-50%,-50%) scale(${(.7 + .42 * p[3]).toFixed(3)})`;
+        n.el.style.opacity = ((n.run ? .55 : .22) + (n.run ? .45 : .6) * dep).toFixed(3);
         n.el.style.zIndex = String(Math.round(dep * 100));
       }
     }
-    animate(cv, box, {
-      resize: (w, h) => { W = w; H = h; cam.scale = Math.min(w * 1.2, h * 2); cam.cx = w / 2; cam.cy = h / 2; },
+    animate(cv, stage, {
+      resize: (w, h) => {
+        W = w; H = h;
+        const narrow = w < 700;
+        cam.scale = Math.min(w * 1.15, h * 1.65);
+        cam.cx = narrow ? w / 2 : w * .57; cam.cy = h * (narrow ? .54 : .57);
+        hub.style.left = cam.cx + 'px'; hub.style.top = cam.cy + 'px';
+      },
       step, draw,
     });
   })();
