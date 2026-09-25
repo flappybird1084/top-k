@@ -194,7 +194,7 @@ def main():
     res.update(step_time_ms=cand_ms, incumbent_step_time_ms=inc_ms)
     sps = job["samples_per_batch"] / (cand_ms / 1000.0)
     res["samples_per_s"] = sps
-    if job.get("peak_flops"):
+    if job.get("peak_flops") and job.get("flops_per_sample") is not None:
         res["mfu"] = job["flops_per_sample"] * sps / job["peak_flops"]
     if cand_ms < inc_ms * (1.0 - job["gate4"]["margin"]):
         res.update(gate_reached=4, accepted=True)
