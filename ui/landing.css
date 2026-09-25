@@ -89,6 +89,7 @@ svg text{font-family:var(--mono)}
 .node.win circle.dot{fill:var(--accent);stroke:var(--accent-2);filter:drop-shadow(0 0 6px rgba(139,151,255,.8))}
 .node.lead circle.dot{stroke:var(--amber);fill:#2a2214}
 .node.crash line{stroke:var(--coral);stroke-width:2;stroke-linecap:round}
+.node.crash:focus-visible line{stroke:#fff;stroke-width:4;filter:drop-shadow(0 0 5px var(--coral))}
 .node .hit{fill:transparent}
 .node:hover circle.dot,.node:focus-visible circle.dot{stroke-width:3}
 .tag{opacity:0;transition:opacity .6s}

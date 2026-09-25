@@ -1,6 +1,6 @@
 'use strict';
-/* Every moving part is driven by window.TOPK_RUNS, extracted verbatim from the
-   recorded architecture and kernel runs (assets/recorded-data.js). */
+/* Walkthrough visuals use window.TOPK_RUNS from landing-data.js; the repository
+   graph uses window.TOPK_BENCHMARKS from the published ten-repository summary. */
 (() => {
   const R = window.TOPK_RUNS;
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -27,7 +27,8 @@
   const C = { ink: '237,237,240', gray: '107,107,117', coral: '239,122,109', amber: '242,181,96', accent: '139,151,255', accent2: '196,202,255' };
   const FATE = { unfinished: C.gray, nocompile: C.coral, wrong: C.coral, slower: C.amber, noise: C.amber, accepted: C.accent };
   const kernelFates = R.kernel.candidates.filter(c => c.kind !== 'seed').map(c => c.kind);
-  const archFinal = R.arch.candidates.filter(c => c.gen === 4 && Number.isFinite(c.gain)).sort((a, b) => b.gain - a.gain)[0];
+  const archFinalists = R.arch.candidates.filter(c => c.gen === 4 && Number.isFinite(c.gain)).sort((a, b) => b.gain - a.gain);
+  const archFinal = archFinalists[0];
   const archGain = $('#hero-arch-gain'), kernelGain = $('#hero-kernel-gain');
   archGain.dataset.count = archFinal.gain;
   kernelGain.dataset.count = R.kernel.paired_median * 100;
@@ -281,8 +282,8 @@
       });
     }
     const parentOf = n => (n.parent === null || n.parent === undefined || n.parent <= 3) ? 'base' : n.parent;
-    const finals = cands.filter(c => c.gen === 4 && c.gain !== null && c.gain !== undefined).sort((a, b) => b.gain - a.gain);
-    const win = nodes.get(finals[0].id);
+    const finals = archFinalists;
+    const win = nodes.get(archFinal.id);
     const lead3 = nodes.get(cands.filter(c => c.gen === 3 && c.gain !== null && c.gain !== undefined).sort((a, b) => b.gain - a.gain)[0].id);
     const leadFinal = finals.map(f => nodes.get(f.id)).find(f => f.parent === lead3.id);
     const chain = id => { const out = []; let n = nodes.get(id); while (n && !n.base) { out.push(n); n = nodes.get(parentOf(n)); } return out; };
@@ -582,10 +583,13 @@
 
     // The run card: cycles through measured runs until someone picks one.
     let sel = 0, t = 0, lastSwitch = 0, userAt = -1e9, redrawStatic = null;
+    let hovered = false, focused = false;
     function show(i, user) {
       sel = i; lastSwitch = t;
       if (user) userAt = t;
+      const restorePagerFocus = user && card.contains(document.activeElement) && document.activeElement.matches('.pager button');
       const r = RUNS[i];
+      card.setAttribute('aria-live', user ? 'polite' : 'off');
       card.innerHTML = `<div class="body"><span class="k">Accepted benchmark result</span><h3>${esc(r.name)}</h3>`
         + r.metrics.map(m => `<div class="run-metric"><div class="big">${esc(m.value)}<small>${esc(m.label)}</small></div><p>${esc(m.detail)}</p></div>`).join('')
         + `<p class="search-detail">Kernel search checked candidate correctness and full-step time against torch.compile. Architecture search tested structural changes, then compared held-out loss at the same training budget. Only improved domains are shown for this project.</p></div>`
@@ -593,10 +597,14 @@
         + RUNS.map((q, k) => `<button type="button" class="${k === i ? 'on' : ''}" aria-label="Show ${esc(q.name)}"></button>`).join('')
         + '</div></div>';
       card.querySelectorAll('.pager button').forEach((b, k) => b.addEventListener('click', () => show(k, true)));
+      if (restorePagerFocus) card.querySelectorAll('.pager button')[i].focus();
       nodes.forEach(n => n.el.classList.toggle('sel', n.idx === i));
       if (reduce && redrawStatic) redrawStatic();
     }
-    card.addEventListener('pointerenter', () => { userAt = t; });
+    card.addEventListener('pointerenter', () => { hovered = true; userAt = t; });
+    card.addEventListener('pointerleave', () => { hovered = false; });
+    card.addEventListener('focusin', () => { focused = true; userAt = t; });
+    card.addEventListener('focusout', e => { if (!card.contains(e.relatedTarget)) focused = false; });
     show(0, false);
 
     const cam = camera(7), mouse = pointer(stage);
@@ -607,7 +615,7 @@
     const frontYaw = n => Math.atan2(n.z, n.x) + Math.PI / 2 - .55;
     function step(dt) {
       t += dt;
-      if (!reduce && t - lastSwitch > 6.5 && t - userAt > 15) show((sel + 1) % RUNS.length, false);
+      if (!reduce && !hovered && !focused && t - lastSwitch > 6.5 && t - userAt > 15) show((sel + 1) % RUNS.length, false);
       const target = frontYaw(nodes[sel]) + .08 * Math.sin(t * .35);
       const diff = ((target - yaw) % 6.2832 + 9.4248) % 6.2832 - 3.1416;
       yaw += diff * Math.min(1, dt * 1.6);
@@ -772,7 +780,7 @@
     // Short names for the four real strategies on the winning line (full text on hover).
     const TITLE = { 8: 'Parallel attention + MLP block', 16: 'One shared key/value head', 24: 'Cyclic learning-rate schedule', 29: 'Re-trained for the full 300 s' };
     const GEN = ['Baseline', 'Gen 1', 'Gen 2', 'Gen 3', 'Finals'];
-    const win = A.candidates.filter(c => c.gen === 4 && c.gain !== null && c.gain !== undefined).sort((a, b) => b.gain - a.gain)[0];
+    const win = archFinal;
     const path = [];
     for (let c = win; c && c.gen > 0; c = byId.get(c.parent)) path.unshift(c);
     path.forEach((c, i) => {
@@ -880,9 +888,8 @@
       }
       lin.appendChild(li);
     });
-    // The three Triton kernels the final version installs in the backward pass (from the verification record).
-    ['_down_gelu_backward', '_finish_bias', '_pack_qkv_backward'].forEach(k => { const c = document.createElement('code'); c.textContent = k; $('#k-chips').appendChild(c); });
-    $('#k-fine').textContent = 'Triton kernels installed in the backward pass. 8 of 8 full-state checks passed.';
+    K.shipped_kernels.forEach(k => { const c = document.createElement('code'); c.textContent = k; $('#k-chips').appendChild(c); });
+    $('#k-fine').textContent = `Triton kernels installed in the backward pass. ${K.full_state_checks.passed} of ${K.full_state_checks.total} full-state checks passed.`;
 
     const bs = $('#blocks-svg'), BW = 460, BH = 176, L = 58, RR = 440, MAXG = .08;
     bs.setAttribute('viewBox', `0 0 ${BW} ${BH}`);
