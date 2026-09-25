@@ -158,8 +158,8 @@
 <section class="final" id="repos">
   <div class="web reveal" id="web">
     <div class="web-head">
-      <h2>Point it at your repo.</h2>
-      <p class="sub">Filled nodes are measured runs. Outlined ones are open PyTorch training repos it hasn’t run yet. Click the center to add yours.</p>
+      <h2>Measured improvements in open-source repos.</h2>
+      <p class="sub">Every project node has an accepted kernel or architecture improvement. Select one to see both search results where both improved.</p>
     </div>
     <div class="web-stage" id="web-stage">
       <canvas id="web-canvas" aria-hidden="true"></canvas>
@@ -167,7 +167,7 @@
       <button class="hub" id="hub" type="button" aria-label="Your repo: go to the search box"><i aria-hidden="true"></i><span>Your repo</span></button>
     </div>
     <article class="run-card" id="run-card" aria-live="polite"></article>
-    <div class="web-legend" aria-hidden="true"><span><i class="f"></i>measured run</span><span><i class="o"></i>not run yet</span></div>
+    <p class="web-evidence">Real tests were run on these projects using deterministic synthetic training batches on a Molab GPU. Kernel gains are measured against compiled baselines; architecture gains use held-out loss after equal training time. <a href="https://github.com/flappybird1084/top-k/tree/main/benchmarks/results/top10-2026-09-25" target="_blank" rel="noopener noreferrer">Read the full ten-project results and limitations ↗</a></p>
   </div>
 </section>
 

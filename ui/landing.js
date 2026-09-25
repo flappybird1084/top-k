@@ -487,21 +487,12 @@
     c.addEventListener('pointerleave', () => { c.style.transform = ''; });
   });
 
-  /* ---------------- repos: the closing showpiece ----------------
-     "Your repo" sits at the center; measured runs orbit close in, open repos further out.
-     Only measured runs carry numbers, and each has a card with what was actually measured.
-     The card cycles through the runs and the web turns to present each one. Clicking the hub
-     or an open repo grows the hub and hands off to the search box at the top. */
+  /* ---------------- repos: accepted results from the published ten-repo benchmark ---------------- */
   (function web() {
     const box = $('#web'), stage = $('#web-stage'), cv = $('#web-canvas'), layer = $('#web-nodes'), hub = $('#hub'), card = $('#run-card');
     if (!box) return;
-    const A = R.arch, K = R.kernel;
-    const win = A.candidates.filter(c => c.gen === 4 && c.gain != null).sort((a, b) => b.gain - a.gain)[0];
-    const proposed = A.candidates.filter(c => c.gen >= 1 && c.gen <= 3).length;
-    const crashed = A.candidates.filter(c => c.gen >= 1 && c.gen <= 3 && c.loss == null).length;
-    const kAll = K.candidates.filter(c => c.kind !== 'seed'), kKept = kAll.filter(c => c.kind === 'accepted').length;
-    const less = (v, d) => '−' + Math.abs(v).toFixed(d) + '%';
-    const scrollTo = sel => $(sel).scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+    // Values are copied from benchmarks/results/top10-2026-09-25/summary.json.
+    // Include only accepted, measured improvements; the LitGPT loss floor is explicitly qualified.
     const go = url => {
       const input = $('#repo-hero');
       if (url) input.value = url;
@@ -511,57 +502,37 @@
       setTimeout(() => { input.focus({ preventScroll: true }); box.classList.remove('expanding'); }, 1400);
     };
     const RUNS = [
-      // nanochat's numbers come from findings/01-results.md (not part of the recorded runs).
-      { name: 'karpathy/nanochat', short: 'nanochat', chip: '−4.1% step time',
-        kind: 'Kernel search · 11.5M parameters', big: '−4.1%', unit: 'step time',
-        lines: ['8.95 → 8.58 ms per training step against per-op torch.compile; −1.7% against eager.',
-          'Kept: a row-parallel Triton RMSNorm with its forward and backward fused.',
-          'A follow-up that was faster on its own was rejected: its 2.6% gain in the full step sat inside the 3% noise margin.'],
-        act: ['Run it on nanochat', () => go('github.com/karpathy/nanochat')] },
-      { name: 'modern-lm', short: 'modern-lm', chip: `${less(win.gain, 2)} val loss`,
-        kind: 'Architecture search · 480.9M parameters', big: less(win.gain, 2), unit: 'val loss',
-        lines: [`${A.baseline[300].toFixed(3)} → ${win.loss.toFixed(3)} at the same 300 s training budget.`,
-          'Winning line: a parallel attention + MLP block, one shared key/value head, then a cyclic learning-rate schedule.',
-          `${proposed} proposals over three generations; ${crashed} crashed.`],
-        act: ['See every candidate', () => scrollTo('#arch')] },
-      { name: 'Top-K demo LM', short: 'demo LM', chip: `${less(K.paired_median * 100, 1)} step time`,
-        kind: `Kernel search · 21.6M parameters · ${K.generations.length} generations`, big: less(K.paired_median * 100, 1), unit: 'step time',
-        lines: [`${K.baseline_ms.toFixed(2)} → ${K.final_ms.toFixed(2)} ms: the paired median of four interleaved blocks against torch.compile.`,
-          'Shipped three Triton kernels: _down_gelu_backward, _finish_bias and _pack_qkv_backward.',
-          `${kAll.length - kKept} of ${kAll.length} kernel attempts were rejected along the way.`],
-        act: ['See the funnel', () => scrollTo('#kernels')] },
+      { name: 'huggingface/pytorch-image-models', short: 'timm', chip: 'kernel + architecture',
+        metrics: [
+          { value: '9.499%', label: 'faster kernel step', detail: '16.8612 → 15.2596 ms versus the compiled baseline; 2 kernel generations.' },
+          { value: '4.535%', label: 'lower validation loss', detail: '7.30554 → 6.97424 after equal 120 s training; structural change verified.' },
+        ] },
+      { name: 'karpathy/nanochat', short: 'nanochat', chip: 'kernel',
+        metrics: [{ value: '1.736%', label: 'faster kernel step', detail: '48.3519 → 47.5122 ms versus the compiled baseline; 2 kernel generations.' }] },
+      { name: 'huggingface/transformers', short: 'Transformers', chip: 'architecture',
+        metrics: [{ value: '64.154%', label: 'lower validation loss', detail: '0.00007215 → 0.00002586 after equal 120 s training; near-zero synthetic loss makes the relative gain large.' }] },
+      { name: 'huggingface/diffusers', short: 'Diffusers', chip: 'architecture',
+        metrics: [{ value: '13.324%', label: 'lower validation loss', detail: '0.56563 → 0.49026 after equal 120 s training; structural change verified.' }] },
+      { name: 'Lightning-AI/litgpt', short: 'LitGPT', chip: 'architecture · loss floor',
+        metrics: [{ value: '4.35e−8 → 0', label: 'validation loss', detail: 'Accepted structural candidate at equal 120 s training. This synthetic-task floor effect is not evidence of downstream quality.' }] },
     ];
-    const OPEN = ['karpathy/nanoGPT', 'karpathy/minGPT', 'KellerJordan/modded-nanogpt', 'Lightning-AI/litgpt',
-      'allenai/OLMo', 'BlinkDL/RWKV-LM', 'pytorch/torchtitan', 'EleutherAI/gpt-neox'];
-    const RIN = 1.15, ROUT = 1.9;
+    const RIN = 1.5;
     const nodes = [];
     RUNS.forEach((r, i) => {
       const a = i / RUNS.length * 6.2832 + .5;
-      nodes.push({ ...r, run: true, idx: i, x: Math.cos(a) * RIN, y: [.14, -.16, .05][i], z: Math.sin(a) * RIN });
-    });
-    OPEN.forEach((name, i) => {
-      const a = i / OPEN.length * 6.2832 + .9;
-      nodes.push({ name, short: name.split('/')[1], url: 'github.com/' + name, run: false,
-        x: Math.cos(a) * ROUT, y: Math.sin(i * 1.7) * .3, z: Math.sin(a) * ROUT });
+      nodes.push({ ...r, run: true, idx: i, x: Math.cos(a) * RIN, y: Math.sin(i * 1.7) * .14, z: Math.sin(a) * RIN });
     });
     const O = { x: 0, y: 0, z: 0 }, links = [];
-    nodes.forEach(n => links.push([O, n, n.run ? 'run' : 'hub', n]));
-    const outer = nodes.filter(n => !n.run);
-    outer.forEach((n, i) => links.push([n, outer[(i + 1) % outer.length], 'ring']));
-    nodes.filter(n => n.run).forEach(r => {
-      const near = outer.slice().sort((a, b) => Math.hypot(a.x - r.x, a.z - r.z) - Math.hypot(b.x - r.x, b.z - r.z))[0];
-      links.push([r, near, 'ring']);
-    });
+    nodes.forEach(n => links.push([O, n, 'run', n]));
 
     hub.addEventListener('click', () => go(''));
     nodes.forEach(n => {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'rnode' + (n.run ? ' run' : '');
-      b.innerHTML = `<i aria-hidden="true"></i><span>${esc(n.short)}</span>` + (n.run ? `<em class="chip">${esc(n.chip)}</em>` : '');
-      b.setAttribute('aria-label', n.run ? `${n.name}: ${n.chip}. Show details.` : `${n.name}: not run yet. Put it in the search box.`);
-      if (!n.run) bindTip(b, () => `<div class="h">${esc(n.name)}</div>Not run yet.<div class="r">Click to try it</div>`);
-      b.addEventListener('click', () => n.run ? show(n.idx, true) : go(n.url));
+      b.className = 'rnode run';
+      b.innerHTML = `<i aria-hidden="true"></i><span>${esc(n.short)}</span><em class="chip">${esc(n.chip)}</em>`;
+      b.setAttribute('aria-label', `${n.name}: accepted ${n.chip} improvement. Show details.`);
+      b.addEventListener('click', () => show(n.idx, true));
       layer.appendChild(b);
       n.el = b;
     });
@@ -583,14 +554,14 @@
       sel = i; lastSwitch = t;
       if (user) userAt = t;
       const r = RUNS[i];
-      card.innerHTML = `<div class="body"><span class="k">${esc(r.kind)}</span><h3>${esc(r.name)}</h3>`
-        + `<div class="big">${esc(r.big)}<small>${esc(r.unit)}</small></div>${r.lines.map(l => `<p>${esc(l)}</p>`).join('')}</div>`
-        + `<div class="act"><button type="button" class="go">${esc(r.act[0])} →</button><div class="pager">`
+      card.innerHTML = `<div class="body"><span class="k">Accepted benchmark result</span><h3>${esc(r.name)}</h3>`
+        + r.metrics.map(m => `<div class="run-metric"><div class="big">${esc(m.value)}<small>${esc(m.label)}</small></div><p>${esc(m.detail)}</p></div>`).join('')
+        + `<p class="search-detail">Kernel search checked candidate correctness and full-step time against torch.compile. Architecture search tested structural changes, then compared held-out loss at the same training budget. Only improved domains are shown for this project.</p></div>`
+        + `<div class="act"><a class="go" href="https://github.com/flappybird1084/top-k/tree/main/benchmarks/results/top10-2026-09-25" target="_blank" rel="noopener noreferrer">View measured evidence ↗</a><div class="pager">`
         + RUNS.map((q, k) => `<button type="button" class="${k === i ? 'on' : ''}" aria-label="Show ${esc(q.name)}"></button>`).join('')
         + '</div></div>';
-      card.querySelector('.go').addEventListener('click', r.act[1]);
       card.querySelectorAll('.pager button').forEach((b, k) => b.addEventListener('click', () => show(k, true)));
-      nodes.forEach(n => n.el.classList.toggle('sel', n.run && n.idx === i));
+      nodes.forEach(n => n.el.classList.toggle('sel', n.idx === i));
     }
     card.addEventListener('pointerenter', () => { userAt = t; });
     show(0, false);
@@ -621,14 +592,12 @@
     }
     function draw(ctx) {
       ctx.clearRect(0, 0, W, H);
-      ctx.lineWidth = 1; ring(ctx, RIN); ring(ctx, ROUT);
+      ctx.lineWidth = 1; ring(ctx, RIN);
       for (const [a, b, kind, n] of links) {
         const pa = cam.project(a.x, a.y, a.z), pb = cam.project(b.x, b.y, b.z), dep = (depthOf(pa[2]) + depthOf(pb[2])) / 2;
         const hot = kind === 'run' && n.idx === sel;
-        ctx.setLineDash(kind === 'hub' ? [3, 6] : []);
-        ctx.lineWidth = hot ? 2.2 : kind === 'run' ? 1.4 : 1;
-        ctx.strokeStyle = kind === 'run' ? `rgba(${C.accent},${((hot ? .55 : .2) + .4 * dep).toFixed(3)})`
-          : `rgba(${C.ink},${((kind === 'hub' ? .1 : .06) + .08 * dep).toFixed(3)})`;
+        ctx.lineWidth = hot ? 2.2 : 1.4;
+        ctx.strokeStyle = `rgba(${C.accent},${((hot ? .55 : .2) + .4 * dep).toFixed(3)})`;
         ctx.beginPath(); ctx.moveTo(pa[0], pa[1]); ctx.lineTo(pb[0], pb[1]); ctx.stroke();
       }
       ctx.setLineDash([]);
@@ -649,7 +618,7 @@
         W = w; H = h;
         const narrow = w < 700;
         cam.scale = Math.min(w * 1.15, h * 1.65);
-        cam.cx = narrow ? w / 2 : w * .57; cam.cy = h * (narrow ? .54 : .57);
+        cam.cx = narrow ? w / 2 : w * .65; cam.cy = h * (narrow ? .54 : .57);
         hub.style.left = cam.cx + 'px'; hub.style.top = cam.cy + 'px';
         measure();
       },
