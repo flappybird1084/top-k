@@ -90,7 +90,11 @@ def make_optimizer(model):
 
 
 def arch_fingerprint(model) -> str:
-    sig = sorted((n, tuple(p.shape)) for n, p in model.named_parameters())
+    sig = {
+        "parameters": sorted((n, tuple(p.shape)) for n, p in model.named_parameters()),
+        "modules": [(n, type(m).__module__, type(m).__qualname__)
+                    for n, m in model.named_modules()],
+    }
     return hashlib.sha256(json.dumps(sig).encode()).hexdigest()[:16]
 
 

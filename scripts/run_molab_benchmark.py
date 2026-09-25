@@ -135,7 +135,7 @@ def main() -> int:
                     "generations": args.generations if args.mode == "kernel" else None,
                     "spend_cap_usd": args.spend_cap, "execution_target": "molab",
                     "mode": args.mode,
-                    "precision_policy": ("fp32-params-cuda-bf16-autocast-v1"
+                    "precision_policy": ("fp32-bf16-autocast-structural-final-v2"
                                          if args.mode == "recipe" else None),
                     "recipe": RECIPE_BENCHMARK if args.mode == "recipe" else None}
         if state_path.exists():

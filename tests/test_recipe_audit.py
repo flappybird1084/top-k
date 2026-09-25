@@ -37,6 +37,12 @@ def test_module_inventory_and_diff():
     assert recipes.inventory_diff(inv, dict(inv)) == ""
 
 
+def test_architecture_fingerprint_detects_module_structure_change():
+    base = nn.Sequential(nn.Linear(4, 4), nn.Identity())
+    changed = nn.Sequential(nn.Linear(4, 4), nn.Dropout(0.1))
+    assert recipes.arch_fingerprint(base) != recipes.arch_fingerprint(changed)
+
+
 def test_model_report_contains_structure_and_source():
     rep = recipes.model_report(TinyModel())
     assert "total parameters" in rep

@@ -180,12 +180,12 @@ def archive_result(path: Path, mode: str) -> dict:
             "SELECT 1 FROM candidates WHERE phase='architecture' "
             "AND val_loss IS NOT NULL LIMIT 1").fetchone()
         finalist = db.execute(
-            "SELECT val_loss, train_secs, accepted FROM candidates WHERE phase='finals' "
+            "SELECT val_loss, train_secs, accepted, arch_fp FROM candidates WHERE phase='finals' "
             "AND val_loss IS NOT NULL ORDER BY val_loss LIMIT 1").fetchone()
         baseline = db.execute(
-            "SELECT val_loss, train_secs FROM candidates WHERE phase='baseline' "
+            "SELECT val_loss, train_secs, arch_fp FROM candidates WHERE phase='baseline' "
             "AND train_secs=? LIMIT 1", (finalist["train_secs"],)).fetchone() if finalist else \
-            db.execute("SELECT val_loss, train_secs FROM candidates "
+            db.execute("SELECT val_loss, train_secs, arch_fp FROM candidates "
                        "WHERE phase='baseline' ORDER BY train_secs DESC LIMIT 1").fetchone()
         if not baseline or baseline["val_loss"] is None:
             return {"measured": False, "reason": "no baseline at final candidate budget"}
@@ -195,9 +195,12 @@ def archive_result(path: Path, mode: str) -> dict:
         if not finalist:
             return {"measured": False, "baseline_val_loss": baseline["val_loss"],
                     "reason": "no final candidate measurement"}
+        structural_change = bool(finalist["arch_fp"] and baseline["arch_fp"] and
+                                 finalist["arch_fp"] != baseline["arch_fp"])
         result = {"measured": True, "baseline_val_loss": baseline["val_loss"],
                   "final_budget_s": baseline["train_secs"],
-                  "accepted": int(bool(finalist["accepted"])),
+                  "accepted": int(bool(finalist["accepted"] and structural_change)),
+                  "architecture_changed": structural_change,
                   "candidate_val_loss": finalist["val_loss"]}
         if baseline["val_loss"] > 0:
             result["improvement_pct"] = round(
@@ -205,7 +208,9 @@ def archive_result(path: Path, mode: str) -> dict:
                 baseline["val_loss"], 3)
         else:
             result["reason"] = "baseline validation loss is not positive"
-        if finalist["accepted"]:
+        if not structural_change:
+            result["reason"] = "final model structure unchanged"
+        if result["accepted"]:
             result["winner_val_loss"] = finalist["val_loss"]
         return result
 
