@@ -99,7 +99,7 @@ def main():
             adapter_spec, _ = adapter_writer.prepare(
                 args.repo, args.comments,
                 args.max_debug_turns or cfg["max_debug_turns"],
-                out_dir, pool.adapter, cfg["device"], cfg["seed"])
+                out_dir, pool.adapter, cfg["device"], cfg["seed"], mode=args.mode)
         if args.mode == "recipe":
             from kernelevo import recipe_loop
             recipe_loop.run(cfg, adapter_spec, out_dir, pool=pool)

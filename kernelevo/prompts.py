@@ -214,13 +214,27 @@ Hard requirements:
 """
 
 
-def adapter_writer_prompt(survey: str, comments: str, device: str):
+def adapter_writer_prompt(survey: str, comments: str, device: str,
+                          mode: str = "kernel"):
+    if mode not in ("kernel", "recipe"):
+        raise ValueError(f"unknown adapter mode: {mode}")
+    contract = ADAPTER_CONTRACT
+    if mode == "recipe":
+        # Recipe mode changes the model and optimizer. Its baseline must be the
+        # repository model, without kernel-registry rewrites or monkeypatches.
+        contract = ADAPTER_CONTRACT.split(
+            "- After constructing the model in build_model()", 1)[0]
+        contract += ("- Keep the repository model and its loss function native. "
+                     "Do not import kernelevo.ops or kernelevo.patch, reroute "
+                     "layers through the kernel registry, or monkeypatch model "
+                     "forwards. Architecture candidates will modify this "
+                     "verified baseline in a separate phase.\n")
     return [
         {"role": "system", "content":
-         "You are the adapter-writing agent of a kernel-evolution harness. Your "
+         f"You are the adapter-writing agent of a {mode}-optimization harness. Your "
          "output is verified by running one real training step (model build, one "
          "batch, loss, gradient check); raw tracebacks come back to you until it "
-         "passes or attempts run out. " + ADAPTER_CONTRACT},
+         "passes or attempts run out. " + contract},
         {"role": "user", "content":
          f"Target device (after harness moves the model): {device}\n\n"
          f"## User comments / guidance\n{comments or '(none)'}\n\n"

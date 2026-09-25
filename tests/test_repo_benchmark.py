@@ -243,6 +243,18 @@ def loss_fn(model, batch):
     assert samples_per_batch(batch) == 1
 
 
+def test_recipe_adapter_prompt_keeps_native_model_as_baseline():
+    from kernelevo.prompts import adapter_writer_prompt
+
+    recipe = adapter_writer_prompt("repo survey", "synthetic benchmark data", "cuda",
+                                   mode="recipe")[0]["content"]
+    kernel = adapter_writer_prompt("repo survey", "synthetic benchmark data", "cuda",
+                                   mode="kernel")[0]["content"]
+    assert "Do not import kernelevo.ops" in recipe
+    assert "ops.gelu_mlp" not in recipe
+    assert "ops.gelu_mlp" in kernel
+
+
 def test_ingest_rejects_loss_without_model_gradient():
     import torch
     from kernelevo.ingest import check_training_signal

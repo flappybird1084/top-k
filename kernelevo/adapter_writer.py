@@ -143,7 +143,8 @@ def _classify(err: str) -> str:
 
 @weave_op
 def prepare(repo: str, comments: str, max_debug_turns: int, out_dir: str,
-            llm, device: str, seed: int = 1234, log=print) -> tuple[str, dict]:
+            llm, device: str, seed: int = 1234, log=print,
+            mode: str = "kernel") -> tuple[str, dict]:
     """Returns (adapter_path, ingest_info) or raises SystemExit with the last error."""
     os.makedirs(out_dir, exist_ok=True)
     repo_dir = fetch_repo(repo, out_dir, log)
@@ -164,7 +165,7 @@ def prepare(repo: str, comments: str, max_debug_turns: int, out_dir: str,
         log("[adapter] existing adapter no longer passes ingest; rewriting")
     header = (f"import sys\nsys.path.insert(0, {repo_dir!r})\n"
               f"sys.path.insert(0, {os.path.join(repo_dir, 'src')!r})\n\n")
-    messages = prompts.adapter_writer_prompt(survey, comments, device)
+    messages = prompts.adapter_writer_prompt(survey, comments, device, mode=mode)
     last_err = "no attempts made"
     # self-repair trail: every attempt's outcome, written incrementally so the
     # mid-run artifact sync (and the web UI / W&B mirror) can show fail->recovery
