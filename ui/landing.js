@@ -248,23 +248,23 @@
     const GEN = [['Baseline', 'original model'], ['Gen 1', 'architecture · 60 s'], ['Gen 2', 'architecture · 60 s'], ['Gen 3', 'hyperparameters · 120 s'], ['Finals', 're-trained · 300 s']];
     const B = A.baseline, L3 = v => v.toFixed(3);
 
-    const axis = S('g', { class: 'axis' }, svg);
+    const axis = S('g', { class: 'axis', 'aria-hidden': 'true' }, svg);
     S('text', { x: 40, y: 16, class: 'title' }, axis).textContent = 'Validation loss · lower is better';
     for (const t of [5.4, 5.8, 6.2, 6.6, 7.0]) {
       S('line', { x1: 40, x2: W - 8, y1: y(t), y2: y(t), 'stroke-dasharray': '2 6' }, axis);
       S('text', { x: 34, y: y(t) + 4, 'text-anchor': 'end' }, axis).textContent = t.toFixed(1);
     }
-    const lane = S('g', { class: 'crash-lane' }, svg);
+    const lane = S('g', { class: 'crash-lane', 'aria-hidden': 'true' }, svg);
     S('line', { x1: 40, x2: W - 8, y1: CRASH, y2: CRASH, stroke: '#2e2224', 'stroke-dasharray': '1 5' }, lane);
     S('text', { x: 34, y: CRASH + 4, 'text-anchor': 'end' }, lane).textContent = 'crash';
     // The baseline, trained for each budget, as a staircase.
     const m23 = (X[2] + X[3]) / 2, m34 = (X[3] + X[4]) / 2;
-    const stair = S('g', { class: 'stair' }, svg);
+    const stair = S('g', { class: 'stair', 'aria-hidden': 'true' }, svg);
     S('path', { d: `M40,${y(B[60])} H${m23} V${y(B[120])} H${m34} V${y(B[300])} H${W - 8}`, class: 'stair-line' }, stair);
     [[m23 - 8, y(B[60]) - 7, `baseline ${L3(B[60])} · 60 s`], [m34 - 8, y(B[120]) - 7, `${L3(B[120])} · 120 s`], [W - 10, y(B[300]) - 7, `${L3(B[300])} · 300 s`]]
       .forEach(([x, yy, t]) => { S('text', { x, y: yy, 'text-anchor': 'end', class: 'stair-lab' }, stair).textContent = t; });
     const labels = GEN.map((g, i) => {
-      const gl = S('g', { class: 'col-label' }, svg);
+      const gl = S('g', { class: 'col-label', 'aria-hidden': 'true' }, svg);
       S('text', { x: X[i], y: 466, 'text-anchor': 'middle', class: 't' }, gl).textContent = g[0];
       S('text', { x: X[i], y: 484, 'text-anchor': 'middle', class: 's' }, gl).textContent = g[1];
       return gl;
@@ -289,11 +289,14 @@
     const leadFinal = finals.map(f => nodes.get(f.id)).find(f => f.parent === lead3.id);
     const chain = id => { const out = []; let n = nodes.get(id); while (n && !n.base) { out.push(n); n = nodes.get(parentOf(n)); } return out; };
 
-    const gEdges = S('g', {}, svg), gNodes = S('g', {}, svg), gTags = S('g', {}, svg);
+    const gEdges = S('g', { 'aria-hidden': 'true' }, svg), gNodes = S('g', {}, svg), gTags = S('g', { 'aria-hidden': 'true' }, svg);
     const curve = (a, b) => { const mx = (a.x + b.x) / 2; return `M${a.x},${a.y} C${mx},${a.y} ${mx},${b.y} ${b.x},${b.y}`; };
     for (const n of nodes.values()) if (!n.base) n.edge = S('path', { d: curve(nodes.get(parentOf(n)), n), class: 'edge' + (n.crash ? ' crash' : '') }, gEdges);
-    const nodeDetail = n => n.base ? `Val loss ${L3(B[60])} after 60 s, ${L3(B[120])} after 120 s, ${L3(B[300])} after 300 s.`
-      : n.crash ? n.err : `val loss ${L3(n.loss)} · ${pct(n.gain)} vs. the ${n.secs} s baseline`;
+    const nodeDetail = (n, spoken = false) => n.base
+      ? spoken ? `Validation loss ${L3(B[60])} after 60 seconds, ${L3(B[120])} after 120 seconds, ${L3(B[300])} after 300 seconds.`
+        : `Val loss ${L3(B[60])} after 60 s, ${L3(B[120])} after 120 s, ${L3(B[300])} after 300 s.`
+      : n.crash ? n.err : spoken ? `Validation loss ${L3(n.loss)}, ${pct(n.gain)} versus the ${n.secs} second baseline.`
+        : `val loss ${L3(n.loss)} · ${pct(n.gain)} vs. the ${n.secs} s baseline`;
     const tipFor = n => {
       if (n.base) return `<div class="h">Baseline · the repo's model + AdamW</div>${nodeDetail(n)}`;
       const head = `<div class="h">#${n.id} · ${GEN[n.gen][0]} · ${GEN[n.gen][1]}</div>`;
@@ -302,7 +305,7 @@
         : `<div class="r">${nodeDetail(n)}</div>`);
     };
     for (const n of nodes.values()) {
-      const spoken = n.base ? `Baseline: ${nodeDetail(n)}` : `Candidate ${n.id}, ${GEN[n.gen][0]}: ${n.strategy}. ${n.crash ? 'Crashed: ' : ''}${nodeDetail(n)}`;
+      const spoken = n.base ? `Baseline: ${nodeDetail(n, true)}` : `Candidate ${n.id}, ${GEN[n.gen][0]}: ${n.strategy}. ${n.crash ? 'Crashed: ' : ''}${nodeDetail(n, true)}`;
       const g = S('g', { class: 'node' + (n.base ? ' base' : '') + (n.crash ? ' crash' : ''), tabindex: 0, role: 'img', 'aria-label': spoken }, gNodes);
       if (n.crash) {
         S('line', { x1: n.x - 4.5, y1: n.y - 4.5, x2: n.x + 4.5, y2: n.y + 4.5 }, g);
