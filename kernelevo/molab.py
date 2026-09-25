@@ -53,7 +53,8 @@ def repo_runtime_deps(repo_url: str) -> list[str]:
         ("facebookresearch", "detectron2"): [
             "fvcore>=0.1.5,<0.1.6", "iopath>=0.1.7,<0.1.10",
             "omegaconf>=2.1,<2.4", "yacs>=0.1.8", "hydra-core>=1.1",
-            "termcolor>=1.1", "portalocker", "antlr4-python3-runtime==4.9.3"],
+            "termcolor>=1.1", "portalocker", "tabulate", "pycocotools",
+            "antlr4-python3-runtime==4.9.3"],
     }.get(owner_repo, [])
 UPLOAD_CHUNK = 400_000  # base64 chars per execute call
 EXCLUDE_DIRS = {".git", "__pycache__", "runs", "jobs", ".venv", "venv", "wandb",
