@@ -136,6 +136,8 @@ class OpenAILLM(BaseLLM):
         kwargs = dict(model=self.model, messages=messages)
         if self.provider == "wandb":
             kwargs["max_tokens"] = self.max_tokens
+            from kernelevo.wandb_relay import chat_options
+            kwargs.update(chat_options(self.model))
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
         resp = self.client.chat.completions.create(**kwargs)

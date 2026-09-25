@@ -41,6 +41,39 @@ def test_default_wandb_model_uses_inference_pricing():
     assert config.price_for("Qwen/Qwen3-Coder-480B-A35B-Instruct") == (1.00, 1.50)
 
 
+def test_deepseek_uses_bounded_chat_mode_in_direct_and_relay_calls(monkeypatch):
+    from kernelevo.wandb_relay import chat_options, complete_local
+
+    calls = []
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            calls.append(kwargs)
+            return types.SimpleNamespace(
+                choices=[types.SimpleNamespace(
+                    message=types.SimpleNamespace(content="working code"))],
+                usage=types.SimpleNamespace(prompt_tokens=5, completion_tokens=3))
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.chat = types.SimpleNamespace(completions=FakeCompletions())
+
+    monkeypatch.setitem(sys.modules, "openai", types.SimpleNamespace(OpenAI=FakeOpenAI))
+    monkeypatch.setenv("WANDB_API_KEY", "test-key")
+    model = "deepseek-ai/DeepSeek-V4-Pro-0813"
+    response = complete_local({"model": model, "messages": [],
+                               "max_tokens": 8192, "json_mode": True})
+    assert response["text"] == "working code"
+    assert calls[0]["extra_body"] == {
+        "chat_template_kwargs": {"enable_thinking": False}}
+    assert calls[0]["response_format"] == {"type": "json_object"}
+    direct = make_wandb_inference_llm(model, max_tokens=1024)
+    assert direct.complete([{"role": "user", "content": "code"}]).text == "working code"
+    assert calls[1]["extra_body"] == calls[0]["extra_body"]
+    assert calls[1]["max_tokens"] == 1024
+    assert chat_options("zai-org/GLM-5.2") == {}
+
+
 def test_molab_wandb_uses_file_relay_without_remote_key(monkeypatch):
     from kernelevo.llm import LLMPool, WandbRelayLLM
     import kernelevo.codex_oauth as oauth

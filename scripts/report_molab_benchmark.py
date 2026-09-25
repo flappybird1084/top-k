@@ -65,8 +65,8 @@ def evidence(report: dict, output: Path) -> dict:
     for row in report["results"]:
         record = {key: row.get(key) for key in
                   ("index", "repo", "commit", "model", "mode", "llm", "status", "attempt",
-                   "exit_code", "started_at", "finished_at", "data_source", "timing_scope",
-                   "precision_policy")}
+                  "exit_code", "started_at", "finished_at", "data_source", "timing_scope",
+                   "precision_policy", "inference_mode")}
         record["result"] = row.get("result") or {}
         archive = (output / row["repo"].replace("/", "__") /
                    f"attempt-{row.get('attempt', 0)}" / "artifacts" / "archive.sqlite")
@@ -103,14 +103,15 @@ def publish(report: dict, manifest: Path, evidence_path: Path) -> str:
                              "snapshot_utc": snapshot,
                              "report_phase": phase})
     try:
-        columns = ["repo", "commit", "workload", "mode", "optimizer_model", "status",
+        columns = ["repo", "commit", "workload", "mode", "optimizer_model",
+                   "inference_mode", "status",
                    "measured", "accepted", "baseline", "candidate",
                    "improvement_pct", "reason", "data_source", "timing_scope"]
         data = []
         for row in report["results"]:
             metric = row.get("result") or {}
             data.append([row["repo"], row["commit"], row["model"], row["mode"],
-                         row.get("llm"),
+                         row.get("llm"), row.get("inference_mode"),
                          row["status"], bool(metric.get("measured")),
                          metric.get("accepted"),
                          metric.get("baseline_ms", metric.get("baseline_val_loss")),

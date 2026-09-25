@@ -131,8 +131,11 @@ def main() -> int:
     for index, row in enumerate(selected, args.start):
         run_dir = args.output / row["repo"].replace("/", "__")
         state_path = run_dir / "state.json"
+        inference_mode = ("chat-no-thinking" if args.model ==
+                          "deepseek-ai/DeepSeek-V4-Pro-0813" else "default")
         expected = {"index": index, "repo": row["repo"], "source_sha": row["sha"],
                     "workload": row["model"], "llm": f"wandb:{args.model}",
+                    "inference_mode": inference_mode,
                     "profile": args.profile,
                     "generations": args.generations if args.mode == "kernel" else None,
                     "spend_cap_usd": args.spend_cap, "execution_target": "molab",
@@ -169,6 +172,7 @@ def main() -> int:
                            f"{WORKLOAD_GUIDANCE.get(row['repo'], '')}",
                "max_debug_turns": 8, "profile": args.profile,
                "llm": f"wandb:{args.model}",
+               "inference_mode": inference_mode,
                "spend_cap": args.spend_cap, "mode": args.mode,
                "execution_target": "molab"}
         if args.mode == "recipe":
@@ -191,6 +195,7 @@ def main() -> int:
 
             write_line(f"[benchmark] {index:02d}/{len(rows)} repo={row['repo']} "
                        f"source_sha={row['sha']} llm={job['llm']} "
+                       f"inference_mode={inference_mode} "
                        f"mode={args.mode} "
                        f"schedule={RECIPE_BENCHMARK if args.mode == 'recipe' else args.generations} "
                        f"spend_cap_usd={args.spend_cap}")
