@@ -27,6 +27,7 @@ PRICE_PER_MTOK = {
     # W&B Inference list price, USD per 1M tokens (2026-09-24). The harness
     # cannot observe prompt-cache discounts, so this errs high for cache hits.
     "deepseek-ai/DeepSeek-V4-Flash-0731": (0.13, 0.28),
+    "deepseek-ai/DeepSeek-V4-Pro-0813": (1.31, 3.96),
     "Qwen/Qwen3-235B-A22B-Instruct-2507": (0.10, 0.10),
     "Qwen/Qwen3-Coder-480B-A35B-Instruct": (1.00, 1.50),
     "claude-opus-5": (15.0, 75.0),
