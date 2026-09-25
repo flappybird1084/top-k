@@ -566,6 +566,17 @@
       n.el = b;
     });
 
+    // Anchor each node on its dot's centre, not the middle of the dot+label block, so the
+    // links end exactly on the dot. Measured from layout, so it follows CSS and font changes.
+    const measure = () => nodes.forEach(n => {
+      const dot = n.el.querySelector('i');
+      n.ax = dot.offsetLeft + dot.offsetWidth / 2;
+      n.ay = dot.offsetTop + dot.offsetHeight / 2;
+      n.el.style.transformOrigin = `${n.ax}px ${n.ay}px`;
+    });
+    measure();
+    if (document.fonts) document.fonts.ready.then(measure);
+
     // The run card: cycles through measured runs until someone picks one.
     let sel = 0, t = 0, lastSwitch = 0, userAt = -1e9;
     function show(i, user) {
@@ -628,7 +639,7 @@
       });
       for (const n of nodes) {
         const p = cam.project(n.x, n.y, n.z), dep = depthOf(p[2]);
-        n.el.style.transform = `translate(${p[0].toFixed(1)}px,${p[1].toFixed(1)}px) translate(-50%,-50%) scale(${(.7 + .42 * p[3]).toFixed(3)})`;
+        n.el.style.transform = `translate(${(p[0] - n.ax).toFixed(1)}px,${(p[1] - n.ay).toFixed(1)}px) scale(${(.7 + .42 * p[3]).toFixed(3)})`;
         n.el.style.opacity = ((n.run ? .55 : .22) + (n.run ? .45 : .6) * dep).toFixed(3);
         n.el.style.zIndex = String(Math.round(dep * 100));
       }
@@ -640,6 +651,7 @@
         cam.scale = Math.min(w * 1.15, h * 1.65);
         cam.cx = narrow ? w / 2 : w * .57; cam.cy = h * (narrow ? .54 : .57);
         hub.style.left = cam.cx + 'px'; hub.style.top = cam.cy + 'px';
+        measure();
       },
       step, draw,
     });
