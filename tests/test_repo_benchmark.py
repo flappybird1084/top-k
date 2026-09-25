@@ -30,6 +30,18 @@ def test_manifest_is_25_distinct_repositories():
     assert len({row["repo"] for row in rows}) == 25
 
 
+def test_top10_molab_plan_uses_manifest_length(monkeypatch, capsys, tmp_path):
+    from scripts import run_molab_benchmark
+
+    manifest = SCRIPT.parents[1] / "benchmarks" / "top10.json"
+    monkeypatch.setattr(sys, "argv", ["run_molab_benchmark.py", "--manifest", str(manifest),
+                                  "--output", str(tmp_path), "--secrets", str(tmp_path / "x"),
+                                  "--token-file", str(tmp_path / "t"),
+                                  "--notebook-url", "https://example.invalid", "--plan"])
+    assert run_molab_benchmark.main() == 0
+    assert len(capsys.readouterr().out.strip().splitlines()) == 10
+
+
 def test_result_uses_paired_baseline_and_rejects_unmeasured(tmp_path):
     path = tmp_path / "archive.sqlite"
     with sqlite3.connect(path) as db:

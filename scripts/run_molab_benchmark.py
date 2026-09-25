@@ -83,7 +83,7 @@ def main() -> int:
     ap.add_argument("--spend-cap", type=float,
                     help="inference USD estimate per repository (kernel: 3, recipe: 0.75)")
     ap.add_argument("--start", type=int, default=1, help="One-based manifest row")
-    ap.add_argument("--end", type=int, default=25, help="Inclusive manifest row")
+    ap.add_argument("--end", type=int, help="Inclusive manifest row (default: all rows)")
     ap.add_argument("--wait-for", type=Path, help="Wait for a previous run's result.json")
     ap.add_argument("--plan", action="store_true", help="Print selected repositories only")
     args = ap.parse_args()
@@ -92,6 +92,8 @@ def main() -> int:
     if args.mode == "recipe" and args.generations != 2:
         ap.error("--generations applies to kernel mode; recipe phases use their recorded schedule")
     rows = manifest_rows(args.manifest)
+    if args.end is None:
+        args.end = len(rows)
     if not 1 <= args.start <= args.end <= len(rows):
         ap.error("--start and --end must select manifest rows in order")
     selected = rows[args.start - 1:args.end]

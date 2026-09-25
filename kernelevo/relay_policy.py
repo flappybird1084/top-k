@@ -43,7 +43,6 @@ DEFAULT_MODELS = frozenset({
     'claude-opus-5', 'claude-sonnet-5', 'claude-fable-5-1', 'claude-haiku-4-5-20251001',
     'gpt-5', 'gpt-5-codex', 'gpt-5-mini', 'o3', 'o4-mini',
     'Qwen/Qwen3-235B-A22B-Instruct-2507',
-    'deepseek-ai/DeepSeek-V4-Pro-0813',
 })
 
 WANDB_RELAY_MODELS = frozenset({
