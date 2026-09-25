@@ -66,7 +66,7 @@ def evidence(report: dict, output: Path) -> dict:
         record = {key: row.get(key) for key in
                   ("index", "repo", "commit", "model", "mode", "llm", "status", "attempt",
                   "exit_code", "started_at", "finished_at", "data_source", "timing_scope",
-                   "precision_policy", "inference_mode")}
+                   "precision_policy", "acceptance_policy", "inference_mode")}
         record["result"] = row.get("result") or {}
         archive = (output / row["repo"].replace("/", "__") /
                    f"attempt-{row.get('attempt', 0)}" / "artifacts" / "archive.sqlite")

@@ -267,7 +267,12 @@ def is_better_final(loss, accepted, winner):
     return bool(accepted) and (winner is None or loss < winner['final_val_loss'])
 
 
+def beats_loss_margin(loss, baseline_loss, margin):
+    """Require a lower loss by a fraction of the baseline's magnitude."""
+    return loss < baseline_loss - abs(baseline_loss) * margin
+
+
 def accepts_architecture_final(loss, baseline_loss, margin, arch_fp, baseline_arch_fp):
     """A recipe final must improve loss and retain a changed model structure."""
     return bool(arch_fp and baseline_arch_fp and arch_fp != baseline_arch_fp and
-                loss < baseline_loss * (1 - margin))
+                beats_loss_margin(loss, baseline_loss, margin))

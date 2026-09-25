@@ -24,6 +24,13 @@ from kernelevo.obs import Mirror, weave_op, current_trace_url
 RECIPE_IDLE_TIMEOUT_S = 90   # kill an eval silent this long; worker heartbeats every ~8s
 
 
+def _loss_change_label(baseline: float, candidate: float) -> str:
+    """A percentage reduction is undefined for a nonpositive baseline loss."""
+    if baseline <= 0:
+        return f"loss change {candidate - baseline:+.4f}; percentage n/a"
+    return f"{100 * (baseline - candidate) / baseline:+.2f}%"
+
+
 def _log_failed_wandb(meta, gate, note):
     """Candidates that fail AUTHORING never reach recipe_worker, so they'd have
     no W&B run at all — give them one carrying the error trace, marked Failed,
@@ -299,18 +306,19 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                     phase["train_seconds"] + rc["eval_timeout_grace_s"])
                 row["weave_trace_url"]=r.get("weave_trace_url")
                 if r.get("ok"):
-                    accepted = r["val_loss"] < baseline[phase["train_seconds"]] * \
-                        (1 - rc["loss_margin_rel"])
+                    accepted = recipes.beats_loss_margin(
+                        r["val_loss"], baseline[phase["train_seconds"]],
+                        rc["loss_margin_rel"])
                     row.update(gate_reached=4 if accepted else 3, correct_ok=1,
                                accepted=int(accepted), val_loss=r["val_loss"],
                                model_params=r["n_params"], arch_fp=r["arch_fp"],
                                failure_note=None)
                     n_acc += int(accepted)
-                    delta = 100 * (baseline[phase["train_seconds"]] - r["val_loss"]) \
-                        / baseline[phase["train_seconds"]]
+                    delta = _loss_change_label(baseline[phase["train_seconds"]],
+                                               r["val_loss"])
                     print(f"[recipe] {phase['kind']} g{gen_index}: val "
                           f"{r['val_loss']:.4f} vs baseline "
-                          f"{baseline[phase['train_seconds']]:.4f} ({delta:+.2f}%)"
+                          f"{baseline[phase['train_seconds']]:.4f} ({delta})"
                           f"{' ACCEPTED' if accepted else ''} — "
                           f"{a['strategy'][:70]}")
                     # mechanical label-vs-diff line: what ACTUALLY changed,
@@ -358,7 +366,9 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                 f"recipe/{phase['kind']}/val_loss": row.get("val_loss"),
                 "cand/id": cid, "cand/generation": gen_index,
                 f"cand/{phase['kind']}/val_loss": v,
-                "cand/delta_pct": (100 * (base_v - v) / base_v) if v else None,
+                "cand/delta_loss": (v - base_v) if v is not None else None,
+                **({"cand/delta_pct": 100 * (base_v - v) / base_v}
+                   if v is not None and base_v > 0 else {}),
                 "cand/accepted": row["accepted"],
                 "cand/params": row.get("model_params"),
                 "best/val_loss": min([r["val_loss"] for r in results_all + outs
@@ -514,11 +524,14 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
             accepted=int(accepted), val_loss=r["val_loss"],
             model_params=r["n_params"], arch_fp=r["arch_fp"], repairs_used=0,weave_trace_url=r.get("weave_trace_url"))
         mirror._log({"recipe/phase":"finals","recipe/train_secs":fsecs,"recipe/val_loss":r["val_loss"],"recipe/baseline_val_loss":baseline[fsecs],"recipe/accepted":int(accepted),"recipe/candidate_id":cid,"recipe/model_params":r["n_params"]})
-        delta = 100 * (baseline[fsecs] - r["val_loss"]) / baseline[fsecs]
+        delta = _loss_change_label(baseline[fsecs], r["val_loss"])
         print(f"[finals] val {r['val_loss']:.4f} vs baseline "
-              f"{baseline[fsecs]:.4f} ({delta:+.2f}%)"
+              f"{baseline[fsecs]:.4f} ({delta})"
               f"{' ACCEPTED' if accepted else ''} — {fr['strategy'][:70]}")
-        mirror._log({"finals/val_loss": r["val_loss"], "finals/delta_pct": delta})
+        mirror._log({"finals/val_loss": r["val_loss"],
+                     "finals/delta_loss": r["val_loss"] - baseline[fsecs],
+                     **({"finals/delta_pct": 100 * (baseline[fsecs] - r["val_loss"]) /
+                         baseline[fsecs]} if baseline[fsecs] > 0 else {})})
         if recipes.is_better_final(r["val_loss"], accepted, winner):
             winner = dict(fr, final_val_loss=r["val_loss"], final_id=cid)
 
@@ -526,9 +539,9 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
     print(f"[result] baseline: val loss {baseline[fsecs]:.4f} after {fsecs}s "
           f"(base adapter + AdamW)")
     if winner:
-        d = 100 * (baseline[fsecs] - winner["final_val_loss"]) / baseline[fsecs]
+        d = _loss_change_label(baseline[fsecs], winner["final_val_loss"])
         print(f"[result] winner: val loss {winner['final_val_loss']:.4f} "
-              f"({d:+.2f}% vs baseline) — {winner['strategy'][:120]}")
+              f"({d} vs baseline) — {winner['strategy'][:120]}")
         print(f"[result] winning recipe: {winner['code_path']}")
     else:
         print("[result] no recipe beat the baseline at finals scale")
@@ -538,8 +551,9 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
             mirror.run.summary["baseline_300s"] = baseline[fsecs]
             if winner:
                 mirror.run.summary["winner_300s"] = winner["final_val_loss"]
-                mirror.run.summary["improvement_pct"] = \
-                    100 * (baseline[fsecs] - winner["final_val_loss"]) / baseline[fsecs]
+                if baseline[fsecs] > 0:
+                    mirror.run.summary["improvement_pct"] = \
+                        100 * (baseline[fsecs] - winner["final_val_loss"]) / baseline[fsecs]
                 mirror.run.summary["winner_strategy"] = winner["strategy"][:250]
             rows = [dict(r) for r in archive.db.execute(
                 "SELECT c.id, c.generation, c.parent_id, c.phase, c.strategy, "

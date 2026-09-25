@@ -47,6 +47,7 @@ RECIPE_BENCHMARK = {
     "finals_train_seconds": 120,
     "subagent_parallelism": 1,
 }
+RECIPE_ACCEPTANCE_POLICY = "absolute-baseline-margin-v2"
 
 
 def save(path: Path, data: dict) -> None:
@@ -143,6 +144,8 @@ def main() -> int:
                     "precision_policy": ("fp32-bf16-autocast-structural-final-v2"
                                          if args.mode == "recipe" else None),
                     "recipe": RECIPE_BENCHMARK if args.mode == "recipe" else None}
+        if args.mode == "recipe":
+            expected["acceptance_policy"] = RECIPE_ACCEPTANCE_POLICY
         if state_path.exists():
             old = json.loads(state_path.read_text())
             if any(old.get(key) != value for key, value in expected.items()):
@@ -177,6 +180,7 @@ def main() -> int:
                "execution_target": "molab"}
         if args.mode == "recipe":
             job["recipe"] = RECIPE_BENCHMARK
+            job["acceptance_policy"] = RECIPE_ACCEPTANCE_POLICY
         else:
             job["max_generations"] = args.generations
         save(attempt_dir / "job.json", job)
