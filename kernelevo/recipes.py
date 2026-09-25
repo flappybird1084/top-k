@@ -90,7 +90,11 @@ def make_optimizer(model):
 
 
 def arch_fingerprint(model) -> str:
-    sig = sorted((n, tuple(p.shape)) for n, p in model.named_parameters())
+    sig = {
+        "parameters": sorted((n, tuple(p.shape)) for n, p in model.named_parameters()),
+        "modules": [(n, type(m).__module__, type(m).__qualname__)
+                    for n, m in model.named_modules()],
+    }
     return hashlib.sha256(json.dumps(sig).encode()).hexdigest()[:16]
 
 
@@ -261,3 +265,9 @@ def author_recipe(llm, phase, job, base_source, parent_source, loss_source,
 def is_better_final(loss, accepted, winner):
     """Finals compare accepted candidates at the same finals budget."""
     return bool(accepted) and (winner is None or loss < winner['final_val_loss'])
+
+
+def accepts_architecture_final(loss, baseline_loss, margin, arch_fp, baseline_arch_fp):
+    """A recipe final must improve loss and retain a changed model structure."""
+    return bool(arch_fp and baseline_arch_fp and arch_fp != baseline_arch_fp and
+                loss < baseline_loss * (1 - margin))

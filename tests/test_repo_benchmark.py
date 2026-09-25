@@ -51,10 +51,10 @@ def test_recipe_result_handles_zero_baseline_loss(tmp_path):
     path = tmp_path / "recipe.sqlite"
     with sqlite3.connect(path) as db:
         db.execute("CREATE TABLE candidates (phase TEXT, val_loss REAL, "
-                   "train_secs REAL, accepted INT)")
-        db.execute("INSERT INTO candidates VALUES ('baseline', 0, 10, 1)")
-        db.execute("INSERT INTO candidates VALUES ('architecture', 0, 10, 0)")
-        db.execute("INSERT INTO candidates VALUES ('finals', 0, 10, 1)")
+                   "train_secs REAL, accepted INT, arch_fp TEXT)")
+        db.execute("INSERT INTO candidates VALUES ('baseline', 0, 10, 1, 'base')")
+        db.execute("INSERT INTO candidates VALUES ('architecture', 0, 10, 0, 'arch')")
+        db.execute("INSERT INTO candidates VALUES ('finals', 0, 10, 1, 'arch')")
     result = benchmark.archive_result(path, "recipe")
     assert result["measured"]
     assert "improvement_pct" not in result
@@ -64,24 +64,40 @@ def test_recipe_result_requires_architecture_and_final_measurement(tmp_path):
     path = tmp_path / "recipe.sqlite"
     with sqlite3.connect(path) as db:
         db.execute("CREATE TABLE candidates (phase TEXT, val_loss REAL, "
-                   "train_secs REAL, accepted INT)")
-        db.execute("INSERT INTO candidates VALUES ('baseline', 1.0, 120, 1)")
+                   "train_secs REAL, accepted INT, arch_fp TEXT)")
+        db.execute("INSERT INTO candidates VALUES ('baseline', 1.0, 120, 1, 'base')")
     assert benchmark.archive_result(path, "recipe")["reason"] == \
         "no architecture candidate measurement"
     with sqlite3.connect(path) as db:
-        db.execute("INSERT INTO candidates VALUES ('architecture', 0.9, 60, 1)")
+        db.execute("INSERT INTO candidates VALUES ('architecture', 0.9, 60, 1, 'arch')")
     assert benchmark.archive_result(path, "recipe")["reason"] == \
         "no final candidate measurement"
     with sqlite3.connect(path) as db:
-        db.execute("INSERT INTO candidates VALUES ('finals', 1.1, 120, 0)")
+        db.execute("INSERT INTO candidates VALUES ('finals', 1.1, 120, 0, 'arch')")
     result = benchmark.archive_result(path, "recipe")
     assert result["measured"] and result["accepted"] == 0
     assert result["candidate_val_loss"] == 1.1
     assert result["improvement_pct"] == -10.0
+    assert result["architecture_changed"] is True
     with sqlite3.connect(path) as db:
         db.execute("UPDATE candidates SET train_secs=90 WHERE phase='finals'")
     assert benchmark.archive_result(path, "recipe")["reason"] == \
         "no baseline at final candidate budget"
+
+
+def test_recipe_result_does_not_count_optimizer_only_final_as_architecture(tmp_path):
+    path = tmp_path / "optimizer_only.sqlite"
+    with sqlite3.connect(path) as db:
+        db.execute("CREATE TABLE candidates (phase TEXT, val_loss REAL, "
+                   "train_secs REAL, accepted INT, arch_fp TEXT)")
+        db.execute("INSERT INTO candidates VALUES ('baseline', 2.0, 120, 1, 'base')")
+        db.execute("INSERT INTO candidates VALUES ('architecture', 1.5, 60, 1, 'arch')")
+        db.execute("INSERT INTO candidates VALUES ('finals', 1.0, 120, 1, 'base')")
+    result = benchmark.archive_result(path, "recipe")
+    assert result["measured"] is True
+    assert result["accepted"] == 0
+    assert result["architecture_changed"] is False
+    assert result["reason"] == "final model structure unchanged"
 
 
 def test_manifest_rejects_duplicate_and_non_github_identifier(tmp_path):

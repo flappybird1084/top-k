@@ -174,6 +174,7 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
 
     # -------- baseline at every budget (the incumbent, measured in-session)
     baseline = {}
+    baseline_arch_fp = None
     for secs in budgets:
         job = dict(base_adapter=adapter_name, candidate_path="BASELINE",
                    train_seconds=secs, eval_batches=rc["eval_batches"],
@@ -187,6 +188,10 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
             raise SystemExit(f"[recipe] baseline evaluation failed at {secs}s: "
                              f"{r.get('note')}")
         baseline[secs] = r["val_loss"]
+        if baseline_arch_fp is None:
+            baseline_arch_fp = r["arch_fp"]
+        elif r["arch_fp"] != baseline_arch_fp:
+            raise SystemExit("[recipe] baseline model structure changed between budgets")
         mirror._log({"recipe/phase":"baseline","recipe/train_secs":secs,"recipe/baseline_val_loss":r["val_loss"],"recipe/model_params":r["n_params"]})
         print(f"[baseline] {secs}s train -> val loss {r['val_loss']:.4f} "
               f"({r['steps']} steps)")
@@ -480,7 +485,8 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                 raise
 
     # ---------------------------------------------------------------- finals
-    finalists = sorted([r for r in results_all if r.get("val_loss")],
+    finalists = sorted([r for r in results_all if r.get("val_loss") is not None
+                        and r.get("arch_fp") != baseline_arch_fp],
                        key=lambda r: r["val_loss"])[:rc["finals_top_k"]]
     fsecs = rc["finals_train_seconds"]
     print(f"\n=== finals: {len(finalists)} candidate(s) at {fsecs}s each ===")
@@ -496,7 +502,9 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
         if not r.get("ok"):
             print(f"[finals] candidate {fr['id']} failed: {r.get('note')}")
             continue
-        accepted = r["val_loss"] < baseline[fsecs] * (1 - rc["loss_margin_rel"])
+        accepted = recipes.accepts_architecture_final(
+            r["val_loss"], baseline[fsecs], rc["loss_margin_rel"],
+            r["arch_fp"], baseline_arch_fp)
         cid = archive.add_candidate(
             lineage_id=lineage_ids["finals"], generation=gen_index + 1,
             strategy=f"FINAL @{fsecs}s of: {fr['strategy']}"[:400],
