@@ -135,11 +135,12 @@ def survey_repo(repo_dir: str) -> str:
 
 
 def _run_ingest(adapter_path: str, device: str, seed: int,
-                log=None, mode: str = "kernel") -> tuple[dict | None, str]:
+                log=None, mode: str = "kernel", eval_batches: int = 8) -> tuple[dict | None, str]:
     from kernelevo.procstream import HEARTBEAT_PREFIX, run_result_worker
     job_path = adapter_path + ".ingest.json"
     with open(job_path, "w") as f:
-        json.dump(dict(adapter=adapter_path, device=device, seed=seed, mode=mode), f)
+        json.dump(dict(adapter=adapter_path, device=device, seed=seed, mode=mode,
+                       eval_batches=eval_batches), f)
 
     def on_line(line):
         if log and line.startswith(HEARTBEAT_PREFIX):
@@ -174,7 +175,7 @@ def _classify(err: str) -> str:
 @weave_op
 def prepare(repo: str, comments: str, max_debug_turns: int, out_dir: str,
             llm, device: str, seed: int = 1234, log=print,
-            mode: str = "kernel") -> tuple[str, dict]:
+            mode: str = "kernel", eval_batches: int = 8) -> tuple[str, dict]:
     """Returns (adapter_path, ingest_info) or raises SystemExit with the last error."""
     os.makedirs(out_dir, exist_ok=True)
     repo_dir = fetch_repo(repo, out_dir, log)
@@ -191,7 +192,8 @@ def prepare(repo: str, comments: str, max_debug_turns: int, out_dir: str,
             violation = (recipe_adapter_violation(open(adapter_path).read())
                          if mode == "recipe" else None)
             info, _ = ((None, violation) if violation else
-                       _run_ingest(adapter_path, device, seed, mode=mode))
+                       _run_ingest(adapter_path, device, seed, mode=mode,
+                                   eval_batches=eval_batches))
             if info is not None:
                 log(f"[adapter] reusing previously verified adapter "
                     f"({info['n_params']/1e6:.1f}M params) — skipping the writing agent")
@@ -225,7 +227,8 @@ def prepare(repo: str, comments: str, max_debug_turns: int, out_dir: str,
             f.write("".join(f + "\n" for f in futures) + header + src)
         violation = recipe_adapter_violation(src) if mode == "recipe" else None
         info, err = ((None, violation) if violation else
-                     _run_ingest(adapter_path, device, seed, log=log, mode=mode))
+                     _run_ingest(adapter_path, device, seed, log=log, mode=mode,
+                                 eval_batches=eval_batches))
         if info is not None:
             trail.append(dict(attempt=attempt + 1, ok=True, kind=None, note=None,
                               elapsed_s=round(time.time() - t0, 1)))

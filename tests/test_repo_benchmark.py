@@ -300,9 +300,15 @@ def test_ingest_rejects_loss_without_model_gradient():
     check_training_signal((model.weight ** 2).sum(), model)
 
 
-def test_recipe_ingest_checks_heldout_loader_before_accepting_adapter():
+def test_recipe_ingest_checks_native_model_and_heldout_loader(monkeypatch):
     import torch
     from kernelevo.ingest import ingest
+    from kernelevo import patch
+
+    def routed(*args):
+        raise AssertionError("recipe ingest must not route the native model")
+
+    monkeypatch.setattr(patch, "auto_route", routed)
 
     class Adapter:
         @staticmethod

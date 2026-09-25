@@ -83,7 +83,7 @@ def ingest(adapter, cfg) -> dict:
     # detach immediately, never backward.
     torch.manual_seed(cfg["seed"])  # identical dropout masks for both calls
     loss_unrouted = float(adapter.loss_fn(model, batch).detach())
-    routed = patch.auto_route(model)
+    routed = patch.auto_route(model) if cfg.get("mode") != "recipe" else {}
     if routed:
         print(f"[ingest] auto-routed onto registry: {routed}")
         torch.manual_seed(cfg["seed"])
