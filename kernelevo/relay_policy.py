@@ -139,9 +139,12 @@ class OwnerLedger:
             row['requests'] += requests
             row['tokens'] += tokens
             row['searches'] += searches
-            for field, cap in (('requests', 'max_requests'), ('tokens', 'max_tokens'),
-                               ('searches', 'max_searches')):
-                if self.limits.get(cap) is not None and row[field] > self.limits[cap]:
+            # Each quota governs its own resource. An exhausted search budget
+            # must not refuse an unrelated model completion in a later run.
+            for field, cap, increment in (('requests', 'max_requests', requests),
+                                          ('tokens', 'max_tokens', tokens),
+                                          ('searches', 'max_searches', searches)):
+                if increment and self.limits.get(cap) is not None and row[field] > self.limits[cap]:
                     return field
             return None
         try:

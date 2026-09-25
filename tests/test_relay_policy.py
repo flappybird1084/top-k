@@ -124,6 +124,18 @@ def test_search_queries_are_bounded(tmp_path, monkeypatch):
     assert 'too long' in p.check_search(dict(relay_token='relay-secret', query=long_query))
 
 
+def test_exhausted_search_quota_does_not_block_later_model_run(tmp_path):
+    ledger = OwnerLedger(tmp_path / 'ledger.json', limits=dict(max_requests=10,
+                                                              max_tokens=1000,
+                                                              max_searches=1))
+    first = RelayPolicy({'id': 'a' * 32}, 'relay-secret', ledger)
+    assert first.check_search(dict(relay_token='relay-secret', query='one')) is None
+    assert 'searches budget' in first.check_search(dict(relay_token='relay-secret', query='two'))
+    later = RelayPolicy({'id': 'b' * 32}, 'relay-secret', ledger)
+    assert later.check_llm(ask()) is None
+    assert 'searches budget' in later.check_search(dict(relay_token='relay-secret', query='three'))
+
+
 # ---- the dispatcher honours the policy before it touches a credential ----
 
 class _Notebook:

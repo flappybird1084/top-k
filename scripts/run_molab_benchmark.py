@@ -29,6 +29,8 @@ CREDIT_ERROR = re.compile(r"(?:insufficient|exhausted|out of).*credits|"
                           r"insufficient[_ ]quota|(?:quota|billing).*(?:exceeded|limit|disabled)|"
                           r"exceeded your current quota",
                           re.IGNORECASE)
+RELAY_BUDGET_ERROR = re.compile(r"Relay closed for this run: this account reached "
+                                r"its relay (?:requests|tokens|searches) budget", re.IGNORECASE)
 WORKLOAD_GUIDANCE = {
     "huggingface/pytorch-image-models":
         "Choose a small timm Vision Transformer for classification so its "
@@ -115,7 +117,10 @@ def main() -> int:
                 "WANDB_ENTITY", "WANDB_PROJECT"):
         if settings.get(key):
             os.environ[key] = settings[key]
-    remote_env = {"KEVO_WANDB_INFERENCE_RELAY": "1"}
+    # Public-repo benchmarks need the model and GPU, not repeated web research.
+    # Keeping research off saves relay quota and shortens sequential runs.
+    remote_env = {"KEVO_WANDB_INFERENCE_RELAY": "1",
+                  "KEVO_DISABLE_WEB_RESEARCH": "1"}
     token = args.token_file.read_text().strip()
     connection = {"notebook_url": args.notebook_url, "connection": "--token " + token}
     client = MolabClient(args.notebook_url, token)
@@ -202,17 +207,19 @@ def main() -> int:
                      finished_at=time.time())
         log_text = log_path.read_text(errors="replace")
         state["credits_exhausted"] = bool(CREDIT_ERROR.search(log_text))
+        state["relay_budget_exhausted"] = bool(RELAY_BUDGET_ERROR.search(log_text))
         infrastructure_failure = (rc != 0 and
                                   "[molab] remote run finished with exit" not in log_text)
         if state["status"] == "failed":
             state["reason"] = ("W&B Inference credits exhausted" if state["credits_exhausted"]
+                               else "relay usage budget exhausted" if state["relay_budget_exhausted"]
                                else "notebook dispatch or infrastructure failed" if infrastructure_failure
                                else state["result"].get("reason") or
                                f"dispatcher exited {rc}; inspect attempt log")
             had_failures = True
         save(state_path, state)
         print(f"[benchmark] {index:02d} exit={rc} result={state['result']}", flush=True)
-        if state["credits_exhausted"] or infrastructure_failure:
+        if state["credits_exhausted"] or state["relay_budget_exhausted"] or infrastructure_failure:
             return 1
         if state["status"] == "failed" and not previous_job_finished(client, job["id"]):
             print(f"[benchmark] {index:02d} GPU job may still be running; stopping", flush=True)
