@@ -292,11 +292,15 @@
     const gEdges = S('g', { 'aria-hidden': 'true' }, svg), gNodes = S('g', {}, svg), gTags = S('g', { 'aria-hidden': 'true' }, svg);
     const curve = (a, b) => { const mx = (a.x + b.x) / 2; return `M${a.x},${a.y} C${mx},${a.y} ${mx},${b.y} ${b.x},${b.y}`; };
     for (const n of nodes.values()) if (!n.base) n.edge = S('path', { d: curve(nodes.get(parentOf(n)), n), class: 'edge' + (n.crash ? ' crash' : '') }, gEdges);
-    const nodeDetail = (n, spoken = false) => n.base
-      ? spoken ? `Validation loss ${L3(B[60])} after 60 seconds, ${L3(B[120])} after 120 seconds, ${L3(B[300])} after 300 seconds.`
-        : `Val loss ${L3(B[60])} after 60 s, ${L3(B[120])} after 120 s, ${L3(B[300])} after 300 s.`
-      : n.crash ? n.err : spoken ? `Validation loss ${L3(n.loss)}, ${pct(n.gain)} versus the ${n.secs} second baseline.`
-        : `val loss ${L3(n.loss)} · ${pct(n.gain)} vs. the ${n.secs} s baseline`;
+    const nodeDetail = (n, spoken = false) => {
+      if (n.crash) return n.err;
+      if (n.base) {
+        if (spoken) return `Validation loss ${L3(B[60])} after 60 seconds, ${L3(B[120])} after 120 seconds, ${L3(B[300])} after 300 seconds.`;
+        return `Val loss ${L3(B[60])} after 60 s, ${L3(B[120])} after 120 s, ${L3(B[300])} after 300 s.`;
+      }
+      if (spoken) return `Validation loss ${L3(n.loss)}, ${pct(n.gain)} versus the ${n.secs} second baseline.`;
+      return `val loss ${L3(n.loss)} · ${pct(n.gain)} vs. the ${n.secs} s baseline`;
+    };
     const tipFor = n => {
       if (n.base) return `<div class="h">Baseline · the repo's model + AdamW</div>${nodeDetail(n)}`;
       const head = `<div class="h">#${n.id} · ${GEN[n.gen][0]} · ${GEN[n.gen][1]}</div>`;
@@ -305,7 +309,8 @@
         : `<div class="r">${nodeDetail(n)}</div>`);
     };
     for (const n of nodes.values()) {
-      const spoken = n.base ? `Baseline: ${nodeDetail(n, true)}` : `Candidate ${n.id}, ${GEN[n.gen][0]}: ${n.strategy}. ${n.crash ? 'Crashed: ' : ''}${nodeDetail(n, true)}`;
+      const status = [n === win && 'Reported result.', n === lead3 && 'Led at 120 seconds.', n === leadFinal && 'Retested at 300 seconds.'].filter(Boolean).join(' ');
+      const spoken = n.base ? `Baseline: ${nodeDetail(n, true)}` : `Candidate ${n.id}, ${GEN[n.gen][0]}: ${n.strategy}. ${n.crash ? 'Crashed: ' : ''}${nodeDetail(n, true)} ${status}`;
       const g = S('g', { class: 'node' + (n.base ? ' base' : '') + (n.crash ? ' crash' : ''), tabindex: 0, role: 'img', 'aria-label': spoken }, gNodes);
       if (n.crash) {
         S('line', { x1: n.x - 4.5, y1: n.y - 4.5, x2: n.x + 4.5, y2: n.y + 4.5 }, g);
