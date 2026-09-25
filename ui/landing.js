@@ -381,6 +381,7 @@
       reset(); const my = token;
       labels[0].classList.add('on'); base.el.classList.add('on');
       await sleep(450);
+      if (my !== token) return;
       for (let g = 1; g <= 4; g++) {
         if (my !== token) return;
         labels[g].classList.add('on');
@@ -388,12 +389,16 @@
         for (const n of list) {
           if (my !== token) return;
           drawEdge(n); await sleep(130);
+          if (my !== token) return;
           n.el.classList.add('on');
           await sleep(80);
+          if (my !== token) return;
         }
         const ok = list.filter(n => !n.crash), best = ok.reduce((a, b) => b.loss < a.loss ? b : a, ok[0]);
+        if (my !== token) return;
         if (g < 4) readout.innerHTML = `${GEN[g][0]} · best <b>${L3(best.loss)}</b> vs. baseline ${L3(B[best.secs])}`;
         await sleep(620);
+        if (my !== token) return;
       }
       if (my !== token) return;
       base.el.classList.add('win');
@@ -401,7 +406,9 @@
         if (my !== token) return;
         n.el.classList.add('win'); n.edge.classList.add('win');
         await sleep(170);
+        if (my !== token) return;
       }
+      if (my !== token) return;
       lead3.el.classList.add('lead');
       if (leadFinal) { leadFinal.el.classList.add('lead'); leadFinal.edge.classList.add('lead'); }
       tags.forEach(t => t.classList.add('on'));

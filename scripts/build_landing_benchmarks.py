@@ -78,7 +78,7 @@ def main():
         if not DESTINATION.exists() or DESTINATION.read_text(encoding="utf-8") != output:
             parser.error("ui/landing-benchmarks.js is stale; regenerate it")
     else:
-        DESTINATION.write_text(output, encoding="utf-8")
+        DESTINATION.write_text(output, encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":
