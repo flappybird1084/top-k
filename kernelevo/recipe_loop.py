@@ -410,7 +410,8 @@ def run(cfg: dict, adapter_spec: str, out_dir: str, pool: LLMPool | None = None)
                   f"spend ${pool.total_usd():.2f} ===")
             from kernelevo import researcher as researchmod
             from kernelevo import websearch
-            can_research = websearch.available()
+            can_research = (websearch.available() and
+                            os.getenv('KEVO_DISABLE_WEB_RESEARCH') != '1')
             msgs = recipes.recipe_planner_prompt(phase, base_summary, outcomes,
                                                  lessons, phase["candidates"],
                                                  parents,
