@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 torch = pytest.importorskip("torch")
+from torch.utils import flop_counter
 
 from kernelevo.profiling import _count_flops_per_sample
 
@@ -24,7 +25,7 @@ class BrokenSDPACounter:
 
 
 def test_sdpa_counter_failure_leaves_mfu_unknown(monkeypatch, capsys):
-    monkeypatch.setattr(torch.utils.flop_counter, "FlopCounterMode", BrokenSDPACounter)
+    monkeypatch.setattr(flop_counter, "FlopCounterMode", BrokenSDPACounter)
     model = torch.tensor(2.0, requires_grad=True)
     adapter = SimpleNamespace(loss_fn=lambda model, batch: model.square())
 
@@ -33,7 +34,7 @@ def test_sdpa_counter_failure_leaves_mfu_unknown(monkeypatch, capsys):
 
 
 def test_unrelated_model_error_still_fails(monkeypatch):
-    monkeypatch.setattr(torch.utils.flop_counter, "FlopCounterMode", BrokenSDPACounter)
+    monkeypatch.setattr(flop_counter, "FlopCounterMode", BrokenSDPACounter)
     adapter = SimpleNamespace(loss_fn=lambda model, batch: (_ for _ in ()).throw(
         AssertionError("model shape mismatch")))
 
