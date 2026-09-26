@@ -2,7 +2,7 @@
 const form = document.querySelector('#repo-form');
 const input = document.querySelector('#repository');
 const note = document.querySelector('#form-note');
-// Reset the default after browser form-state restoration on reload.
+const HANDOFF_KEY='topk_start_handoff_v1'; // Written by landing.js on the homepage.
 let waitingHandoff=false;
 const startHandoff=()=>{
   if(waitingHandoff&&document.documentElement.classList.contains('topk-authenticated')){
@@ -10,16 +10,22 @@ const startHandoff=()=>{
   }
 };
 window.addEventListener('topk-auth-changed',startHandoff);
+// Restore the homepage intake after sign-in or reload; submit only when setup is ready.
 window.addEventListener('pageshow',()=>{
+  if(new URLSearchParams(location.search).has('intake'))return;
   const mode=document.querySelector('#search-mode');
   let handoff=null;
-  try{handoff=sessionStorage.getItem('topk_start_handoff_v1');sessionStorage.removeItem('topk_start_handoff_v1')}catch{}
+  try{handoff=sessionStorage.getItem(HANDOFF_KEY)}catch{}
   if(!handoff){mode.value='kernel';return}
   try{
     const next=JSON.parse(handoff);
-    if(typeof next.repo!=='string'||!['recipe','kernel','both'].includes(next.mode))throw new Error('Invalid intake handoff');
-    input.value=next.repo;mode.value=next.mode;waitingHandoff=true;startHandoff();
-  }catch{mode.value='kernel'}
+    const url=new URL(next.repo);
+    if(url.protocol!=='https:'||!['github.com','www.github.com'].includes(url.hostname)
+      ||url.username||url.password||url.pathname.split('/').filter(Boolean).length<2
+      ||!['recipe','kernel','both'].includes(next.mode)
+      ||typeof next.requestKey!=='string'||!/^[a-f0-9-]{36}$/.test(next.requestKey))throw new Error('Invalid intake handoff');
+    input.value=url.href;mode.value=next.mode;requestKey=next.requestKey;waitingHandoff=true;startHandoff();
+  }catch{try{sessionStorage.removeItem(HANDOFF_KEY)}catch{};mode.value='kernel'}
 });
 const paused = matchMedia('(prefers-reduced-motion: reduce)').matches;
 document.body.classList.toggle('still', paused);
@@ -123,7 +129,7 @@ form.addEventListener('submit',async e=>{
   posting=true;submit.disabled=true;message('');
   try{
     const result=await api('/api/runs',{method:'POST',headers:{'Idempotency-Key':requestKey},body:JSON.stringify({repo:input.value.trim(),mode:document.querySelector('#search-mode').value,settings:gatherSettings()})});
-    runId=result.id;history.replaceState(null,'','?intake='+runId);submit.textContent='···';poll();
+    runId=result.id;try{sessionStorage.removeItem(HANDOFF_KEY)}catch{};history.replaceState(null,'','?intake='+runId);submit.textContent='···';poll();
   }catch(err){message(err.message);submit.disabled=false}finally{posting=false}
 });
 dataForm.addEventListener('submit',async e=>{

@@ -22,6 +22,7 @@
   const watch = (node, cb) => new IntersectionObserver(es => cb(es[es.length - 1].isIntersecting), { threshold: 0 }).observe(node);
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const pct = g => (g >= 0 ? '−' : '+') + Math.abs(g).toFixed(2) + '%';
+  const HANDOFF_KEY = 'topk_start_handoff_v1'; // Also consumed by front.js on start.html.
 
   // Canvas palette (RGB triplets) — mirrors the CSS variables.
   const C = { ink: '237,237,240', gray: '107,107,117', coral: '239,122,109', amber: '242,181,96', accent: '139,151,255', accent2: '196,202,255' };
@@ -50,7 +51,7 @@
       url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
       if (url.protocol !== 'https:' || !['github.com', 'www.github.com'].includes(url.hostname)
         || url.username || url.password || url.pathname.split('/').filter(Boolean).length < 2) throw new Error('Invalid GitHub URL');
-      sessionStorage.setItem('topk_start_handoff_v1', JSON.stringify({ repo: url.href, mode: f.querySelector('select').value }));
+      sessionStorage.setItem(HANDOFF_KEY, JSON.stringify({ repo: url.href, mode: f.querySelector('select').value, requestKey: crypto.randomUUID() }));
     } catch { note.textContent = 'Paste a GitHub repository URL, such as github.com/owner/repo.'; input.focus(); return; }
     location.assign('start.html');
   }));
