@@ -3,7 +3,24 @@ const form = document.querySelector('#repo-form');
 const input = document.querySelector('#repository');
 const note = document.querySelector('#form-note');
 // Reset the default after browser form-state restoration on reload.
-window.addEventListener('pageshow',()=>{document.querySelector('#search-mode').value='kernel'});
+let waitingHandoff=false;
+const startHandoff=()=>{
+  if(waitingHandoff&&document.documentElement.classList.contains('topk-authenticated')){
+    waitingHandoff=false;form.requestSubmit();
+  }
+};
+window.addEventListener('topk-auth-changed',startHandoff);
+window.addEventListener('pageshow',()=>{
+  const mode=document.querySelector('#search-mode');
+  let handoff=null;
+  try{handoff=sessionStorage.getItem('topk_start_handoff_v1');sessionStorage.removeItem('topk_start_handoff_v1')}catch{}
+  if(!handoff){mode.value='kernel';return}
+  try{
+    const next=JSON.parse(handoff);
+    if(typeof next.repo!=='string'||!['recipe','kernel','both'].includes(next.mode))throw new Error('Invalid intake handoff');
+    input.value=next.repo;mode.value=next.mode;waitingHandoff=true;startHandoff();
+  }catch{mode.value='kernel'}
+});
 const paused = matchMedia('(prefers-reduced-motion: reduce)').matches;
 document.body.classList.toggle('still', paused);
 const sprites = [...document.querySelectorAll('.sprite')];

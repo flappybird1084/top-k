@@ -42,8 +42,17 @@
   onScroll();
   document.querySelectorAll('form.repo').forEach(f => f.addEventListener('submit', e => {
     e.preventDefault();
-    f.querySelector('.note').textContent = f.querySelector('input').value.trim()
-      ? 'Static preview: this page doesn’t start runs.' : 'Paste the URL of a PyTorch training repo.';
+    const input = f.querySelector('input'), note = f.querySelector('.note');
+    const raw = input.value.trim();
+    if (!raw) { note.textContent = 'Paste the URL of a PyTorch training repo.'; input.focus(); return; }
+    let url;
+    try {
+      url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+      if (url.protocol !== 'https:' || !['github.com', 'www.github.com'].includes(url.hostname)
+        || url.username || url.password || url.pathname.split('/').filter(Boolean).length < 2) throw new Error('Invalid GitHub URL');
+      sessionStorage.setItem('topk_start_handoff_v1', JSON.stringify({ repo: url.href, mode: f.querySelector('select').value }));
+    } catch { note.textContent = 'Paste a GitHub repository URL, such as github.com/owner/repo.'; input.focus(); return; }
+    location.assign('start.html');
   }));
 
   /* ---------------- tabs: one view per panel at first glance ---------------- */
