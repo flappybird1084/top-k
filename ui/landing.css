@@ -160,7 +160,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
 @media(max-width:560px){
   nav.top{padding:14px 16px}
   .wrap{width:calc(100% - 32px)}
-  .field select{display:none}
+  .field{gap:5px;padding-left:10px}
+  .field select{max-width:96px;padding:7px 18px 7px 6px;font-size:11px}
   .stages .l{font-size:9px;letter-spacing:.06em}
 }
 @media(prefers-reduced-motion:reduce){

@@ -22,6 +22,7 @@
   const watch = (node, cb) => new IntersectionObserver(es => cb(es[es.length - 1].isIntersecting), { threshold: 0 }).observe(node);
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const pct = g => (g >= 0 ? '−' : '+') + Math.abs(g).toFixed(2) + '%';
+  const HANDOFF_KEY = 'topk_start_handoff_v1'; // Also consumed by front.js on start.html.
 
   // Canvas palette (RGB triplets) — mirrors the CSS variables.
   const C = { ink: '237,237,240', gray: '107,107,117', coral: '239,122,109', amber: '242,181,96', accent: '139,151,255', accent2: '196,202,255' };
@@ -42,8 +43,20 @@
   onScroll();
   document.querySelectorAll('form.repo').forEach(f => f.addEventListener('submit', e => {
     e.preventDefault();
-    f.querySelector('.note').textContent = f.querySelector('input').value.trim()
-      ? 'Static preview: this page doesn’t start runs.' : 'Paste the URL of a PyTorch training repo.';
+    const input = f.querySelector('input'), note = f.querySelector('.note');
+    const raw = input.value.trim();
+    if (!raw) { note.textContent = 'Paste the URL of a PyTorch training repo.'; input.focus(); return; }
+    let url;
+    try {
+      url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+      if (url.protocol === 'http:') url.protocol = 'https:';
+      if (url.protocol !== 'https:' || !['github.com', 'www.github.com'].includes(url.hostname)
+        || url.username || url.password || url.pathname.split('/').filter(Boolean).length < 2) throw new Error('Invalid GitHub URL');
+    } catch { note.textContent = 'Paste a GitHub repository URL, such as github.com/owner/repo.'; input.focus(); return; }
+    try {
+      sessionStorage.setItem(HANDOFF_KEY, JSON.stringify({ repo: url.href, mode: f.querySelector('select')?.value || 'kernel', requestKey: crypto.randomUUID(), attempted: false, createdAt: Date.now() }));
+    } catch { note.textContent = 'This browser could not save the run request. Use a secure browser tab and allow session storage.'; return; }
+    location.assign('start.html');
   }));
 
   /* ---------------- tabs: one view per panel at first glance ---------------- */

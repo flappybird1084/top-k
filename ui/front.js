@@ -2,8 +2,41 @@
 const form = document.querySelector('#repo-form');
 const input = document.querySelector('#repository');
 const note = document.querySelector('#form-note');
-// Reset the default after browser form-state restoration on reload.
-window.addEventListener('pageshow',()=>{document.querySelector('#search-mode').value='kernel'});
+const HANDOFF_KEY='topk_start_handoff_v1'; // Written by landing.js on the homepage.
+const HANDOFF_MAX_AGE_MS=5*60*1000;
+let waitingHandoff=false;
+const startHandoff=()=>{
+  if(waitingHandoff&&document.documentElement.classList.contains('topk-authenticated')){
+    waitingHandoff=false;
+    try{
+      const next=JSON.parse(sessionStorage.getItem(HANDOFF_KEY));
+      if(!next||next.attempted)throw new Error('Invalid handoff');
+      next.attempted=true;sessionStorage.setItem(HANDOFF_KEY,JSON.stringify(next));
+    }catch{try{sessionStorage.removeItem(HANDOFF_KEY)}catch{};note.textContent='Check the repository and press the arrow to start.';return}
+    try{form.requestSubmit()}catch{note.textContent='Could not start automatically. Check the repository and press the arrow.'}
+  }
+};
+window.addEventListener('topk-auth-changed',startHandoff);
+// Restore the homepage intake after sign-in or reload; submit only when setup is ready.
+window.addEventListener('pageshow',()=>{
+  if(new URLSearchParams(location.search).has('intake'))return;
+  const mode=document.querySelector('#search-mode');
+  let handoff=null;
+  try{handoff=sessionStorage.getItem(HANDOFF_KEY)}catch{}
+  if(!handoff){mode.value='kernel';return}
+  try{
+    const next=JSON.parse(handoff);
+    const url=new URL(next.repo);
+    if(url.protocol!=='https:'||!['github.com','www.github.com'].includes(url.hostname)
+      ||url.username||url.password||url.pathname.split('/').filter(Boolean).length<2
+      ||!['recipe','kernel','both'].includes(next.mode)
+      ||typeof next.requestKey!=='string'||!/^[a-f0-9-]{36}$/.test(next.requestKey)
+      ||!Number.isFinite(next.createdAt)||next.createdAt>Date.now()||Date.now()-next.createdAt>HANDOFF_MAX_AGE_MS)throw new Error('Invalid or expired intake handoff');
+    input.value=url.href;mode.value=next.mode;requestKey=next.requestKey;
+    if(next.attempted){note.textContent='Review this repository and press the arrow to retry.';return}
+    waitingHandoff=true;startHandoff();
+  }catch{try{sessionStorage.removeItem(HANDOFF_KEY)}catch{};mode.value='kernel';note.textContent='Paste the repository URL again.'}
+});
 const paused = matchMedia('(prefers-reduced-motion: reduce)').matches;
 document.body.classList.toggle('still', paused);
 const sprites = [...document.querySelectorAll('.sprite')];
@@ -106,8 +139,11 @@ form.addEventListener('submit',async e=>{
   posting=true;submit.disabled=true;message('');
   try{
     const result=await api('/api/runs',{method:'POST',headers:{'Idempotency-Key':requestKey},body:JSON.stringify({repo:input.value.trim(),mode:document.querySelector('#search-mode').value,settings:gatherSettings()})});
-    runId=result.id;history.replaceState(null,'','?intake='+runId);submit.textContent='···';poll();
-  }catch(err){message(err.message);submit.disabled=false}finally{posting=false}
+    runId=result.id;try{sessionStorage.removeItem(HANDOFF_KEY)}catch{};history.replaceState(null,'','?intake='+runId);submit.textContent='···';poll();
+  }catch(err){
+    try{sessionStorage.removeItem(HANDOFF_KEY)}catch{}
+    message(err.message);submit.disabled=false
+  }finally{posting=false}
 });
 dataForm.addEventListener('submit',async e=>{
   e.preventDefault();const button=dataForm.querySelector('button');button.disabled=true;dataError.textContent='';
