@@ -3,12 +3,17 @@ const form = document.querySelector('#repo-form');
 const input = document.querySelector('#repository');
 const note = document.querySelector('#form-note');
 const HANDOFF_KEY='topk_start_handoff_v1'; // Written by landing.js on the homepage.
+const HANDOFF_MAX_AGE_MS=5*60*1000;
 let waitingHandoff=false;
 const startHandoff=()=>{
   if(waitingHandoff&&document.documentElement.classList.contains('topk-authenticated')){
     waitingHandoff=false;
-    try{const next=JSON.parse(sessionStorage.getItem(HANDOFF_KEY));next.attempted=true;sessionStorage.setItem(HANDOFF_KEY,JSON.stringify(next))}catch{}
-    form.requestSubmit();
+    try{
+      const next=JSON.parse(sessionStorage.getItem(HANDOFF_KEY));
+      if(!next||!Number.isFinite(next.createdAt)||next.createdAt>Date.now()||Date.now()-next.createdAt>HANDOFF_MAX_AGE_MS)throw new Error('Expired handoff');
+      next.attempted=true;sessionStorage.setItem(HANDOFF_KEY,JSON.stringify(next));
+    }catch{try{sessionStorage.removeItem(HANDOFF_KEY)}catch{};note.textContent='Your request expired. Check the repository and press the arrow.';return}
+    try{form.requestSubmit()}catch{note.textContent='Could not start automatically. Check the repository and press the arrow.'}
   }
 };
 window.addEventListener('topk-auth-changed',startHandoff);
@@ -25,11 +30,12 @@ window.addEventListener('pageshow',()=>{
     if(url.protocol!=='https:'||!['github.com','www.github.com'].includes(url.hostname)
       ||url.username||url.password||url.pathname.split('/').filter(Boolean).length<2
       ||!['recipe','kernel','both'].includes(next.mode)
-      ||typeof next.requestKey!=='string'||!/^[a-f0-9-]{36}$/.test(next.requestKey))throw new Error('Invalid intake handoff');
+      ||typeof next.requestKey!=='string'||!/^[a-f0-9-]{36}$/.test(next.requestKey)
+      ||!Number.isFinite(next.createdAt)||next.createdAt>Date.now()||Date.now()-next.createdAt>HANDOFF_MAX_AGE_MS)throw new Error('Invalid or expired intake handoff');
     input.value=url.href;mode.value=next.mode;requestKey=next.requestKey;
     if(next.attempted){note.textContent='Review this repository and press the arrow to retry.';return}
     waitingHandoff=true;startHandoff();
-  }catch{try{sessionStorage.removeItem(HANDOFF_KEY)}catch{};mode.value='kernel'}
+  }catch{try{sessionStorage.removeItem(HANDOFF_KEY)}catch{};mode.value='kernel';note.textContent='Your previous request expired. Paste the repository URL again.'}
 });
 const paused = matchMedia('(prefers-reduced-motion: reduce)').matches;
 document.body.classList.toggle('still', paused);
