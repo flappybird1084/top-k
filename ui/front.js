@@ -134,7 +134,10 @@ form.addEventListener('submit',async e=>{
   try{
     const result=await api('/api/runs',{method:'POST',headers:{'Idempotency-Key':requestKey},body:JSON.stringify({repo:input.value.trim(),mode:document.querySelector('#search-mode').value,settings:gatherSettings()})});
     runId=result.id;try{sessionStorage.removeItem(HANDOFF_KEY)}catch{};history.replaceState(null,'','?intake='+runId);submit.textContent='···';poll();
-  }catch(err){message(err.message);submit.disabled=false}finally{posting=false}
+  }catch(err){
+    try{sessionStorage.removeItem(HANDOFF_KEY)}catch{}
+    message(err.message);submit.disabled=false
+  }finally{posting=false}
 });
 dataForm.addEventListener('submit',async e=>{
   e.preventDefault();const button=dataForm.querySelector('button');button.disabled=true;dataError.textContent='';
