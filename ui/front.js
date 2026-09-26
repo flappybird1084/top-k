@@ -6,7 +6,9 @@ const HANDOFF_KEY='topk_start_handoff_v1'; // Written by landing.js on the homep
 let waitingHandoff=false;
 const startHandoff=()=>{
   if(waitingHandoff&&document.documentElement.classList.contains('topk-authenticated')){
-    waitingHandoff=false;form.requestSubmit();
+    waitingHandoff=false;
+    try{const next=JSON.parse(sessionStorage.getItem(HANDOFF_KEY));next.attempted=true;sessionStorage.setItem(HANDOFF_KEY,JSON.stringify(next))}catch{}
+    form.requestSubmit();
   }
 };
 window.addEventListener('topk-auth-changed',startHandoff);
@@ -24,7 +26,9 @@ window.addEventListener('pageshow',()=>{
       ||url.username||url.password||url.pathname.split('/').filter(Boolean).length<2
       ||!['recipe','kernel','both'].includes(next.mode)
       ||typeof next.requestKey!=='string'||!/^[a-f0-9-]{36}$/.test(next.requestKey))throw new Error('Invalid intake handoff');
-    input.value=url.href;mode.value=next.mode;requestKey=next.requestKey;waitingHandoff=true;startHandoff();
+    input.value=url.href;mode.value=next.mode;requestKey=next.requestKey;
+    if(next.attempted){note.textContent='Review this repository and press the arrow to retry.';return}
+    waitingHandoff=true;startHandoff();
   }catch{try{sessionStorage.removeItem(HANDOFF_KEY)}catch{};mode.value='kernel'}
 });
 const paused = matchMedia('(prefers-reduced-motion: reduce)').matches;

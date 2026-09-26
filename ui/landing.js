@@ -49,10 +49,13 @@
     let url;
     try {
       url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+      if (url.protocol === 'http:') url.protocol = 'https:';
       if (url.protocol !== 'https:' || !['github.com', 'www.github.com'].includes(url.hostname)
         || url.username || url.password || url.pathname.split('/').filter(Boolean).length < 2) throw new Error('Invalid GitHub URL');
-      sessionStorage.setItem(HANDOFF_KEY, JSON.stringify({ repo: url.href, mode: f.querySelector('select').value, requestKey: crypto.randomUUID() }));
     } catch { note.textContent = 'Paste a GitHub repository URL, such as github.com/owner/repo.'; input.focus(); return; }
+    try {
+      sessionStorage.setItem(HANDOFF_KEY, JSON.stringify({ repo: url.href, mode: f.querySelector('select').value, requestKey: crypto.randomUUID(), attempted: false }));
+    } catch { note.textContent = 'This browser could not save the run request. Use a secure browser tab and allow session storage.'; return; }
     location.assign('start.html');
   }));
 
