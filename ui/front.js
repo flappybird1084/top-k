@@ -10,9 +10,9 @@ const startHandoff=()=>{
     waitingHandoff=false;
     try{
       const next=JSON.parse(sessionStorage.getItem(HANDOFF_KEY));
-      if(!next||!Number.isFinite(next.createdAt)||next.createdAt>Date.now()||Date.now()-next.createdAt>HANDOFF_MAX_AGE_MS)throw new Error('Expired handoff');
+      if(!next||next.attempted)throw new Error('Invalid handoff');
       next.attempted=true;sessionStorage.setItem(HANDOFF_KEY,JSON.stringify(next));
-    }catch{try{sessionStorage.removeItem(HANDOFF_KEY)}catch{};note.textContent='Your request expired. Check the repository and press the arrow.';return}
+    }catch{try{sessionStorage.removeItem(HANDOFF_KEY)}catch{};note.textContent='Check the repository and press the arrow to start.';return}
     try{form.requestSubmit()}catch{note.textContent='Could not start automatically. Check the repository and press the arrow.'}
   }
 };
@@ -35,7 +35,7 @@ window.addEventListener('pageshow',()=>{
     input.value=url.href;mode.value=next.mode;requestKey=next.requestKey;
     if(next.attempted){note.textContent='Review this repository and press the arrow to retry.';return}
     waitingHandoff=true;startHandoff();
-  }catch{try{sessionStorage.removeItem(HANDOFF_KEY)}catch{};mode.value='kernel';note.textContent='Your previous request expired. Paste the repository URL again.'}
+  }catch{try{sessionStorage.removeItem(HANDOFF_KEY)}catch{};mode.value='kernel';note.textContent='Paste the repository URL again.'}
 });
 const paused = matchMedia('(prefers-reduced-motion: reduce)').matches;
 document.body.classList.toggle('still', paused);

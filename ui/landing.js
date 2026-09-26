@@ -54,7 +54,7 @@
         || url.username || url.password || url.pathname.split('/').filter(Boolean).length < 2) throw new Error('Invalid GitHub URL');
     } catch { note.textContent = 'Paste a GitHub repository URL, such as github.com/owner/repo.'; input.focus(); return; }
     try {
-      sessionStorage.setItem(HANDOFF_KEY, JSON.stringify({ repo: url.href, mode: f.querySelector('select').value, requestKey: crypto.randomUUID(), attempted: false, createdAt: Date.now() }));
+      sessionStorage.setItem(HANDOFF_KEY, JSON.stringify({ repo: url.href, mode: f.querySelector('select')?.value || 'kernel', requestKey: crypto.randomUUID(), attempted: false, createdAt: Date.now() }));
     } catch { note.textContent = 'This browser could not save the run request. Use a secure browser tab and allow session storage.'; return; }
     location.assign('start.html');
   }));
