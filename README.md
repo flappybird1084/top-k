@@ -1,6 +1,6 @@
 # Top-Kernel
 
-[**Open the website ↗**](https://top-kernel-demo.andre520395.chatgpt.site/?demo=1)
+[**Open the website ↗**](https://top-k.dev)
 
 **Evolutionary search over training recipes and Triton kernels, run by LLM agents, judged only by deterministic measurement.**
 
@@ -80,24 +80,36 @@ Engineering choices that keep the numbers honest:
   MLPs, cross-entropy, …) by *behavioral* probing, never by class names. No
   per-repo code, no runtime vocabulary growth.
 
-## Quickstart
+## Run it on the web or in a terminal
+
+For the hosted flow, open [top-k.dev](https://top-k.dev), paste a GitHub
+repository URL, and choose Architecture, Kernels, or Both. The website can
+dispatch work to your [molab](https://molab.marimo.run) notebook using its
+"Pair with agent" prompt.
+
+For a headless CLI run, use a Linux machine with a CUDA GPU and Python 3.11+:
 
 ```bash
+git clone https://github.com/flappybird1084/top-k.git
+cd top-k
+uv venv --python 3.11
 uv pip install -r requirements.txt
-cp .env.example .env        # fill in keys (a W&B key covers logging + inference)
+cp .env.example .env        # set WANDB_API_KEY for W&B logging and inference
 
-uv run python web.py        # http://127.0.0.1:8420 — submit a repo, pick a mode,
-                            # watch generations, self-repair trail, and lineage live
-# or headless:
-uv run python search.py --repo https://github.com/xerneas3318/modern-lm --mode recipe
-uv run python search.py --repo https://github.com/karpathy/nanochat --profile DEV
-uv run python search.py --adapter adapters/jepa.py --llm stub   # $0 harness smoke test
+.venv/bin/python search.py --repo https://github.com/karpathy/nanoGPT --mode recipe --profile RUN --llm wandb
+.venv/bin/python search.py --repo https://github.com/karpathy/nanoGPT --mode kernel --profile RUN --llm wandb
 ```
 
-Needs a CUDA GPU. Runs locally or on a [molab](https://molab.marimo.run)
-notebook — paste the notebook's "Pair with agent" prompt into the web form and
-jobs are dispatched, streamed, and synced back automatically (mid-run, so a
-dying sandbox can't take winning code with it).
+Each CLI command runs one mode. Run the two commands sequentially to search
+both domains; `search.py` has no `both` mode. The CLI writes a timestamped
+directory under `runs/` and logs candidates to W&B. Use `--comments` for repo
+guidance, `--spend-cap` for an inference budget, and `--out` to choose the output
+directory. See `.venv/bin/python search.py --help` for all options. Do not put
+API keys on the command line.
+
+To use the local web UI on the same GPU machine instead, run
+`.venv/bin/python web.py` and open `http://127.0.0.1:8420`. It shows generations,
+the repair trail, and lineage as the run progresses.
 
 Observability: per-candidate runs, metrics, and artifacts in
 [W&B](https://wandb.ai/rianbutala-ucla/kernel-evolution); every LLM call and
