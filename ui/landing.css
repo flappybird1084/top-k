@@ -57,6 +57,13 @@ form.repo{width:min(580px,100%);margin:0 auto}
 .field button{flex:none;width:44px;height:44px;border:0;border-radius:8px;background:var(--ink);color:#0b0b0d;font:22px/1 var(--sans);cursor:pointer;transition:transform .2s,background .2s,box-shadow .2s}
 .field button:hover{background:#fff;transform:translateX(2px);box-shadow:0 0 22px rgba(139,151,255,.45)}
 .note{min-height:20px;margin:12px 0 0;font-size:13px;color:var(--muted);text-align:center}
+.cli-option{width:min(620px,100%);margin:10px auto 0;text-align:left;color:var(--muted);font-size:14px}
+.cli-option summary{width:fit-content;margin:auto;cursor:pointer;color:var(--accent-2);text-underline-offset:3px}
+.cli-option summary:hover,.cli-option a:hover{color:var(--ink)}
+.cli-steps{margin-top:14px;padding:18px;border:1px solid var(--line-2);border-radius:12px;background:var(--bg-2)}
+.cli-steps p{margin:0 0 12px}.cli-steps p:last-child{margin:12px 0 0}
+.cli-steps pre{margin:0 0 16px;padding:12px;overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:12px/1.6 var(--mono)}
+.cli-steps code{font-family:var(--mono)}.cli-steps a{color:var(--accent-2);text-decoration:underline;text-underline-offset:3px}
 
 /* Sections */
 .sec{position:relative;padding:140px 0 30px}

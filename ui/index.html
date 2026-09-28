@@ -8,7 +8,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Top-Kernel</title>
 <meta name="description" content="Point it at a PyTorch repo. Agents evolve the architecture and the kernels, and only what measurably wins survives.">
-<link rel="stylesheet" href="landing.css?v=ui-moment-v2-4">
+<link rel="stylesheet" href="landing.css?v=ui-moment-v2-5">
 <script>
 const intake = new URLSearchParams(location.search).get('intake');
 if (intake && /^[a-f0-9]{32}$/.test(intake)) location.replace(`start.html?intake=${intake}`);
@@ -40,6 +40,21 @@ document.documentElement.classList.add('js');
       </div>
       <p class="note" role="status"></p>
     </form>
+    <details class="cli-option reveal" style="--d:.25s">
+      <summary>Prefer the terminal? Run the CLI on your CUDA GPU</summary>
+      <div class="cli-steps">
+        <p>Linux and Python 3.11+ required. Clone the repo, install dependencies, and set <code>WANDB_API_KEY</code> in <code>.env</code>:</p>
+        <pre><code>git clone https://github.com/flappybird1084/top-k.git
+cd top-k
+uv venv --python 3.11
+uv pip install -r requirements.txt
+cp .env.example .env</code></pre>
+        <p>Run architecture and kernel searches one after the other:</p>
+        <pre><code>.venv/bin/python search.py --repo https://github.com/karpathy/nanoGPT --mode recipe --profile RUN --llm wandb
+.venv/bin/python search.py --repo https://github.com/karpathy/nanoGPT --mode kernel --profile RUN --llm wandb</code></pre>
+        <p>Each command runs one mode. <a href="https://github.com/flappybird1084/top-k#run-it-on-the-web-or-in-a-terminal" target="_blank" rel="noopener noreferrer">Full CLI instructions ↗</a></p>
+      </div>
+    </details>
     <div class="results reveal" style="--d:.3s">
       <div><b id="hero-arch-gain" data-dec="2">—</b><span id="hero-arch-model">val loss</span></div>
       <i aria-hidden="true"></i>
