@@ -45,4 +45,4 @@ html .github-login .github-login-button:not(:disabled):hover{background:#171717;
 html .github-login .github-login-button:disabled{background:#000;color:#fff;opacity:.55}
 html .github-login .github-login-button:focus-visible{outline-color:#fff}
 .github-login-button img{display:block;filter:invert(1)}
-.github-login .github-gate-status:empty{display:none}
+.github-login .github-gate-status:empty{min-height:0;margin:0}
