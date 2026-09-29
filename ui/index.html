@@ -31,7 +31,9 @@ document.documentElement.classList.add('js');
     <h1 class="reveal">Better architectures.<br><em>Faster kernels.</em></h1>
     <div class="hero-console reveal" style="--d:.1s">
       <div class="console-bar"><span><i></i><i></i><i></i></span><span>top-k / terminal</span><button id="copy-cli" type="button">Copy</button></div>
-      <pre id="cli-terminal"><code>uv run python search.py \
+      <pre id="cli-terminal"><code>git clone https://github.com/flappybird1084/top-k.git
+cd top-k
+uv run python search.py \
   --repo https://github.com/karpathy/nanoGPT \
   --mode recipe --profile RUN --llm wandb</code></pre>
       <a class="console-help" href="https://github.com/flappybird1084/top-k#run-it-on-the-web-or-in-a-terminal">Setup · Linux + CUDA GPU ↗</a>
@@ -190,6 +192,6 @@ document.documentElement.classList.add('js');
 <script src="landing-data.js?v=ui-moment-v2-3"></script>
 <script src="landing-timeline.js?v=ui-moment-v2-3"></script>
 <script src="landing-benchmarks.js?v=showcase-1"></script>
-<script src="landing.js?v=showcase-1"></script>
+<script src="landing.js?v=replay-1"></script>
 </body>
 </html>

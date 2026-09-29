@@ -604,7 +604,7 @@
       let chip = result.kernel ? 'kernel' : 'architecture';
       if (result.kernel && result.architecture) chip = 'kernel + architecture';
       if (result.architecture?.caveat === 'loss-floor') chip = 'architecture · loss floor';
-      return { name: result.name, short: result.short, chip, metrics, evidence: result.evidence_url || benchmark.evidence_url };
+      return { name: result.name, short: result.short, chip, metrics, evidence: result.evidence_url || benchmark.evidence_url, replay: `replay.html?project=${encodeURIComponent(result.name)}&start=1` };
     });
     const nodes = RUNS.map((r, idx) => ({ ...r, idx }));
 
@@ -640,7 +640,7 @@
       card.innerHTML = `<div class="body"><span class="k">Accepted benchmark result</span><h3>${esc(r.name)}</h3>`
         + r.metrics.map(m => `<div class="run-metric"><div class="big">${esc(m.value)}<small>${esc(m.label)}</small></div><p>${esc(m.detail)}</p></div>`).join('')
         + '</div>'
-        + `<div class="act"><a class="go" href="${esc(r.evidence)}" target="_blank" rel="noopener noreferrer">View measured evidence ↗</a><div class="pager">`
+        + `<div class="act"><a class="go" href="${esc(r.replay)}">Replay run ↗</a><div class="pager">`
         + RUNS.map((q, k) => `<button type="button" class="${k === i ? 'on' : ''}" aria-label="Show ${esc(q.name)}"></button>`).join('')
         + '</div></div>';
       card.querySelectorAll('.pager button').forEach((b, k) => b.addEventListener('click', () => show(k, true)));

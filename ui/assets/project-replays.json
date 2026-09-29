@@ -1,0 +1,570 @@
+{
+  "schema": "top-k-project-replays-v1",
+  "projects": [
+    {
+      "repo": "huggingface/pytorch-image-models",
+      "name": "timm",
+      "slug": "0ababf74a62c",
+      "evidence_url": "https://github.com/flappybird1084/top-k/tree/main/benchmarks/results/top10-2026-09-25",
+      "wandb_url": "https://wandb.ai/rianbutala-ucla/kernel-evolution/runs/4na2al2l",
+      "notebook": "assets/benchmarks/0ababf74a62c.html",
+      "caveat": null,
+      "modes": {
+        "architecture": {
+          "status": "done",
+          "model": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+          "commit": "f2bcd50406a375f684b558d87d21acbcd20c3144",
+          "data_source": "deterministic synthetic batches",
+          "timing_scope": "fixed wall-clock training budget; held-out validation loss",
+          "result": {
+            "accepted": 1,
+            "architecture_changed": true,
+            "baseline_val_loss": 7.3055419921875,
+            "candidate_val_loss": 6.9742431640625,
+            "final_budget_s": 120.0,
+            "improvement_pct": 4.535,
+            "measured": true
+          },
+          "candidates": [
+            {
+              "accepted": 0,
+              "compile_ok": 0,
+              "correct_ok": 0,
+              "gate_reached": 0,
+              "generation": 1,
+              "model_params": null,
+              "phase": "architecture",
+              "train_secs": 60.0,
+              "val_loss": null,
+              "ordinal": 1
+            },
+            {
+              "accepted": 0,
+              "compile_ok": 1,
+              "correct_ok": 1,
+              "gate_reached": 3,
+              "generation": 1,
+              "model_params": 5722024,
+              "phase": "architecture",
+              "train_secs": 60.0,
+              "val_loss": 7.14324951171875,
+              "ordinal": 2
+            },
+            {
+              "accepted": 0,
+              "compile_ok": 1,
+              "correct_ok": 0,
+              "gate_reached": 1,
+              "generation": 2,
+              "model_params": null,
+              "phase": "hyperparam",
+              "train_secs": 60.0,
+              "val_loss": null,
+              "ordinal": 3
+            },
+            {
+              "accepted": 0,
+              "compile_ok": 1,
+              "correct_ok": 0,
+              "gate_reached": 1,
+              "generation": 2,
+              "model_params": null,
+              "phase": "hyperparam",
+              "train_secs": 60.0,
+              "val_loss": null,
+              "ordinal": 4
+            },
+            {
+              "accepted": 1,
+              "compile_ok": 1,
+              "correct_ok": 1,
+              "gate_reached": 4,
+              "generation": 3,
+              "model_params": 5722024,
+              "phase": "finals",
+              "train_secs": 120.0,
+              "val_loss": 6.9742431640625,
+              "ordinal": 5
+            }
+          ]
+        },
+        "kernel": {
+          "status": "done",
+          "model": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+          "commit": "f2bcd50406a375f684b558d87d21acbcd20c3144",
+          "data_source": "deterministic synthetic batches",
+          "timing_scope": "full training step including host-to-GPU transfer",
+          "result": {
+            "accepted": 1,
+            "baseline_ms": 16.861248016357422,
+            "candidate_ms": 15.259600162506104,
+            "improvement_pct": 9.499,
+            "measured": true
+          },
+          "candidates": [
+            {
+              "accepted": 0,
+              "compile_ok": 1,
+              "correct_ok": 0,
+              "gate_reached": 1,
+              "generation": 1,
+              "step_time_ms": null,
+              "incumbent_step_time_ms": null,
+              "ordinal": 1
+            },
+            {
+              "accepted": 1,
+              "compile_ok": 1,
+              "correct_ok": 1,
+              "gate_reached": 4,
+              "generation": 1,
+              "step_time_ms": 15.259600162506104,
+              "incumbent_step_time_ms": 16.861248016357422,
+              "ordinal": 2
+            },
+            {
+              "accepted": 0,
+              "compile_ok": 1,
+              "correct_ok": 1,
+              "gate_reached": 2,
+              "generation": 2,
+              "step_time_ms": null,
+              "incumbent_step_time_ms": null,
+              "ordinal": 3
+            },
+            {
+              "accepted": 0,
+              "compile_ok": 1,
+              "correct_ok": 1,
+              "gate_reached": 2,
+              "generation": 2,
+              "step_time_ms": null,
+              "incumbent_step_time_ms": null,
+              "ordinal": 4
+            }
+          ]
+        }
+      }
+    },
+    {
+      "repo": "karpathy/nanochat",
+      "name": "nanochat",
+      "slug": "c3c5ea574bf5",
+      "evidence_url": "https://github.com/flappybird1084/top-k/tree/main/benchmarks/results/top10-2026-09-25",
+      "wandb_url": "https://wandb.ai/rianbutala-ucla/kernel-evolution/runs/4na2al2l",
+      "notebook": "assets/benchmarks/c3c5ea574bf5.html",
+      "caveat": null,
+      "modes": {
+        "architecture": {
+          "status": "failed",
+          "model": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+          "commit": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",
+          "data_source": "deterministic synthetic batches",
+          "timing_scope": "fixed wall-clock training budget; held-out validation loss",
+          "result": {
+            "measured": false
+          },
+          "candidates": []
+        },
+        "kernel": {
+          "status": "done",
+          "model": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+          "commit": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",
+          "data_source": "deterministic synthetic batches",
+          "timing_scope": "full training step including host-to-GPU transfer",
+          "result": {
+            "accepted": 1,
+            "baseline_ms": 48.35185623168945,
+            "candidate_ms": 47.51223945617676,
+            "improvement_pct": 1.736,
+            "measured": true
+          },
+          "candidates": [
+            {
+              "accepted": 0,
+              "compile_ok": 1,
+              "correct_ok": 0,
+              "gate_reached": 1,
+              "generation": 1,
+              "step_time_ms": null,
+              "incumbent_step_time_ms": null,
+              "ordinal": 1
+            },
+            {
+              "accepted": 1,
+              "compile_ok": 1,
+              "correct_ok": 1,
+              "gate_reached": 4,
+              "generation": 1,
+              "step_time_ms": 47.51223945617676,
+              "incumbent_step_time_ms": 48.35185623168945,
+              "ordinal": 2
+            },
+            {
+              "accepted": 0,
+              "compile_ok": 0,
+              "correct_ok": 0,
+              "gate_reached": 0,
+              "generation": 2,
+              "step_time_ms": null,
+              "incumbent_step_time_ms": null,
+              "ordinal": 3
+            },
+            {
+              "accepted": 0,
+              "compile_ok": 1,
+              "correct_ok": 0,
+              "gate_reached": 1,
+              "generation": 2,
+              "step_time_ms": null,
+              "incumbent_step_time_ms": null,
+              "ordinal": 4
+            }
+          ]
+        }
+      }
+    },
+    {
+      "repo": "huggingface/transformers",
+      "name": "Transformers",
+      "slug": "e411c5930cfb",
+      "evidence_url": "https://github.com/flappybird1084/top-k/tree/main/benchmarks/results/top10-2026-09-25",
+      "wandb_url": "https://wandb.ai/rianbutala-ucla/kernel-evolution/runs/4na2al2l",
+      "notebook": "assets/benchmarks/e411c5930cfb.html",
+      "caveat": "near-zero",
+      "modes": {
+        "architecture": {
+          "status": "done",
+          "model": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+          "commit": "98d39824ed30e684e5122d04a2d9564efffc4965",
+          "data_source": "deterministic synthetic batches",
+          "timing_scope": "fixed wall-clock training budget; held-out validation loss",
+          "result": {
+            "accepted": 1,
+            "architecture_changed": true,
+            "baseline_val_loss": 7.21547330613248e-05,
+            "candidate_val_loss": 2.5864441340672784e-05,
+            "final_budget_s": 120.0,
+            "improvement_pct": 64.154,
+            "measured": true
+          },
+          "candidates": [
+            {
+              "accepted": 0,
+              "compile_ok": 1,
+              "correct_ok": 1,
+              "gate_reached": 3,
+              "generation": 1,
+              "model_params": 11103290,
+              "phase": "architecture",
+              "train_secs": 60.0,
+              "val_loss": 0.00029587745666503906,
+              "ordinal": 1
+            },
+            {
+              "accepted": 0,
+              "compile_ok": 1,
+              "correct_ok": 1,
+              "gate_reached": 3,
+              "generation": 1,
+              "model_params": 11103290,
+              "phase": "architecture",
+              "train_secs": 60.0,
+              "val_loss": 0.05933431163430214,
+              "ordinal": 2
+            },
+            {
+              "accepted": 0,
+              "compile_ok": 1,
+              "correct_ok": 1,
+              "gate_reached": 3,
+              "generation": 2,
+              "model_params": 11103290,
+              "phase": "hyperparam",
+              "train_secs": 60.0,
+              "val_loss": 0.0066507975570857525,
+              "ordinal": 3
+            },
+            {
+              "accepted": 0,
+              "compile_ok": 1,
+              "correct_ok": 1,
+              "gate_reached": 3,
+              "generation": 2,
+              "model_params": 11103290,
+              "phase": "hyperparam",
+              "train_secs": 60.0,
+              "val_loss": 0.0043852063827216625,
+              "ordinal": 4
+            },
+            {
+              "accepted": 1,
+              "compile_ok": 1,
+              "correct_ok": 1,
+              "gate_reached": 4,
+              "generation": 3,
+              "model_params": 11103290,
+              "phase": "finals",
+              "train_secs": 120.0,
+              "val_loss": 2.5864441340672784e-05,
+              "ordinal": 5
+            }
+          ]
+        },
+        "kernel": {
+          "status": "done",
+          "model": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+          "commit": "98d39824ed30e684e5122d04a2d9564efffc4965",
+          "data_source": "deterministic synthetic batches",
+          "timing_scope": "full training step including host-to-GPU transfer",
+          "result": {
+            "accepted": 0,
+            "measured": true
+          },
+          "candidates": [
+            {
+              "accepted": 0,
+              "compile_ok": 1,
+              "correct_ok": 0,
+              "gate_reached": 1,
+              "generation": 1,
+              "step_time_ms": null,
+              "incumbent_step_time_ms": null,
+              "ordinal": 1
+            },
+            {
+              "accepted": 0,
+              "compile_ok": 0,
+              "correct_ok": 0,
+              "gate_reached": 0,
+              "generation": 1,
+              "step_time_ms": null,
+              "incumbent_step_time_ms": null,
+              "ordinal": 2
+            },
+            {
+              "accepted": 0,
+              "compile_ok": 1,
+              "correct_ok": 0,
+              "gate_reached": 1,
+              "generation": 2,
+              "step_time_ms": null,
+              "incumbent_step_time_ms": null,
+              "ordinal": 3
+            },
+            {
+              "accepted": 0,
+              "compile_ok": 1,
+              "correct_ok": 1,
+              "gate_reached": 3,
+              "generation": 2,
+              "step_time_ms": 11.096240043640137,
+              "incumbent_step_time_ms": 11.064031600952148,
+              "ordinal": 4
+            }
+          ]
+        }
+      }
+    },
+    {
+      "repo": "huggingface/diffusers",
+      "name": "Diffusers",
+      "slug": "f58536af0079",
+      "evidence_url": "https://github.com/flappybird1084/top-k/tree/main/benchmarks/results/top10-2026-09-25",
+      "wandb_url": "https://wandb.ai/rianbutala-ucla/kernel-evolution/runs/4na2al2l",
+      "notebook": "assets/benchmarks/f58536af0079.html",
+      "caveat": null,
+      "modes": {
+        "architecture": {
+          "status": "done",
+          "model": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+          "commit": "4295ee3ec58efa6577bc459e9b84ca3f63aa9a96",
+          "data_source": "deterministic synthetic batches",
+          "timing_scope": "fixed wall-clock training budget; held-out validation loss",
+          "result": {
+            "accepted": 1,
+            "architecture_changed": true,
+            "baseline_val_loss": 0.5656265020370483,
+            "candidate_val_loss": 0.49026428535580635,
+            "final_budget_s": 120.0,
+            "improvement_pct": 13.324,
+            "measured": true
+          },
+          "candidates": [
+            {
+              "accepted": 1,
+              "compile_ok": 1,
+              "correct_ok": 1,
+              "gate_reached": 4,
+              "generation": 1,
+              "model_params": 4081059,
+              "phase": "architecture",
+              "train_secs": 60.0,
+              "val_loss": 0.49762921780347824,
+              "ordinal": 1
+            },
+            {
+              "accepted": 1,
+              "compile_ok": 1,
+              "correct_ok": 1,
+              "gate_reached": 4,
+              "generation": 1,
+              "model_params": 4076611,
+              "phase": "architecture",
+              "train_secs": 60.0,
+              "val_loss": 0.4907925985753536,
+              "ordinal": 2
+            },
+            {
+              "accepted": 1,
+              "compile_ok": 1,
+              "correct_ok": 1,
+              "gate_reached": 4,
+              "generation": 2,
+              "model_params": 4076611,
+              "phase": "hyperparam",
+              "train_secs": 60.0,
+              "val_loss": 0.4897831752896309,
+              "ordinal": 3
+            },
+            {
+              "accepted": 1,
+              "compile_ok": 1,
+              "correct_ok": 1,
+              "gate_reached": 4,
+              "generation": 2,
+              "model_params": 4081059,
+              "phase": "hyperparam",
+              "train_secs": 60.0,
+              "val_loss": 0.49659188091754913,
+              "ordinal": 4
+            },
+            {
+              "accepted": 1,
+              "compile_ok": 1,
+              "correct_ok": 1,
+              "gate_reached": 4,
+              "generation": 3,
+              "model_params": 4076611,
+              "phase": "finals",
+              "train_secs": 120.0,
+              "val_loss": 0.49026428535580635,
+              "ordinal": 5
+            }
+          ]
+        },
+        "kernel": {
+          "status": "failed",
+          "model": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+          "commit": "4295ee3ec58efa6577bc459e9b84ca3f63aa9a96",
+          "data_source": "deterministic synthetic batches",
+          "timing_scope": "full training step including host-to-GPU transfer",
+          "result": {
+            "measured": false
+          },
+          "candidates": []
+        }
+      }
+    },
+    {
+      "repo": "Lightning-AI/litgpt",
+      "name": "LitGPT",
+      "slug": "2dd5e7c2170e",
+      "evidence_url": "https://github.com/flappybird1084/top-k/tree/main/benchmarks/results/top10-2026-09-25",
+      "wandb_url": "https://wandb.ai/rianbutala-ucla/kernel-evolution/runs/4na2al2l",
+      "notebook": "assets/benchmarks/2dd5e7c2170e.html",
+      "caveat": "loss-floor",
+      "modes": {
+        "architecture": {
+          "status": "done",
+          "model": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+          "commit": "18c931c15c2398621d35371a12d2b1785e855bb6",
+          "data_source": "deterministic synthetic batches",
+          "timing_scope": "fixed wall-clock training budget; held-out validation loss",
+          "result": {
+            "accepted": 1,
+            "architecture_changed": true,
+            "baseline_val_loss": 4.348112270236015e-08,
+            "candidate_val_loss": 0.0,
+            "final_budget_s": 120.0,
+            "improvement_pct": 100.0,
+            "measured": true
+          },
+          "candidates": [
+            {
+              "accepted": 0,
+              "compile_ok": 1,
+              "correct_ok": 1,
+              "gate_reached": 3,
+              "generation": 1,
+              "model_params": 590976,
+              "phase": "architecture",
+              "train_secs": 60.0,
+              "val_loss": 5.462788976728916e-08,
+              "ordinal": 1
+            },
+            {
+              "accepted": 0,
+              "compile_ok": 0,
+              "correct_ok": 0,
+              "gate_reached": 0,
+              "generation": 1,
+              "model_params": null,
+              "phase": "architecture",
+              "train_secs": 60.0,
+              "val_loss": null,
+              "ordinal": 2
+            },
+            {
+              "accepted": 1,
+              "compile_ok": 1,
+              "correct_ok": 1,
+              "gate_reached": 4,
+              "generation": 2,
+              "model_params": 590976,
+              "phase": "hyperparam",
+              "train_secs": 60.0,
+              "val_loss": 0.0,
+              "ordinal": 3
+            },
+            {
+              "accepted": 0,
+              "compile_ok": 1,
+              "correct_ok": 1,
+              "gate_reached": 3,
+              "generation": 2,
+              "model_params": 590976,
+              "phase": "hyperparam",
+              "train_secs": 60.0,
+              "val_loss": 1.5978002920746803e-08,
+              "ordinal": 4
+            },
+            {
+              "accepted": 1,
+              "compile_ok": 1,
+              "correct_ok": 1,
+              "gate_reached": 4,
+              "generation": 3,
+              "model_params": 590976,
+              "phase": "finals",
+              "train_secs": 120.0,
+              "val_loss": 0.0,
+              "ordinal": 5
+            }
+          ]
+        },
+        "kernel": {
+          "status": "failed",
+          "model": "wandb:deepseek-ai/DeepSeek-V4-Pro-0813",
+          "commit": "18c931c15c2398621d35371a12d2b1785e855bb6",
+          "data_source": "deterministic synthetic batches",
+          "timing_scope": "full training step including host-to-GPU transfer",
+          "result": {
+            "measured": false
+          },
+          "candidates": []
+        }
+      }
+    }
+  ]
+}

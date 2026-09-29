@@ -343,7 +343,7 @@ def invalid(error):return jsonify(error=str(error)),400
 app.view_functions['index']=lambda:send_from_directory(UI,'index.html')
 @app.get('/<name>')
 def static_ui(name):
-    if name not in {'evolution.js','demo.js','index.html','front.js','front.css','theme.css','workspace.html','run.js','run.css','results.html','results.js'}:return jsonify(error='Not found'),404
+    if name not in {'evolution.js','demo.js','index.html','front.js','front.css','theme.css','replay.html','project-replay.js','project-replay-model.js','project-replay.css','workspace.html','run.js','run.css','results.html','results.js'}:return jsonify(error='Not found'),404
     response=send_from_directory(UI,name);response.headers['Cache-Control']='no-store';return response
 @app.get('/assets/<path:name>')
 def assets(name):return send_from_directory(UI/'assets',name)
