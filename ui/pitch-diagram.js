@@ -21,10 +21,10 @@ const pitchFlowSource = `flowchart TD
     K -->|Budget remains| P
     P --> O
     K -->|Search complete| E --> W
-    classDef diagram_neutral fill:#FBFCF8,stroke:#D5DECE,color:#35492F,stroke-width:1px
-    classDef diagram_working fill:#EDF4F7,stroke:#A8C6D5,color:#3C647A,stroke-width:1px
-    classDef diagram_kept fill:#EDF5E7,stroke:#A8C694,color:#416738,stroke-width:1px
-    classDef diagram_retry fill:#F8EEE7,stroke:#D3AD91,color:#8C6247,stroke-width:1px
+    classDef diagram_neutral fill:#19191F,stroke:#42424D,color:#EDEDF0,stroke-width:1px
+    classDef diagram_working fill:#1A1E35,stroke:#8B97FF,color:#C4CAFF,stroke-width:1px
+    classDef diagram_kept fill:#14251F,stroke:#345F4D,color:#8DCEB0,stroke-width:1px
+    classDef diagram_retry fill:#2B2217,stroke:#80643F,color:#F2B560,stroke-width:1px
     classDef diagram_winner fill:#2D4938,stroke:#2D4938,color:#FFFFFF,stroke-width:2px
     class R,A,B diagram_neutral
     class O,C,V diagram_working
@@ -33,7 +33,7 @@ const pitchFlowSource = `flowchart TD
     class W diagram_winner
     linkStyle default stroke:#94A48B,stroke-width:1.5px`;
 mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'base',
-  themeVariables:{fontFamily:'DM Sans, Arial, sans-serif',fontSize:'14px',background:'#fcfdf8',lineColor:'#94A48B',edgeLabelBackground:'#fcfdf8'},
+  themeVariables:{fontFamily:'DM Sans, Arial, sans-serif',fontSize:'14px',background:'#111114',lineColor:'#94A48B',edgeLabelBackground:'#111114',textColor:'#ededf0'},
   flowchart:{htmlLabels:false,curve:'basis',nodeSpacing:45,rankSpacing:28,padding:14}});
 mermaid.render('pitch-search-mermaid',pitchFlowSource).then(({svg})=>{
   document.querySelector('#pitch-mermaid').innerHTML=svg;

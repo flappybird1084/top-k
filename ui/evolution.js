@@ -27,10 +27,10 @@ function architectureRender(snapshot){
  if(measured.length||Number.isFinite(base)){
   const values=[...measured.map(r=>r.val_loss),...(Number.isFinite(base)?[base]:[])],low=Math.min(...values)*.97,high=Math.max(...values)*1.03,range=high-low||1,y=v=>15+(high-v)/range*170;
   const points=measured.map((r,i)=>[50+i*920/Math.max(1,measured.length-1),y(r.val_loss)]);
-  q('#architecture-chart').innerHTML=[0,.5,1].map(t=>`<line x1="50" x2="980" y1="${15+t*170}" y2="${15+t*170}" stroke="#e5e9df"/><text x="0" y="${19+t*170}" fill="#89927f" font-size="10">${(high-t*range).toFixed(2)}</text>`).join('')
-   +(Number.isFinite(base)?`<path d="M50 ${y(base)} H980" stroke="#89927f" stroke-dasharray="5 5" fill="none"><title>Baseline ${base.toFixed(4)} · ${sel?.budget}s</title></path>`:'')
-   +(points.length>1?`<path d="${points.map((p,i)=>(i?'L':'M')+p.join(',')).join(' ')}" stroke="#417d64" stroke-width="2" fill="none"/>`:'')
-   +points.map((p,i)=>`<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="${measured[i].accepted?'#417d64':'#bf795a'}"><title>${escapeHTML(measured[i].strategy)} · ${measured[i].val_loss.toFixed(4)}</title></circle>`).join('');
+  q('#architecture-chart').innerHTML=[0,.5,1].map(t=>`<line x1="50" x2="980" y1="${15+t*170}" y2="${15+t*170}" stroke="var(--line)"/><text x="0" y="${19+t*170}" fill="var(--muted)" font-size="10">${(high-t*range).toFixed(2)}</text>`).join('')
+   +(Number.isFinite(base)?`<path d="M50 ${y(base)} H980" stroke="var(--muted)" stroke-dasharray="5 5" fill="none"><title>Baseline ${base.toFixed(4)} · ${sel?.budget}s</title></path>`:'')
+   +(points.length>1?`<path d="${points.map((p,i)=>(i?'L':'M')+p.join(',')).join(' ')}" stroke="var(--success)" stroke-width="2" fill="none"/>`:'')
+   +points.map((p,i)=>`<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="${measured[i].accepted?'var(--success)':'var(--warning)'}"><title>${escapeHTML(measured[i].strategy)} · ${measured[i].val_loss.toFixed(4)}</title></circle>`).join('');
  }
  // Generations panels — the barebones UI's collapsible per-generation view.
  const allChanges=rows.filter(r=>r.phase!=='baseline');

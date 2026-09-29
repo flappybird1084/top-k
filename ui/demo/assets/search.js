@@ -33,16 +33,16 @@ function render(pair){latest=pair;const primary=pair.kernel||pair.architecture;f
  // Last-generation evaluations feed selection. The retained winner is highlighted
  // separately when a later generation failed to replace it.
  const lastRows=groups[side].at(-1)?.[1]||[];
- for(const r of lastRows.filter(r=>String(r.id)!==String(final.parent_id))){const a=positions.get(String(r.id)),from=left?a.x:a.x+166,offset=left?-35:35;paths.push(`<path d="M${from} ${a.y} C${from+offset} ${a.y},${to-offset} ${y},${to} ${y}" fill="none" stroke="#d9e2d2" stroke-width="1"/>`)}
+ for(const r of lastRows.filter(r=>String(r.id)!==String(final.parent_id))){const a=positions.get(String(r.id)),from=left?a.x:a.x+166,offset=left?-35:35;paths.push(`<path d="M${from} ${a.y} C${from+offset} ${a.y},${to-offset} ${y},${to} ${y}" fill="none" stroke="var(--line)" stroke-width="1"/>`)}
  const winner=positions.get(String(final.parent_id));
- if(winner){const from=left?winner.x:winner.x+166,offset=left?-17:17,sameGeneration=lastRows.some(r=>String(r.id)===String(final.parent_id));const route=sameGeneration?`M${from} ${winner.y} C${from+offset} ${winner.y},${to-offset} ${y},${to} ${y}`:`M${from} ${winner.y} L${from+offset} ${winner.y} L${from+offset} ${height-24} L${to-offset} ${height-24} L${to-offset} ${y} L${to} ${y}`;paths.push(`<path d="${route}" fill="none" stroke="#417d64" stroke-width="2" stroke-linejoin="round"/>`)}
+ if(winner){const from=left?winner.x:winner.x+166,offset=left?-17:17,sameGeneration=lastRows.some(r=>String(r.id)===String(final.parent_id));const route=sameGeneration?`M${from} ${winner.y} C${from+offset} ${winner.y},${to-offset} ${y},${to} ${y}`:`M${from} ${winner.y} L${from+offset} ${winner.y} L${from+offset} ${height-24} L${to-offset} ${height-24} L${to-offset} ${y} L${to} ${y}`;paths.push(`<path d="${route}" fill="none" stroke="var(--success)" stroke-width="2" stroke-linejoin="round"/>`)}
  }
  groups[side].forEach(([,rows],index)=>rows.forEach(r=>{const b=positions.get(String(r.id)),to=left?b.x+166:b.x;let parents=[];try{parents=JSON.parse(r.parents_json||'[]')||[]}catch{}if(r.parent_id!=null)parents.push(r.parent_id);
  const sources=[...new Set(parents)].map(id=>positions.get(String(id))).filter(Boolean);
  // Unrecorded ancestry is shown as an orchestrator assignment, never invented parentage.
  if(!sources.length&&index===0)sources.push({root:true,x:left?rootX:rootX+180,y});
  for(const a of sources){const from=a.root?a.x:left?a.x:a.x+166,offset=left?-18:18;
- paths.push(`<path d="M${from} ${a.y} C${from+offset} ${a.y},${to-offset} ${b.y},${to} ${b.y}" fill="none" stroke="#e0e6da" stroke-width="1"/>`)}
+ paths.push(`<path d="M${from} ${a.y} C${from+offset} ${a.y},${to-offset} ${b.y},${to} ${b.y}" fill="none" stroke="var(--line)" stroke-width="1"/>`)}
  }));}
  if(q('#nodes').innerHTML!==html.join(''))q('#nodes').innerHTML=html.join('');q('#edges').innerHTML=paths.join('');q('#nodes').querySelectorAll('button').forEach(b=>b.onclick=()=>{const r=lookup.get(b.dataset.key);q('#detail-title').textContent=r.strategy||'Candidate';q('#detail-text').textContent=[r.failure_note,state(r),Number.isFinite(r.val_loss)?r.val_loss+' loss · '+r.train_secs+'s':Number.isFinite(r.step_time_ms)?r.step_time_ms+' ms':null,r.parent_id!=null?'Parent #'+r.parent_id:null].filter(Boolean).join(' · ');q('#detail').hidden=false});
  if(demo){const scale=Math.min(1,q('.canvas').clientWidth/width,q('.canvas').clientHeight/height);q('#tree').style.zoom=scale;q('#tree').style.marginTop=Math.max(0,(q('.canvas').clientHeight-height*scale)/2)/scale+'px';q('.canvas').scrollLeft=0;}else if(!centered){center();centered=true;}}
