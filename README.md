@@ -30,28 +30,20 @@ ranks every candidate. Two search modes share the machinery:
 No model ever grades its own output. Correctness is a constraint, not an
 objective.
 
-## Results
+## Verified highlights
 
-| Workload | Mode | Result | Evidence |
-|---|---|---|---|
-| modern-lm (481M baseline, FineWeb-Edu) | Recipe | **−7.21% val loss** at matched 300s wall-clock (5.848 → 5.426). Winner is a **298M-param** recipe — shrinking within the param cap is legal and buys more optimizer steps at fixed wall-clock, so this is a *recipe* win at this horizon, not a like-for-like architecture win | run `75890bd0` |
-| modern-lm (481M baseline, FineWeb-Edu) | Recipe | **−4.85% val loss** at matched 300s (5.522 → 5.255, ≈23% perplexity), $24.39 total LLM spend; winner **481M params — same parameter count as the baseline** (like-for-like) | run `b3c7b7aa` |
-| karpathy/nanochat | Kernel | Agent-written Triton RMSNorm: training step **8.95 → 8.58 ms** vs the `torch.compile` incumbent = **−4.1%**; vs eager (8.73 ms, faster than inductor on this launch-bound step) = **−1.7%** (RTX PRO 6000) | run `29b07762` |
-| Verifier self-test | Kernel | Two planted cheating kernels (output-caching, shape-hardcoded) rejected at gate 2 in **every** kernel-mode calibration (9/9 rows); the run aborts if either slips through. Recipe mode uses different gates (load / param cap / arch-lock / sanity) with no calibration step | kernel archives |
+| Project | Search | Measured improvement |
+|---|---|---|
+| timm | Kernels + architecture | **9.499% lower step time** · **4.535% lower validation loss** |
+| Diffusers | Architecture | **13.324% lower validation loss** at equal training time |
+| nanochat | Kernels | **1.736% lower step time** against the compiled baseline |
+| modern-lm | Recipe | **4.85% lower validation loss** at 300 seconds, with the same 481M parameter count |
 
-Per-candidate training curves stream to W&B — every candidate is its own run,
-grouped by job, so the whole generation is inspectable live (see the chart
-above). Selection compounds across generations. The −7.21% winner's lineage: baseline
-→ parallel attention∥MLP block (+11.1% proxy) → reduced KV projections
-(+11.4%) → cyclic learning rate → re-verified at the full finals budget:
+The first three rows use deterministic synthetic batches on an RTX PRO 6000.
+They measure the tested workload, not downstream accuracy. modern-lm uses
+FineWeb-Edu. [View successful experiments and evidence](findings/README.md).
 
-![Evolution lineage tree for the −7.21% run](docs/lineage-tree.webp)
-
-Twice now, the best short-budget candidate has **lost** the matched-budget
-finals — the staged design catching horizon overfitting instead of shipping
-it. Failures are first-class output: the adapter agent's fail→repair→verified
-trail is a panel in the UI and a table in W&B, and infrastructure failures are
-tagged `[infra]` so the planner never learns false lessons from harness bugs.
+![Evolution lineage for a measured recipe improvement](docs/lineage-tree.webp)
 
 ## How it works
 
@@ -123,7 +115,7 @@ archive (`marimo run notebooks/viewer.py`).
 | `search.py` / `web.py` | CLI entry / job frontend |
 | `kernelevo/` | The harness: op registry + behavioral routing, verifier gates and subprocess workers, planner/subagent/curator/researcher agents, adapter-writing agent, recipe loop, molab dispatch, SQLite archive |
 | `adapters/` | Bundled demo models (JEPA, small LM) |
-| `findings/` | Run ledger, harness-bug log, performance analysis, agent-behavior notes |
+| `findings/` | Successful experiments, metrics, and reproducible evidence |
 | `config.py` | `DEV` (smoke) and `RUN` (real search) profiles |
 
 ## Multi-repository benchmark
@@ -144,5 +136,5 @@ optimizer). Attention, convolutions, and embedding lookups are deliberately
 out of kernel-search scope. Recipe results are wins *at the evaluated
 wall-clock horizon* — the search optimizes whatever budget you configure, and
 the staged finals exist precisely because short-horizon winners don't always
-transfer. `findings/` documents every harness bug we hit, including the ones
-that were our fault.
+transfer. Full benchmark outcomes remain available in the linked machine-readable
+evidence; the showcase highlights accepted improvements only.

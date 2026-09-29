@@ -394,3 +394,25 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   .rnode.run{font-size:10.5px}
   .rnode .chip{display:none}
 }
+/* Terminal-first entry and unobstructed project orbits. */
+.hero-inner{width:min(100%,900px)}
+.hero h1{font-size:clamp(38px,5.2vw,68px);margin-bottom:32px}
+.hero-console{width:min(620px,100%);margin:auto;text-align:left;border:1px solid var(--line-2);border-radius:14px;background:rgba(13,13,17,.96);overflow:hidden;box-shadow:0 20px 70px #0005}
+.hero-console[hidden],#hero-form[hidden]{display:none}
+.console-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line);color:var(--muted);font:12px var(--mono)}
+.console-bar>span:first-child{display:flex;gap:6px}.console-bar i{width:7px;height:7px;border-radius:50%;background:#45454e}
+.console-bar button{background:none;border:0;color:var(--accent-2);font:inherit;cursor:pointer;padding:4px}
+.hero-console pre{padding:22px;margin:0;overflow:auto;font:13px/1.8 var(--mono);color:var(--accent-2)}
+.console-help{display:block;padding:0 22px 18px;color:var(--muted);font-size:12px}
+.magnet-toggle{margin:20px auto 0;padding:11px 22px;border:1px solid var(--line-2);border-radius:999px;background:var(--ink);color:var(--bg);font:14px var(--sans);cursor:pointer;transition:transform .15s,box-shadow .2s}
+.magnet-toggle:hover{box-shadow:0 0 28px #8b97ff30}
+.web{max-width:1000px;margin:auto}.web-head{position:static;padding:0 24px 20px}
+.web-stage{height:500px;overflow:visible;margin:0 24px}
+.run-card{position:static;width:auto;max-width:760px;margin:20px auto 0;background:var(--bg-2);box-shadow:none}
+.run-card .body{display:grid;grid-template-columns:1fr 1fr;gap:0 24px}.run-card .k,.run-card h3{grid-column:1/-1}
+.run-card .run-metric:only-of-type{grid-column:1/-1}
+.run-card .big small{display:block;margin:8px 0 0}.web-evidence{position:static;margin:20px 24px 0}
+.rnode.run{padding:10px;gap:10px;font-size:13px}.rnode.run i{width:30px;height:30px;background:radial-gradient(circle at 30% 25%,#d5d9ff,#8b97ff 40%,#383d78);box-shadow:0 0 25px #8b97ff35}
+.rnode.sel i{box-shadow:0 0 0 5px #8b97ff22,0 0 30px #8b97ff80}
+.rnode span{background:var(--bg);border-radius:5px;padding:2px 5px}.hub{width:104px;height:104px;font-size:17px}
+@media(max-width:700px){.web-stage{height:430px;margin:0 8px}.run-card{margin:18px 16px 0}.run-card .body{display:block}.rnode.run{font-size:12px}.hub{width:76px;height:76px;font-size:14px}.hero-console pre{font-size:12px;padding:16px}.hero{padding-left:18px;padding-right:18px}.results{gap:18px}}

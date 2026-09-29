@@ -2,11 +2,13 @@
 
 import argparse
 import json
+import math
+import re
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "benchmarks/results/top10-2026-09-25/summary.json"
+RESULTS = ROOT / "benchmarks/results"
 DESTINATION = ROOT / "ui/landing-benchmarks.js"
 SHORT_NAMES = {
     "huggingface/pytorch-image-models": "timm",
@@ -18,24 +20,29 @@ SHORT_NAMES = {
 
 
 def accepted(result):
-    return bool(result and result.get("measured") and result.get("accepted"))
+    return bool(result and result.get("measured") is True and result.get("accepted") == 1)
+
+def lower(baseline, candidate):
+    return (isinstance(baseline, (int, float)) and isinstance(candidate, (int, float))
+            and math.isfinite(baseline) and math.isfinite(candidate)
+            and baseline > 0 and 0 <= candidate < baseline)
 
 
-def build():
-    summary = json.loads(SOURCE.read_text(encoding="utf-8"))
+def entries(source):
+    summary = json.loads(source.read_text(encoding="utf-8"))
     results = []
     for row in summary["results"]:
         kernel = row["kernel"]
         architecture = row["architecture"]
-        kernel_result = kernel.get("result", {})
-        architecture_result = architecture.get("result", {})
-        kernel_win = accepted(kernel_result)
+        kernel_result = kernel.get("result") or {}
+        architecture_result = architecture.get("result") or {}
+        kernel_win = (kernel.get("status") == "done" and accepted(kernel_result)
+                      and lower(kernel_result.get("baseline_ms"), kernel_result.get("candidate_ms")))
         architecture_win = (
-            accepted(architecture_result)
+            architecture.get("status") == "done" and accepted(architecture_result)
             and architecture_result.get("architecture_changed") is True
-            and architecture_result.get("baseline_val_loss", 0) > 0
-            and architecture_result.get("candidate_val_loss", float("inf"))
-            < architecture_result["baseline_val_loss"]
+            and lower(architecture_result.get("baseline_val_loss"),
+                      architecture_result.get("candidate_val_loss"))
         )
         if not (kernel_win or architecture_win):
             continue
@@ -45,14 +52,14 @@ def build():
             entry["kernel"] = {
                 "baseline_ms": kernel_result["baseline_ms"],
                 "candidate_ms": kernel_result["candidate_ms"],
-                "improvement_pct": kernel_result["improvement_pct"],
+                "improvement_pct": round(100 * (1 - kernel_result["candidate_ms"] / kernel_result["baseline_ms"]), 3),
                 "generations": kernel["generations"],
             }
         if architecture_win:
             entry["architecture"] = {
                 "baseline_val_loss": architecture_result["baseline_val_loss"],
                 "candidate_val_loss": architecture_result["candidate_val_loss"],
-                "improvement_pct": architecture_result["improvement_pct"],
+                "improvement_pct": round(100 * (1 - architecture_result["candidate_val_loss"] / architecture_result["baseline_val_loss"]), 3),
                 "budget_s": architecture_result["final_budget_s"],
                 "caveat": (
                     "loss-floor" if architecture_result["baseline_val_loss"] < 1e-7
@@ -60,13 +67,27 @@ def build():
                     else None
                 ),
             }
+        entry["evidence_url"] = "https://github.com/flappybird1084/top-k/tree/main/" + source.parent.relative_to(ROOT).as_posix()
         results.append(entry)
+    return results
+
+
+def build(sources=None):
+    # ISO-date report folders sort chronologically. Keep a complete comparison
+    # from one report per project; never combine incompatible protocols.
+    by_repo = {}
+    def report_order(path):
+        date = re.search(r"\d{4}-\d{2}-\d{2}", path.parent.name)
+        return (date.group() if date else "", path.as_posix())
+    for source in sorted(sources if sources is not None else RESULTS.glob("*/summary.json"), key=report_order):
+        for entry in entries(source):
+            by_repo[entry["name"]] = entry
     payload = {
-        "evidence_url": "https://github.com/flappybird1084/top-k/tree/main/benchmarks/results/top10-2026-09-25",
-        "results": results,
+        "evidence_url": "https://github.com/flappybird1084/top-k/tree/main/benchmarks/results",
+        "results": list(by_repo.values()),
     }
     safe_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
-    return "// Generated from benchmarks/results/top10-2026-09-25/summary.json.\nwindow.TOPK_BENCHMARKS=" + safe_json + ";\n"
+    return "// Generated from published benchmark reports under benchmarks/results/.\nwindow.TOPK_BENCHMARKS=" + safe_json + ";\n"
 
 
 def main():
