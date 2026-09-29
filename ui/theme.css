@@ -114,3 +114,5 @@ html .github-account button.ghost{background:var(--surface);border-color:var(--l
 .theme-app .waiting-mark span{background:var(--accent)}
 .theme-app .agent-block:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
 @media(prefers-reduced-motion:reduce){.theme-app *{animation:none!important;transition:none!important}}
+.theme-app #pitch-mermaid .edgeLabel text{fill:var(--muted)}
+.theme-app #pitch-mermaid .edgeLabel rect{fill:var(--surface);opacity:1}
