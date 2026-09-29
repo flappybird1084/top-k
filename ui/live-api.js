@@ -34,7 +34,7 @@
  }
  function paint(message=''){
   if(accountButton)accountButton.textContent=user?'Sign out · @'+user.login:'Sign in with GitHub';
-  if(gateButton){gateButton.disabled=!config?.enabled;gateButton.textContent=config?.enabled?'Sign in with GitHub':'GitHub sign-in unavailable';}
+  if(gateButton)gateButton.disabled=!config?.enabled;
   if(accountSetup)accountSetup.hidden=!user;
   setStatus(message);
  }
@@ -82,7 +82,7 @@
     if(me.status===401||me.status===403)localStorage.removeItem(key);
     if(me.status===403){lock('This GitHub account is not on the current access list.');return;}
    }
-   lock('Sign in with GitHub to use Top-Kernel.');
+   lock('');
   }catch{config=null;lock('Access is protected. The sign-in service is unavailable.');}
  }
  function beginSignIn(){
@@ -162,16 +162,16 @@
  }
 
  document.addEventListener('DOMContentLoaded',()=>{
-  const style=document.createElement('link');style.rel='stylesheet';style.href='/github-auth.css?v=theme-1';document.head.append(style);
-  gate=document.createElement('section');gate.className='github-gate';gate.setAttribute('aria-labelledby','github-gate-title');
+  const style=document.createElement('link');style.rel='stylesheet';style.href='/github-auth.css?v=login-2';document.head.append(style);
+  gate=document.createElement('section');gate.className='github-gate github-login';gate.setAttribute('aria-labelledby','github-gate-title');
   gate.classList.toggle('landing-gate',isLanding);
   // The close button is only offered on the landing page, where the sign-in
   // panel is an optional bubble over a still-usable page. Elsewhere the panel
   // covers the whole screen as a required gate, so a close control would leave
   // the visitor on a blank page with no way back.
   const closeBtn=isLanding?'<button type="button" class="github-gate-close" aria-label="Close sign-in">×</button>':'';
-  gate.innerHTML='<div class="github-gate-card">'+closeBtn+'<p class="github-gate-kicker">Top-Kernel</p><h1 id="github-gate-title">Sign in to continue</h1></div>';
- gateButton=document.createElement('button');gateButton.type='button';gateButton.textContent='Checking GitHub sign-in…';gateButton.disabled=true;
+  gate.innerHTML='<div class="github-gate-card">'+closeBtn+'<h1 id="github-gate-title">Login to Use Online</h1></div>';
+  gateButton=document.createElement('button');gateButton.type='button';gateButton.className='github-login-button';gateButton.innerHTML='<img src="/assets/github-mark.png" alt="" width="24" height="24"><span>Login With GitHub</span>';gateButton.disabled=true;
   gateStatus=document.createElement('p');gateStatus.className='github-gate-status';gateStatus.setAttribute('role','status');
   gate.querySelector('.github-gate-card').append(gateButton,gateStatus);document.body.prepend(gate);
   if(isLanding)gate.hidden=true;
