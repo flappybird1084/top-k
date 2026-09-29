@@ -21,7 +21,7 @@
     if (row.state === 'running') return '◌';
     return row.accepted ? '✓' : '×';
   }
-  const checked = value => value ? 'Passed' : 'Failed';
+  const checked = (value, otherwise = 'Failed') => value ? 'Passed' : otherwise;
   const views = ['exploration', 'dashboard', 'results', 'wandb', 'marimo', 'aria'];
   const url = new URL(location.href), repo = url.searchParams.get('project');
   let project, current, elapsed = 0, timer, lastFrame = '', selected = null;
@@ -81,7 +81,7 @@
     const row = current.modes[side].candidates.find(r => r.ordinal === Number(ordinal));
     if (!row) {$('#candidate-detail').hidden = true;return;}
     $('#candidate-title').textContent = phase(row) + ' · candidate ' + ordinal;
-    const fields = [['State', row.state], ['Generation', row.generation], ['Training budget', row.train_secs == null ? null : row.train_secs + 's'], ['Validation loss', row.val_loss == null ? null : fmt(row.val_loss)], ['Step time', row.step_time_ms == null ? null : fmt(row.step_time_ms) + ' ms'], ['Gate', row.gate_reached], ['Compile check', row.compile_ok == null ? null : checked(row.compile_ok)], ['Correctness check', row.correct_ok == null ? null : checked(row.correct_ok)], ['Model', current.modes[side].model]];
+    const fields = [['State', row.state], ['Generation', row.generation], ['Training budget', row.train_secs == null ? null : row.train_secs + 's'], ['Validation loss', row.val_loss == null ? null : fmt(row.val_loss)], ['Step time', row.step_time_ms == null ? null : fmt(row.step_time_ms) + ' ms'], ['Gate', row.gate_reached], ['Compile check', row.compile_ok == null ? null : checked(row.compile_ok)], ['Correctness check', row.correct_ok == null ? null : checked(row.correct_ok, 'Not passed')], ['Model', current.modes[side].model]];
     $('#candidate-metrics').innerHTML = fields.filter(([,v]) => v != null).map(([k,v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('');
     $('#candidate-detail').hidden = false;
   }
