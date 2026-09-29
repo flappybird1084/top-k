@@ -1,6 +1,6 @@
 'use strict';
 /* Walkthrough visuals use window.TOPK_RUNS from landing-data.js; the repository
-   graph uses window.TOPK_BENCHMARKS from the published ten-repository summary. */
+   graph uses window.TOPK_BENCHMARKS from published benchmark reports. */
 (() => {
   const R = window.TOPK_RUNS;
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -564,7 +564,7 @@
     c.addEventListener('pointerleave', () => { c.style.transform = ''; });
   });
 
-  /* ---------------- repos: accepted results from the published ten-repo benchmark ---------------- */
+  /* ---------------- repos: accepted results from published benchmark reports ---------------- */
   (function web() {
     const box = $('#web'), stage = $('#web-stage'), cv = $('#web-canvas'), layer = $('#web-nodes'), hub = $('#hub'), card = $('#run-card');
     if (!box) return;
@@ -652,7 +652,7 @@
     let W = 0, H = 0;
     function draw(ctx) {
       ctx.clearRect(0, 0, W, H);
-      const cx = W / 2, cy = H / 2, rx = Math.max(90, W / 2 - 88), ry = H / 2 - 60;
+      const cx = W / 2, cy = H / 2, rx = Math.max(90, W / 2 - 88), ry = Math.max(1, H / 2 - 60);
       ctx.lineWidth = 1;
       for (const scale of [.65, 1]) {
         ctx.strokeStyle = 'rgba(139,151,255,.18)';
