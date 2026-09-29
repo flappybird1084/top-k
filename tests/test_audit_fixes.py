@@ -1,4 +1,4 @@
-"""Regression tests for findings/06-audit.md priority fixes."""
+"""Regression tests for verifier and archive integrity fixes."""
 import json
 import sys
 import time

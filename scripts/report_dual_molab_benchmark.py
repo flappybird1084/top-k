@@ -124,6 +124,11 @@ def main() -> int:
                 os.environ["WANDB_API_KEY"] = settings["WANDB_INFERENCE_API_KEY"]
         report["wandb_summary_url"] = publish(report, evidence_path)
     summary_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    # Public report exports refresh the planet catalog as part of the same command.
+    public_root = ROOT / "benchmarks/results"
+    if args.output.resolve().parent == public_root.resolve():
+        from scripts.build_landing_benchmarks import build, DESTINATION
+        DESTINATION.write_text(build(), encoding="utf-8", newline="\n")
     print(f"Wrote {summary_path}: kernel {report['kernel']}; architecture {report['architecture']}")
     return 0
 

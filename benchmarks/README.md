@@ -68,3 +68,26 @@ Reported step times include batch loading and host-to-GPU transfer, so any
 improvement percentage describes the full measured training step on that GPU,
 not isolated kernel latency. Failed adapters and missing measurements remain
 failures in the denominator.
+
+## Adding a project to the website
+
+Export a completed dual-mode report into a dated public results folder:
+
+```bash
+uv run python scripts/report_dual_molab_benchmark.py \
+  --manifest benchmarks/repos.json \
+  --kernel-output /path/to/kernel-states \
+  --recipe-output /path/to/architecture-states \
+  --output benchmarks/results/2026-09-28-projects
+```
+
+The export refreshes `ui/landing-benchmarks.js` automatically. Commit the report
+and generated catalog with the normal production release. Newly measured,
+accepted improvements become planets on the next site publish; unsuccessful
+runs do not. Repeated repositories use their latest dated successful report as
+a whole, so results from different protocols are never spliced together.
+Each planet links to its own source report. Raw attempts stay in the report.
+
+For reports copied in from another machine, regenerate with
+`uv run python scripts/build_landing_benchmarks.py`. CI checks that the catalog
+matches the committed reports.

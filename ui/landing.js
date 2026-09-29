@@ -1,6 +1,6 @@
 'use strict';
 /* Walkthrough visuals use window.TOPK_RUNS from landing-data.js; the repository
-   graph uses window.TOPK_BENCHMARKS from the published ten-repository summary. */
+   graph uses window.TOPK_BENCHMARKS from published benchmark reports. */
 (() => {
   const R = window.TOPK_RUNS;
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -58,6 +58,29 @@
     } catch { note.textContent = 'This browser could not save the run request. Use a secure browser tab and allow session storage.'; return; }
     location.assign('start.html');
   }));
+
+  const entryToggle = $('#entry-toggle'), terminal = $('.hero-console'), repoForm = $('#hero-form');
+  function showSearch(show, focus = false) {
+    terminal.hidden = show; repoForm.hidden = !show;
+    entryToggle.textContent = show ? 'Back to terminal ↗' : 'Try in browser ↗';
+    entryToggle.setAttribute('aria-expanded', String(show));
+    if (show && focus) $('#repo-hero').focus({ preventScroll: true });
+  }
+  entryToggle.addEventListener('click', () => showSearch(repoForm.hidden, true));
+  entryToggle.addEventListener('pointermove', e => {
+    if (reduce || e.pointerType !== 'mouse') return;
+    const r = entryToggle.getBoundingClientRect();
+    entryToggle.style.transform = `translate(${(e.clientX-r.left-r.width/2)*.12}px,${(e.clientY-r.top-r.height/2)*.18}px)`;
+  });
+  entryToggle.addEventListener('pointerleave', () => { entryToggle.style.transform = ''; });
+  $('#copy-cli').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText($('#cli-terminal code').textContent);
+      $('#cli-copy-status').textContent = 'Command copied.';
+      $('#copy-cli').textContent = 'Copied';
+      setTimeout(() => { $('#copy-cli').textContent = 'Copy'; }, 1800);
+    } catch { $('#cli-copy-status').textContent = 'Select the command to copy it.'; }
+  });
 
   /* ---------------- tabs: one view per panel at first glance ---------------- */
   document.querySelectorAll('[data-tabs]').forEach(box => {
@@ -252,7 +275,6 @@
   (function arch() {
     const A = R.arch, svg = $('#arch-svg');
     const proposals = A.candidates.filter(c => c.gen >= 1 && c.gen <= 3);
-    $('#arch-summary').textContent = `${proposals.length} proposals across ${new Set(proposals.map(c => c.gen)).size} generations. Lower is better; hover any point to see what an agent tried.`;
     $('#crash-total').textContent = proposals.length;
     // Fixed display scale and generation labels for recorded run 75890bd0.
     const W = 1000, H = 500, X = [80, 290, 490, 690, 880], CRASH = 44, TOP = 84, BOT = 418, HI = 7.0, LO = 5.3;
@@ -542,7 +564,7 @@
     c.addEventListener('pointerleave', () => { c.style.transform = ''; });
   });
 
-  /* ---------------- repos: accepted results from the published ten-repo benchmark ---------------- */
+  /* ---------------- repos: accepted results from published benchmark reports ---------------- */
   (function web() {
     const box = $('#web'), stage = $('#web-stage'), cv = $('#web-canvas'), layer = $('#web-nodes'), hub = $('#hub'), card = $('#run-card');
     if (!box) return;
@@ -556,6 +578,7 @@
       return value.toFixed(5);
     };
     const go = url => {
+      showSearch(true);
       const input = $('#repo-hero');
       if (url) input.value = url;
       if (reduce) { $('#hero').scrollIntoView(); input.focus({ preventScroll: true }); return; }
@@ -581,23 +604,16 @@
       let chip = result.kernel ? 'kernel' : 'architecture';
       if (result.kernel && result.architecture) chip = 'kernel + architecture';
       if (result.architecture?.caveat === 'loss-floor') chip = 'architecture · loss floor';
-      return { name: result.name, short: result.short, chip, metrics };
+      return { name: result.name, short: result.short, chip, metrics, evidence: result.evidence_url || benchmark.evidence_url };
     });
-    const RIN = 1.5;
-    const nodes = [];
-    RUNS.forEach((r, i) => {
-      const a = i / RUNS.length * 6.2832 + .5;
-      nodes.push({ ...r, idx: i, x: Math.cos(a) * RIN, y: Math.sin(i * 1.7) * .14, z: Math.sin(a) * RIN });
-    });
-    const O = { x: 0, y: 0, z: 0 }, links = [];
-    nodes.forEach(n => links.push([O, n]));
+    const nodes = RUNS.map((r, idx) => ({ ...r, idx }));
 
     hub.addEventListener('click', () => go(''));
     nodes.forEach(n => {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'rnode run';
-      b.innerHTML = `<i aria-hidden="true"></i><span>${esc(n.short)}</span><em class="chip">${esc(n.chip)}</em>`;
+      b.innerHTML = `<i aria-hidden="true"></i><span>${esc(n.short)}</span>`;
       b.setAttribute('aria-label', `${n.name}: accepted ${n.chip} improvement. Show details.`);
       b.addEventListener('click', () => show(n.idx, true));
       layer.appendChild(b);
@@ -615,96 +631,49 @@
     measure();
     if (document.fonts) document.fonts.ready.then(measure);
 
-    // The run card: cycles through measured runs until someone picks one.
-    let sel = 0, t = 0, lastSwitch = 0, userAt = -1e9, redrawStatic = null;
-    let hovered = false, focused = false;
+    // Keep the selected result stable while the user reads it.
+    let t = 0;
     function show(i, user) {
-      sel = i; lastSwitch = t;
-      if (user) userAt = t;
       const restorePagerFocus = user && card.contains(document.activeElement) && document.activeElement.matches('.pager button');
       const r = RUNS[i];
       card.setAttribute('aria-live', user ? 'polite' : 'off');
       card.innerHTML = `<div class="body"><span class="k">Accepted benchmark result</span><h3>${esc(r.name)}</h3>`
         + r.metrics.map(m => `<div class="run-metric"><div class="big">${esc(m.value)}<small>${esc(m.label)}</small></div><p>${esc(m.detail)}</p></div>`).join('')
-        + `<p class="search-detail">Kernel search checked candidate correctness and full-step time against torch.compile. Architecture search tested structural changes, then compared held-out loss at the same training budget. Only improved domains are shown for this project.</p></div>`
-        + `<div class="act"><a class="go" href="${esc(benchmark.evidence_url)}" target="_blank" rel="noopener noreferrer">View measured evidence ↗</a><div class="pager">`
+        + '</div>'
+        + `<div class="act"><a class="go" href="${esc(r.evidence)}" target="_blank" rel="noopener noreferrer">View measured evidence ↗</a><div class="pager">`
         + RUNS.map((q, k) => `<button type="button" class="${k === i ? 'on' : ''}" aria-label="Show ${esc(q.name)}"></button>`).join('')
         + '</div></div>';
       card.querySelectorAll('.pager button').forEach((b, k) => b.addEventListener('click', () => show(k, true)));
       if (restorePagerFocus) card.querySelectorAll('.pager button')[i].focus();
       nodes.forEach(n => n.el.classList.toggle('sel', n.idx === i));
-      if (reduce && redrawStatic) redrawStatic();
     }
-    card.addEventListener('pointerenter', () => { hovered = true; userAt = t; });
-    card.addEventListener('pointerleave', () => { hovered = false; });
-    card.addEventListener('focusin', () => { focused = true; userAt = t; });
-    card.addEventListener('focusout', e => { if (!card.contains(e.relatedTarget)) focused = false; });
     show(0, false);
 
-    const cam = camera(7), mouse = pointer(stage);
-    let W = 0, H = 0, yaw = 0;
-    cam.pitch = -.62;   // look down on the web from above
-    const depthOf = d => Math.max(0, Math.min(1, (8.9 - d) / 3.8));
-    // Yaw that brings a node to the front, a little right of the hub so it doesn't hide behind it.
-    const frontYaw = n => Math.atan2(n.z, n.x) + Math.PI / 2 - .55;
-    function step(dt) {
-      t += dt;
-      if (!reduce && !hovered && !focused && t - lastSwitch > 6.5 && t - userAt > 15) show((sel + 1) % RUNS.length, false);
-      const target = frontYaw(nodes[sel]) + .08 * Math.sin(t * .35);
-      const diff = ((target - yaw) % 6.2832 + 9.4248) % 6.2832 - 3.1416;
-      yaw += diff * Math.min(1, dt * 1.6);
-      cam.yaw = yaw + mouse.x * .35;
-      cam.pitch += (-.62 + mouse.y * .18 - cam.pitch) * Math.min(1, dt * 2);
-    }
-    function ring(ctx, r) {
-      let prev = cam.project(r, 0, 0);
-      for (let j = 1; j <= 90; j++) {
-        const a = j / 90 * 6.2832, cur = cam.project(Math.cos(a) * r, 0, Math.sin(a) * r);
-        ctx.strokeStyle = `rgba(${C.accent2},${(.03 + .09 * depthOf((prev[2] + cur[2]) / 2)).toFixed(3)})`;
-        ctx.beginPath(); ctx.moveTo(prev[0], prev[1]); ctx.lineTo(cur[0], cur[1]); ctx.stroke();
-        prev = cur;
-      }
-    }
+    let W = 0, H = 0;
     function draw(ctx) {
       ctx.clearRect(0, 0, W, H);
-      ctx.lineWidth = 1; ring(ctx, RIN);
-      for (const [a, b] of links) {
-        const pa = cam.project(a.x, a.y, a.z), pb = cam.project(b.x, b.y, b.z), dep = (depthOf(pa[2]) + depthOf(pb[2])) / 2;
-        const hot = b.idx === sel;
-        ctx.lineWidth = hot ? 2.2 : 1.4;
-        ctx.strokeStyle = `rgba(${C.accent},${((hot ? .55 : .2) + .4 * dep).toFixed(3)})`;
-        ctx.beginPath(); ctx.moveTo(pa[0], pa[1]); ctx.lineTo(pb[0], pb[1]); ctx.stroke();
+      const cx = W / 2, cy = H / 2, rx = Math.max(90, W / 2 - 88), ry = Math.max(1, H / 2 - 60);
+      ctx.lineWidth = 1;
+      for (const scale of [.65, 1]) {
+        ctx.strokeStyle = `rgba(${C.accent},.18)`;
+        ctx.beginPath(); ctx.ellipse(cx, cy, rx * scale, ry * scale, 0, 0, Math.PI * 2); ctx.stroke();
       }
       nodes.forEach((n, i) => {
-        const k = (t * .35 + i / nodes.length) % 1, p = cam.project(n.x * k, n.y * k, n.z * k), hot = n.idx === sel;
-        ctx.fillStyle = `rgba(${C.accent2},${(Math.sin(k * Math.PI) * (hot ? 1 : .6)).toFixed(3)})`;
-        ctx.beginPath(); ctx.arc(p[0], p[1], (hot ? 3.2 : 2.2) * p[3], 0, 6.2832); ctx.fill();
+        const a = i / nodes.length * Math.PI * 2 - Math.PI / 2;
+        const x = cx + Math.cos(a) * rx, y = cy + Math.sin(a) * ry;
+        n.el.style.transform = `translate(${x - n.ax}px,${y - n.ay}px)`;
+        n.el.style.opacity = '1';
+        const k = (t * .12 + i / nodes.length) % 1;
+        ctx.fillStyle = `rgba(${C.accent2},.7)`;
+        ctx.beginPath(); ctx.arc(cx + Math.cos(k * Math.PI * 2) * rx * .65, cy + Math.sin(k * Math.PI * 2) * ry * .65, 2, 0, Math.PI * 2); ctx.fill();
       });
-      for (const n of nodes) {
-        const p = cam.project(n.x, n.y, n.z), dep = depthOf(p[2]);
-        n.el.style.transform = `translate(${(p[0] - n.ax).toFixed(1)}px,${(p[1] - n.ay).toFixed(1)}px) scale(${(.7 + .42 * p[3]).toFixed(3)})`;
-        n.el.style.opacity = (.55 + .45 * dep).toFixed(3);
-        n.el.style.zIndex = String(Math.round(dep * 100));
-      }
+      hub.style.left = cx + 'px'; hub.style.top = cy + 'px';
     }
     animate(cv, stage, {
-      resize: (w, h) => {
-        W = w; H = h;
-        const narrow = w < 700;
-        cam.scale = Math.min(w * 1.15, h * 1.65);
-        cam.cx = narrow ? w / 2 : w * .65; cam.cy = h * (narrow ? .54 : .57);
-        hub.style.left = cam.cx + 'px'; hub.style.top = cam.cy + 'px';
-        measure();
-      },
-      step, draw,
+      resize: (w, h) => { W = w; H = h; measure(); },
+      step: dt => { t += dt; }, draw,
     });
-    redrawStatic = () => {
-      yaw = frontYaw(nodes[sel]);
-      cam.yaw = yaw;
-      cam.pitch = -.62;
-      draw(cv.getContext('2d'));
-    };
-    if (reduce) redrawStatic();
+
   })();
 
   /* ================= v3 additions ================= */

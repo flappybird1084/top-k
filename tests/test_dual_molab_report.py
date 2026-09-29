@@ -1,6 +1,26 @@
 import json
+import sys
 
 from scripts.report_dual_molab_benchmark import combined, numeric_evidence
+
+
+def test_public_report_export_refreshes_planet_catalog(tmp_path, monkeypatch):
+    from scripts import report_dual_molab_benchmark as report
+    from scripts import build_landing_benchmarks as catalog
+    source = catalog.ROOT / "benchmarks/results/top10-2026-09-25/summary.json"
+    sample = json.loads(source.read_text())
+    output = tmp_path / "benchmarks/results/2026-09-28-test"
+    destination = tmp_path / "catalog.js"
+    monkeypatch.setattr(report, "ROOT", tmp_path)
+    monkeypatch.setattr(catalog, "ROOT", tmp_path)
+    monkeypatch.setattr(catalog, "RESULTS", output.parent)
+    monkeypatch.setattr(catalog, "DESTINATION", destination)
+    monkeypatch.setattr(report, "combined", lambda *args: sample)
+    monkeypatch.setattr(report, "numeric_evidence", lambda *args: {})
+    monkeypatch.setattr(sys, "argv", ["report", "--kernel-output", "k", "--recipe-output", "a", "--output", str(output)])
+    assert report.main() == 0
+    assert destination.read_text() == catalog.build()
+    assert "huggingface/pytorch-image-models" in destination.read_text()
 
 
 def test_dual_report_keeps_modes_and_full_denominator(tmp_path):
