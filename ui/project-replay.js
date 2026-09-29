@@ -2,7 +2,26 @@
 (async () => {
   const $ = selector => document.querySelector(selector);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const fmt = value => !Number.isFinite(value) ? '—' : value === 0 ? '0' : Math.abs(value) < .001 ? value.toExponential(4) : value.toFixed(4);
+  function fmt(value) {
+    if (!Number.isFinite(value)) return '—';
+    if (value === 0) return '0';
+    if (Math.abs(value) < .001) return value.toExponential(4);
+    return value.toFixed(4);
+  }
+  function pendingText(status, running, finished) {
+    if (status === 'waiting') return 'Waiting for evaluation';
+    if (status === 'running') return running;
+    return finished;
+  }
+  function candidateText(row, side) {
+    if (Number.isFinite(valueOf(row, side))) return fmt(valueOf(row, side)) + (side === 'kernel' ? ' ms' : ' loss');
+    return row.state === 'running' ? 'Evaluating…' : 'Check failed';
+  }
+  function candidateIcon(row) {
+    if (row.state === 'running') return '◌';
+    return row.accepted ? '✓' : '×';
+  }
+  const checked = value => value ? 'Passed' : 'Failed';
   const views = ['exploration', 'dashboard', 'results', 'wandb', 'marimo', 'aria'];
   const url = new URL(location.href), repo = url.searchParams.get('project');
   let project, current, elapsed = 0, timer, lastFrame = '', selected = null;
@@ -27,7 +46,7 @@
     if (view === 'marimo') notebook();
   }
   const valueOf = (row, side) => row[side === 'architecture' ? 'val_loss' : 'step_time_ms'];
-  const phase = row => row.phase === 'finals' ? 'Finals' : row.phase === 'hyperparam' ? 'Hyperparameters' : row.phase === 'architecture' ? 'Architecture' : 'Kernel';
+  const phase = row => ({finals: 'Finals', hyperparam: 'Hyperparameters', architecture: 'Architecture'}[row.phase] || 'Kernel');
   function plot(rows, side, baseline = null, budget = null) {
     const measured = rows.filter(r => Number.isFinite(valueOf(r, side)));
     if (!measured.length && !Number.isFinite(baseline)) return '';
@@ -53,7 +72,7 @@
       const budgets = [...new Set(mode.candidates.filter(r => Number.isFinite(r.val_loss)).map(r => r.train_secs).concat(comparison ? [result.final_budget_s] : []))].sort((a,b) => b-a);
       charts = budgets.map((b,i) => {const graph = plot(mode.candidates.filter(r => r.train_secs === b), side, b === result.final_budget_s ? base : null, b);return i ? `<details class="screening-chart"><summary>${b}s screening</summary>${graph}</details>` : `<p class="caption">${b}s training · held-out validation loss</p>${graph}`;}).join('');
     } else charts = plot(mode.candidates, side, base);
-    if (!charts) charts = `<div class="empty">${mode.status === 'waiting' ? 'Waiting for evaluation' : mode.status === 'running' ? 'Evaluating candidates…' : 'No accepted ' + side + ' result'}</div>`;
+    if (!charts) charts = `<div class="empty">${pendingText(mode.status, 'Evaluating candidates…', 'No accepted ' + side + ' result')}</div>`;
     return `<article class="metric-card"><h3>${architecture ? 'Architecture' : 'Kernels'}</h3>${comparison ? `<div class="numbers"><div><small>Baseline</small><strong>${fmt(base)}</strong></div><div><small>Candidate</small><strong>${fmt(candidate)}</strong></div></div><p class="gain">${floor ? 'Loss floor reached' : gain.toFixed(3) + '% lower ' + (architecture ? 'validation loss' : 'step time')}</p>` : ''}${charts}${comparison ? `<p class="caption">${architecture ? 'Equal ' + result.final_budget_s + 's training budget' : 'Full training step · milliseconds'}</p>` : ''}${architecture && project.caveat ? `<p class="caption caveat">${floor ? 'Synthetic-task loss floor; downstream quality not established.' : 'Near-zero synthetic loss; relative reduction is sensitive to scale.'}</p>` : ''}</article>`;
   }
   function detail() {
@@ -62,7 +81,7 @@
     const row = current.modes[side].candidates.find(r => r.ordinal === Number(ordinal));
     if (!row) {$('#candidate-detail').hidden = true;return;}
     $('#candidate-title').textContent = phase(row) + ' · candidate ' + ordinal;
-    const fields = [['State', row.state], ['Generation', row.generation], ['Training budget', row.train_secs == null ? null : row.train_secs + 's'], ['Validation loss', row.val_loss == null ? null : fmt(row.val_loss)], ['Step time', row.step_time_ms == null ? null : fmt(row.step_time_ms) + ' ms'], ['Gate', row.gate_reached], ['Compile check', row.compile_ok == null ? null : row.compile_ok ? 'Passed' : 'Failed'], ['Correctness check', row.correct_ok == null ? null : row.correct_ok ? 'Passed' : 'Not passed'], ['Model', current.modes[side].model]];
+    const fields = [['State', row.state], ['Generation', row.generation], ['Training budget', row.train_secs == null ? null : row.train_secs + 's'], ['Validation loss', row.val_loss == null ? null : fmt(row.val_loss)], ['Step time', row.step_time_ms == null ? null : fmt(row.step_time_ms) + ' ms'], ['Gate', row.gate_reached], ['Compile check', row.compile_ok == null ? null : checked(row.compile_ok)], ['Correctness check', row.correct_ok == null ? null : checked(row.correct_ok)], ['Model', current.modes[side].model]];
     $('#candidate-metrics').innerHTML = fields.filter(([,v]) => v != null).map(([k,v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('');
     $('#candidate-detail').hidden = false;
   }
@@ -71,7 +90,7 @@
     $('#exploration-graph').innerHTML = ['kernel','architecture'].map(side => {
       const mode = current.modes[side], groups = new Map();
       for (const row of mode.candidates) {const key = row.phase === 'finals' ? 'Finals' : 'Generation ' + row.generation;if (!groups.has(key)) groups.set(key, []);groups.get(key).push(row);}
-      return `<section class="generation-lane"><div class="lane-heading"><h3>${side === 'architecture' ? 'Architecture' : 'Kernel'} search</h3><small>${esc(mode.model)}</small></div><div class="generation-track">${[...groups].map(([name,rows]) => `<div class="generation-column"><span>${esc(name)}</span>${rows.map(r => `<button class="candidate-node ${r.state}" data-candidate="${side}:${r.ordinal}" aria-label="${esc(phase(r))} candidate ${r.ordinal}: ${r.state}"><span>${esc(phase(r))} ${r.ordinal}<br><small>${Number.isFinite(valueOf(r,side)) ? fmt(valueOf(r,side)) + (side === 'kernel' ? ' ms' : ' loss') : r.state === 'running' ? 'Evaluating…' : 'Check failed'}</small></span><span aria-hidden="true">${r.state === 'running' ? '◌' : r.accepted ? '✓' : '×'}</span></button>`).join('')}</div>`).join('') || `<span class="quiet">${mode.status === 'waiting' ? 'Waiting for evaluation' : mode.status === 'running' ? 'Preparing evaluation…' : 'Stopped before candidate measurement'}</span>`}</div></section>`;
+      return `<section class="generation-lane"><div class="lane-heading"><h3>${side === 'architecture' ? 'Architecture' : 'Kernel'} search</h3><small>${esc(mode.model)}</small></div><div class="generation-track">${[...groups].map(([name,rows]) => `<div class="generation-column"><span>${esc(name)}</span>${rows.map(r => `<button class="candidate-node ${r.state}" data-candidate="${side}:${r.ordinal}" aria-label="${esc(phase(r))} candidate ${r.ordinal}: ${r.state}"><span>${esc(phase(r))} ${r.ordinal}<br><small>${candidateText(r, side)}</small></span><span aria-hidden="true">${candidateIcon(r)}</span></button>`).join('')}</div>`).join('') || `<span class="quiet">${pendingText(mode.status, 'Preparing evaluation…', 'Stopped before candidate measurement')}</span>`}</div></section>`;
     }).join('');
     if (focused) {const button = [...document.querySelectorAll('[data-candidate]')].find(b => b.dataset.candidate === focused);button?.focus({preventScroll:true});}
     detail();
@@ -91,7 +110,10 @@
     const frameKey = JSON.stringify({complete:current.complete,modes:current.modes});
     if (frameKey === lastFrame) return;
     lastFrame = frameKey;
-    const state = current.complete ? 'Run complete' : Object.values(current.modes).some(m => m.status === 'running') ? 'Evaluating candidates' : elapsed < 1000 ? 'Preparing run' : 'Finalizing results';
+    let state = 'Finalizing results';
+    if (current.complete) state = 'Run complete';
+    else if (Object.values(current.modes).some(m => m.status === 'running')) state = 'Evaluating candidates';
+    else if (elapsed < 1000) state = 'Preparing run';
     $('#run-state').textContent = state;
     document.querySelectorAll('[data-view="results"]').forEach(b => {b.disabled = !current.complete;});
     exploration();

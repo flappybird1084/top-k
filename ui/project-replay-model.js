@@ -21,9 +21,15 @@
       const rows = own.filter(e => e.row && elapsed >= e.start).map(e => {
         if (elapsed < e.end) return {ordinal: e.row.ordinal, generation: e.row.generation,
           phase: e.row.phase, train_secs: e.row.train_secs, state: 'running'};
-        return {...e.row, state: e.row.accepted ? 'improved' : e.row.correct_ok ? 'dropped' : 'failed'};
+        let state = 'failed';
+        if (e.row.accepted) state = 'improved';
+        else if (e.row.correct_ok) state = 'dropped';
+        return {...e.row, state};
       });
-      modes[side] = {status: !started ? 'waiting' : !done ? 'running' : source.status === 'done' ? 'complete' : 'failed',
+      let status = 'waiting';
+      if (done) status = source.status === 'done' ? 'complete' : 'failed';
+      else if (started) status = 'running';
+      modes[side] = {status,
         candidates: rows, result: done ? {...source.result} : {}, model: source.model,
         data_source: source.data_source, commit: source.commit};
     }

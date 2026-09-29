@@ -6,7 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from scripts.build_landing_benchmarks import ROOT, build
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts.build_landing_benchmarks import ROOT, payload as landing_payload
 
 DESTINATION = ROOT / 'ui/assets/project-replays.json'
 FIELDS = ('accepted', 'compile_ok', 'correct_ok', 'gate_reached', 'generation',
@@ -18,7 +19,7 @@ RESULT_FIELDS = ('measured', 'accepted', 'architecture_changed', 'baseline_val_l
 
 
 def payload():
-    planets = json.loads(build().split('=', 1)[1].rstrip(';\n'))['results']
+    planets = landing_payload()['results']
     projects = []
     for planet in planets:
         folder = planet['evidence_url'].rsplit('/', 1)[-1]

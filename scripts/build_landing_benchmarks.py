@@ -72,11 +72,12 @@ def entries(source):
                 ),
             }
         entry["evidence_url"] = "https://github.com/flappybird1084/top-k/tree/main/" + source.parent.relative_to(ROOT).as_posix()
+        entry["replay_available"] = (source.parent / "evidence.json").is_file()
         results.append(entry)
     return results
 
 
-def build(sources=None):
+def payload(sources=None):
     # ISO-date report folders sort chronologically. Keep a complete comparison
     # from one report per project; never combine incompatible protocols.
     by_repo = {}
@@ -86,11 +87,14 @@ def build(sources=None):
     for source in sorted(sources if sources is not None else RESULTS.glob("*/summary.json"), key=report_order):
         for entry in entries(source):
             by_repo[entry["name"]] = entry
-    payload = {
+    return {
         "evidence_url": "https://github.com/flappybird1084/top-k/tree/main/benchmarks/results",
         "results": list(by_repo.values()),
     }
-    safe_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
+
+
+def build(sources=None):
+    safe_json = json.dumps(payload(sources), ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
     return "// Generated from published benchmark reports under benchmarks/results/.\nwindow.TOPK_BENCHMARKS=" + safe_json + ";\n"
 
 
