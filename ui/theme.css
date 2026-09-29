@@ -3,8 +3,8 @@
 @font-face{font-family:'DM Sans';font-weight:500;font-display:swap;src:url(assets/fonts/topk-1.ttf) format('truetype')}
 @font-face{font-family:'DM Sans';font-weight:600;font-display:swap;src:url(assets/fonts/topk-2.ttf) format('truetype')}
 @font-face{font-family:'Source Serif 4';font-weight:400;font-display:swap;src:url(assets/fonts/topk-3.ttf) format('truetype')}
-:root{color-scheme:dark;--bg:#09090b;--surface:#111114;--raised:#19191f;--ink:#ededf0;--muted:#a1a1aa;--quiet:#a1a1aa;--line:#292930;--accent:#8b97ff;--accent-2:#c4caff;--green:#8dceb0;--success:#8dceb0;--success-bg:#14251f;--warning:#f2b560;--warning-bg:#2b2217;--danger:#ef9b9b;--danger-bg:#2b191f;--serif:'Source Serif 4',Georgia,serif;--sans:'DM Sans',system-ui,sans-serif;--mono:ui-monospace,'SF Mono',Menlo,monospace}
-html{background:var(--bg)}
+body.theme-app,.github-gate,.github-account{color-scheme:dark;--bg:#09090b;--surface:#111114;--raised:#19191f;--ink:#ededf0;--muted:#a1a1aa;--quiet:#a1a1aa;--line:#292930;--accent:#8b97ff;--accent-2:#c4caff;--green:#8dceb0;--success:#8dceb0;--success-bg:#14251f;--warning:#f2b560;--warning-bg:#2b2217;--danger:#ef9b9b;--danger-bg:#2b191f;--serif:'Source Serif 4',Georgia,serif;--sans:'DM Sans',system-ui,sans-serif;--mono:ui-monospace,'SF Mono',Menlo,monospace}
+html:has(body.theme-app){background:#09090b}
 body.theme-app{background:radial-gradient(ellipse at 50% 0,rgba(139,151,255,.06),transparent 550px),var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
 .theme-app ::selection{background:#8b97ff45;color:var(--ink)}
 .theme-app :is(a,button,summary,input,select,textarea):focus-visible{outline:2px solid var(--accent);outline-offset:4px}
@@ -24,7 +24,7 @@ body.theme-app{background:radial-gradient(ellipse at 50% 0,rgba(139,151,255,.06)
 .theme-app .repo-field button,.theme-app .settings-actions button[type=submit],.theme-app .primary,.theme-app #final-results,.theme-app #final-summary-link{background:var(--accent-2);color:var(--bg);border-color:var(--accent-2);border-radius:8px}
 .theme-app .repo-field button:hover,.theme-app .settings-actions button[type=submit]:hover,.theme-app .primary:hover,.theme-app #final-results:hover,.theme-app #final-summary-link:hover{background:var(--ink);color:var(--bg)}
 .theme-app :is(#settings-dialog,#data-dialog){background:var(--surface);border-color:var(--line);border-radius:18px;color:var(--ink);box-shadow:0 24px 100px #0009}
-.theme-app dialog::backdrop{background:#0009;backdrop-filter:blur(8px)}
+.theme-app :is(#data-dialog,#settings-dialog)::backdrop{background:#0009;backdrop-filter:blur(8px)}
 .theme-app #settings-dialog :is(input,select,textarea){background:var(--bg);border-color:var(--line);color:var(--ink);font-size:14px}
 .theme-app #settings-dialog label{color:var(--muted);font-size:13px}
 .theme-app :is(#data-caption,.settings-caption,#discovery-summary){color:var(--muted);font-size:14px}
@@ -103,7 +103,7 @@ html .github-account button.ghost{background:var(--surface);border-color:var(--l
 /* Status and selection cues remain distinct from neutral surfaces. */
 .theme-app .state-mark{color:var(--success)}
 .theme-app :is(.agent-block.running .state-mark,.status.running){color:var(--accent-2)}
-.theme-app :is(.status.fail,#result-error,#form-note.error){color:var(--danger)}
+.theme-app #result-error,.theme-app #form-note.error{color:var(--danger)}
 .theme-app :is(.status.kept,.final-loss,.winner-banner strong){color:var(--success)}
 .theme-app .status.fail{background:var(--warning-bg);color:var(--warning)}
 .theme-app .status.kept,.theme-app .finalist.winner{background:var(--success-bg)}
@@ -116,3 +116,17 @@ html .github-account button.ghost{background:var(--surface);border-color:var(--l
 @media(prefers-reduced-motion:reduce){.theme-app *{animation:none!important;transition:none!important}}
 .theme-app #pitch-mermaid .edgeLabel text{fill:var(--muted)}
 .theme-app #pitch-mermaid .edgeLabel rect{fill:var(--surface);opacity:1}
+
+/* Visible progress and legends use the same colors as the measured states. */
+.theme-app #agent-progress{background:var(--raised)}
+.theme-app #agent-progress>span{background:var(--accent)}
+.theme-app .spinner{border-top-color:var(--accent)}
+.theme-app .agent-block.running .state-mark{border-top-color:var(--accent);border-right-color:var(--accent)}
+.theme-app .legend-working{background:var(--accent)}
+.theme-app .legend-kept{background:var(--success)}
+.theme-app .legend-dropped{background:var(--danger)}
+.theme-app .divider{background:var(--line)}
+.theme-app .flow-color-key span::before{background:var(--accent)}
+.theme-app .flow-color-key .key-keep::before{background:var(--success)}
+.theme-app .flow-color-key .key-retry::before{background:var(--warning)}
+.theme-app.walk .agent-block[aria-pressed=true]{outline:2px solid var(--accent)}
