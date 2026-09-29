@@ -162,7 +162,7 @@
  }
 
  document.addEventListener('DOMContentLoaded',()=>{
-  const style=document.createElement('link');style.rel='stylesheet';style.href='/github-auth.css?v=7';document.head.append(style);
+  const style=document.createElement('link');style.rel='stylesheet';style.href='/github-auth.css?v=theme-1';document.head.append(style);
   gate=document.createElement('section');gate.className='github-gate';gate.setAttribute('aria-labelledby','github-gate-title');
   gate.classList.toggle('landing-gate',isLanding);
   // The close button is only offered on the landing page, where the sign-in
