@@ -20,7 +20,9 @@ SHORT_NAMES = {
 
 
 def accepted(result):
-    return bool(result and result.get("measured") is True and result.get("accepted") == 1)
+    count = (result or {}).get("accepted")
+    return bool(result and result.get("measured") is True
+                and isinstance(count, int) and count > 0)
 
 def lower(baseline, candidate):
     return (isinstance(baseline, (int, float)) and isinstance(candidate, (int, float))
@@ -30,6 +32,8 @@ def lower(baseline, candidate):
 
 def entries(source):
     summary = json.loads(source.read_text(encoding="utf-8"))
+    if summary.get("schema") != "top-k-dual-molab-benchmark-v1":
+        return []
     results = []
     for row in summary["results"]:
         kernel = row["kernel"]

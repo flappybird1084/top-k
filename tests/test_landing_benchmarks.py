@@ -20,7 +20,7 @@ def test_new_reports_add_projects_and_keep_protocols_separate(tmp_path, monkeypa
             added = copy.deepcopy(rows[0])
             added["repo"] = "example/new-project"
             rows.append(added)
-        path.write_text(json.dumps({"results": rows}))
+        path.write_text(json.dumps({"schema": "top-k-dual-molab-benchmark-v1", "results": rows}))
         paths.append(path)
     payload = json.loads(catalog.build(paths).split("=", 1)[1].rstrip(";\n"))
     assert len(payload["results"]) == 2
@@ -36,6 +36,14 @@ def test_nonfinite_or_nonimproving_metrics_never_become_planets():
     assert not lower(1, 2)
     assert not lower(-1, -2)
     assert not accepted({"measured": "false", "accepted": True})
+    assert accepted({"measured": True, "accepted": 3})
+    assert not accepted({"measured": True, "accepted": "3"})
+
+
+def test_single_mode_summary_does_not_break_catalog(tmp_path):
+    report = tmp_path / "summary.json"
+    report.write_text(json.dumps({"schema": "single-mode", "results": [{"repo": "x/y"}]}))
+    assert entries(report) == []
 
 
 def test_landing_benchmark_data_matches_published_summary():

@@ -655,7 +655,7 @@
       const cx = W / 2, cy = H / 2, rx = Math.max(90, W / 2 - 88), ry = Math.max(1, H / 2 - 60);
       ctx.lineWidth = 1;
       for (const scale of [.65, 1]) {
-        ctx.strokeStyle = 'rgba(139,151,255,.18)';
+        ctx.strokeStyle = `rgba(${C.accent},.18)`;
         ctx.beginPath(); ctx.ellipse(cx, cy, rx * scale, ry * scale, 0, 0, Math.PI * 2); ctx.stroke();
       }
       nodes.forEach((n, i) => {
@@ -664,7 +664,7 @@
         n.el.style.transform = `translate(${x - n.ax}px,${y - n.ay}px)`;
         n.el.style.opacity = '1';
         const k = (t * .12 + i / nodes.length) % 1;
-        ctx.fillStyle = 'rgba(196,202,255,.7)';
+        ctx.fillStyle = `rgba(${C.accent2},.7)`;
         ctx.beginPath(); ctx.arc(cx + Math.cos(k * Math.PI * 2) * rx * .65, cy + Math.sin(k * Math.PI * 2) * ry * .65, 2, 0, Math.PI * 2); ctx.fill();
       });
       hub.style.left = cx + 'px'; hub.style.top = cy + 'px';
