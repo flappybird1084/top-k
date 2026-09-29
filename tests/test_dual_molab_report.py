@@ -7,6 +7,9 @@ from scripts.report_dual_molab_benchmark import combined, numeric_evidence
 def test_public_report_export_refreshes_planet_catalog(tmp_path, monkeypatch):
     from scripts import report_dual_molab_benchmark as report
     from scripts import build_landing_benchmarks as catalog
+    from scripts import build_project_replays as replays
+    replay_calls = []
+    monkeypatch.setattr(replays, "write", lambda **kwargs: replay_calls.append(kwargs))
     source = catalog.ROOT / "benchmarks/results/top10-2026-09-25/summary.json"
     sample = json.loads(source.read_text())
     output = tmp_path / "benchmarks/results/2026-09-28-test"
@@ -19,6 +22,7 @@ def test_public_report_export_refreshes_planet_catalog(tmp_path, monkeypatch):
     monkeypatch.setattr(report, "numeric_evidence", lambda *args: {})
     monkeypatch.setattr(sys, "argv", ["report", "--kernel-output", "k", "--recipe-output", "a", "--output", str(output)])
     assert report.main() == 0
+    assert replay_calls == [{"notebooks": True}]
     assert destination.read_text() == catalog.build()
     assert "huggingface/pytorch-image-models" in destination.read_text()
 

@@ -129,6 +129,8 @@ def main() -> int:
     if args.output.resolve().parent == public_root.resolve():
         from scripts.build_landing_benchmarks import build, DESTINATION
         DESTINATION.write_text(build(), encoding="utf-8", newline="\n")
+        from scripts.build_project_replays import write as write_replays
+        write_replays(notebooks=True)
     print(f"Wrote {summary_path}: kernel {report['kernel']}; architecture {report['architecture']}")
     return 0
 
