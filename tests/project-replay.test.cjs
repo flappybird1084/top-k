@@ -64,7 +64,7 @@ test('chart series include every measured point once and separate training budge
 });
 
 test('graph completion uses the rendered snapshot boundary',()=>{
- const project=projects[0];
+ const project=projects.find(p=>p.name==='timm');
  assert.ok(Object.values(replay.runPair(project,replay.duration-1)).every(s=>!s.replay_complete));
  assert.ok(Object.values(replay.runPair(project,replay.duration)).every(s=>s.replay_complete&&s.final_result));
 });
