@@ -82,7 +82,13 @@ def relay_complete(request, kind, label):
         raise TimeoutError(f'{label} OAuth dispatcher did not respond within 15 minutes.')
     finally:
         req.unlink(missing_ok=True)
-        res.unlink(missing_ok=True)
+        try:
+            res.unlink(missing_ok=True)
+        except PermissionError:
+            # Public runs: the dispatcher (root) wrote this file into a sticky
+            # relay directory, so the runner uid may read it but not delete it.
+            # The dispatcher's poll sweeps it once it goes stale.
+            pass
 
 
 def check_login():

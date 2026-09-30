@@ -262,6 +262,9 @@ def create_app():
         if not (notebook.get('url') and notebook.get('token')):
             return jsonify(error='Connect your own marimo notebook first: start a notebook, '
                                  'choose "Pair with agent", and paste that prompt in setup.'), 428
+        if (os.getenv('KEVO_UI_LLM') or '').partition(':')[0] == 'wandb' and not \
+                (record.get('wandb') or {}).get('api_key'):
+            return jsonify(error='Connect your W&B API key in setup before starting a run.'), 428
         try:
             validate_notebook_connection(notebook)
         except ValueError as e:

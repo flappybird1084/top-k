@@ -206,3 +206,19 @@ def test_an_allowed_request_is_served_and_counted(tmp_path, monkeypatch):
         _time.sleep(0.02)
     assert len(calls) == 1
     assert p.requests == 1 and p.tokens == 2
+
+
+def test_a_public_wandb_run_is_served_with_its_own_key(tmp_path, monkeypatch):
+    # W&B requests are answered with the run owner's key, so the closed
+    # operator-relay default must not block them — only borrowed logins.
+    monkeypatch.delenv('KEVO_ALLOW_OPERATOR_LLM_RELAY', raising=False)
+    import config
+    default = config.load('DEV')['wandb_inference_model']
+    p = policy(tmp_path, visitor='github:7', judge_expires_at=1, llm='wandb', profile='DEV')
+    assert p.check_llm(ask(kind='wandb_inference', model=default)) is None
+    assert 'not available' in p.check_llm(ask(
+        kind='wandb_inference', model='Qwen/Qwen3-Coder-480B-A35B-Instruct'))
+    assert 'cannot borrow' in p.check_llm(ask(kind='codex_oauth'))
+    assert 'cannot borrow' in p.check_llm(ask(kind='claude_oauth'))
+    assert 'does not belong' in p.check_llm(dict(
+        ask(kind='wandb_inference', model=default), relay_token='guessed'))

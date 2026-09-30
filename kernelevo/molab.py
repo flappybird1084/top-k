@@ -295,6 +295,12 @@ class MolabTarget:
                  poll_interval: float = 5.0, artifacts_dir: str | None = None) -> int:
         """Run the job on the remote notebook; streams its log through
         write_line(line). Returns the remote search.py exit code."""
+        # The public queue stamps both the isolation deadline and a unique uid.
+        # If another path dispatches a visitor job without those fields, refuse
+        # it before connecting to or uploading code onto the visitor's notebook.
+        if job.get('visitor') and (not job.get('judge_expires_at') or
+                                   int(job.get('judge_uid') or 0) < 200000):
+            raise RuntimeError('Public run is missing its sandbox allocation')
         url, token = parse_connection(self.details)
         client = MolabClient(url, token)
         write_line(f"[molab] connecting to {url}")
@@ -483,7 +489,12 @@ class MolabTarget:
         from kernelevo.wandb_relay import Relay as WandbRelay
         oauth_relay = Relay()
         claude_relay = ClaudeRelay()
-        wandb_relay = WandbRelay()
+        # An untrusted (public) run is billed to its owner: its relay gets only
+        # the owner's W&B credentials from the launch env, never the server's.
+        wandb_relay = WandbRelay({k: env_updates[k] for k in
+                                  ("WANDB_API_KEY", "WANDB_ENTITY", "WANDB_PROJECT")
+                                  if env_updates.get(k)}
+                                 if policy.untrusted else None)
         served_searches: dict = {}
         offset, misses = 0, 0
         last_archive_sync = 0.0

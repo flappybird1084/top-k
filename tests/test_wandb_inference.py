@@ -96,3 +96,48 @@ def test_molab_wandb_uses_file_relay_without_remote_key(monkeypatch):
     assert answer.text == "working code"
     assert requests[0][1] == "wandb_inference"
     assert requests[0][0]["max_tokens"] == 1024
+
+
+def test_default_flash_model_also_runs_in_chat_mode():
+    # With thinking on, Flash spent the whole 8,192-token budget on reasoning
+    # and returned an empty adapter on every attempt.
+    from kernelevo.wandb_relay import chat_options
+    assert config.load("DEV")["wandb_inference_model"] == "deepseek-ai/DeepSeek-V4-Flash-0731"
+    assert chat_options("deepseek-ai/DeepSeek-V4-Flash-0731") == {
+        "extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
+
+
+def test_owner_scoped_relay_never_uses_the_dispatcher_key(monkeypatch):
+    from kernelevo.wandb_relay import Relay, complete_local
+
+    seen = []
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            seen.append(kwargs)
+            self.chat = types.SimpleNamespace(completions=types.SimpleNamespace(
+                create=lambda **kw: types.SimpleNamespace(
+                    choices=[types.SimpleNamespace(
+                        message=types.SimpleNamespace(content="ok"), finish_reason="stop")],
+                    usage=types.SimpleNamespace(prompt_tokens=1, completion_tokens=1))))
+
+    monkeypatch.setitem(sys.modules, "openai", types.SimpleNamespace(OpenAI=FakeOpenAI))
+    monkeypatch.setenv("WANDB_INFERENCE_API_KEY", "operator-key")
+    monkeypatch.setenv("WANDB_INFERENCE_PROJECT", "operator/project")
+    request = {"model": "m", "messages": [{"role": "user", "content": "x"}]}
+
+    relay = Relay({"WANDB_API_KEY": "owner-key", "WANDB_ENTITY": "owner",
+                   "WANDB_PROJECT": "runs"})
+    assert relay.worker(request)["text"] == "ok"
+    assert seen[-1]["api_key"] == "owner-key"
+    assert seen[-1]["default_headers"] == {"OpenAI-Project": "owner/runs"}
+
+    try:
+        complete_local(request, credentials={})
+    except RuntimeError as e:
+        assert "credential missing" in str(e)
+    else:
+        raise AssertionError("an owner without a key must not fall back to the operator's")
+
+    assert Relay().worker(request)["text"] == "ok"
+    assert seen[-1]["api_key"] == "operator-key"

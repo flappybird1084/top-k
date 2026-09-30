@@ -190,6 +190,8 @@ def validate_provider(job):
                 provider_ready(provider)
             keys={'anthropic':('ANTHROPIC_API_KEY',),'openai':('OPENAI_API_KEY',),'wandb':('WANDB_INFERENCE_API_KEY','WANDB_API_KEY')}.get(provider,())
             if keys and not any(env.get(key) for key in keys):
+                if job.get('visitor') and provider == 'wandb':
+                    raise ValueError('Connect your W&B API key in setup, then retry. Your links are saved.')
                 raise ValueError('Training is not configured yet. Set '+ ' or '.join(keys)+' on the server, then retry. Your links are saved.')
 
 def discover_repository(jid):

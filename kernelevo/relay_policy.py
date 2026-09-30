@@ -13,7 +13,10 @@ The boundary this module enforces:
 * A run on a notebook the operator does not own ("untrusted") gets **no**
   operator credentials at all unless the operator explicitly opts in by setting
   `KEVO_ALLOW_OPERATOR_LLM_RELAY=1` / `KEVO_ALLOW_OPERATOR_SEARCH_RELAY=1`.
-  Default is closed: those runs must bring their own API key.
+  Default is closed: those runs must bring their own API key. W&B Inference
+  is the exception by construction: the dispatcher answers an untrusted run's
+  W&B requests with that run owner's own key, so nothing of the operator's is
+  lent.
 * Every relay request — trusted or not — must carry the secret stamped into
   the launch environment of the run currently being dispatched. A request
   without it is not attributable to the active job and is refused.
@@ -49,6 +52,7 @@ WANDB_RELAY_MODELS = frozenset({
     'Qwen/Qwen3-235B-A22B-Instruct-2507',
     'Qwen/Qwen3-Coder-480B-A35B-Instruct',
     'deepseek-ai/DeepSeek-V4-Pro-0813',
+    'deepseek-ai/DeepSeek-V4-Flash-0731',
 })
 
 TRUSTED_LIMITS = dict(max_requests=2000, max_tokens=50_000_000, max_searches=500,
@@ -85,6 +89,21 @@ def allowed_models():
 # the ledger could not be persisted, so usage is unknown and the relay must fail
 # CLOSED rather than silently stop enforcing the per-owner budget.
 LEDGER_UNAVAILABLE = 'ledger-unavailable'
+
+
+def selected_wandb_model(job):
+    """The one W&B model a job may name: `wandb:<model>` explicitly, or the job
+    profile's default model when the job just says `wandb` (the public
+    deployment's KEVO_UI_LLM). Empty for any other provider."""
+    selected = job.get('llm') or ''
+    if not isinstance(selected, str):
+        return ''
+    if selected.startswith('wandb:'):
+        return selected.removeprefix('wandb:')
+    if selected == 'wandb':
+        import config
+        return config.load(job.get('profile')).get('wandb_inference_model') or ''
+    return ''
 
 
 class OwnerLedger:
@@ -169,10 +188,7 @@ class RelayPolicy:
         base = UNTRUSTED_LIMITS if self.untrusted else TRUSTED_LIMITS
         self.limits = {k: _int_env('KEVO_RELAY_' + k.upper(), v) for k, v in base.items()}
         self.models = allowed_models()
-        selected_llm = job.get('llm') or ''
-        self.wandb_model = (selected_llm.removeprefix('wandb:')
-                            if isinstance(selected_llm, str) and selected_llm.startswith('wandb:')
-                            else '')
+        self.wandb_model = selected_wandb_model(job)
         self.ledger = ledger if ledger is not None else OwnerLedger()
         self.requests = self.tokens = self.searches = 0
         self.active = True
@@ -211,7 +227,12 @@ class RelayPolicy:
         """None if the dispatcher may answer this completion request."""
         if self.stopped:
             return self.stopped
-        reason = self.operator_llm_allowed() or self._attributable(request)
+        # A W&B request is answered with the job owner's own key (the dispatcher
+        # is given only that key for an untrusted run), so it borrows nothing of
+        # the operator's and needs no operator opt-in. Everything else does.
+        operator = (None if request.get('kind') == 'wandb_inference'
+                    else self.operator_llm_allowed())
+        reason = operator or self._attributable(request)
         if reason:
             return reason
         model = request.get('model') or ''

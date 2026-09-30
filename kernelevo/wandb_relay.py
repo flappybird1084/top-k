@@ -1,5 +1,6 @@
 """Serve W&B Inference on EC2 for a Molab run without sending its key to GPU code."""
 
+import functools
 import os
 import re
 
@@ -7,16 +8,20 @@ from kernelevo.codex_oauth import Relay as FileRelay
 
 
 DEEPSEEK_V4_PRO_MODEL = "deepseek-ai/DeepSeek-V4-Pro-0813"
+DEEPSEEK_V4_FLASH_MODEL = "deepseek-ai/DeepSeek-V4-Flash-0731"
+CHAT_MODE_MODELS = frozenset({DEEPSEEK_V4_PRO_MODEL, DEEPSEEK_V4_FLASH_MODEL})
 
 
 def chat_options(model: str) -> dict:
     """Keep DeepSeek's private reasoning from exhausting bounded code requests.
 
-    W&B accepts vLLM chat-template options for this model. With the default
+    W&B accepts vLLM chat-template options for these models. With the default
     thinking mode, real adapter prompts spent 8,192 and 16,384 output tokens
     without returning any answer; chat mode completed a coding probe in 7,047.
+    Flash behaves the same: the nanoGPT adapter prompt used all 8,192 tokens on
+    reasoning with thinking on, and returned a full adapter in 1,698 with it off.
     """
-    if model == DEEPSEEK_V4_PRO_MODEL:
+    if model in CHAT_MODE_MODELS:
         return {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
     return {}
 
@@ -36,16 +41,20 @@ def is_credit_error(exc: Exception) -> bool:
         r"exceeded your current quota|payment required", message, re.IGNORECASE))
 
 
-def complete_local(request):
+def complete_local(request, credentials=None):
+    """Answer one relayed completion. `credentials` (WANDB_* names) replaces the
+    dispatcher's own environment entirely: a public run is billed to its owner's
+    key and never falls back to anything the operator configured."""
     from openai import OpenAI
 
-    key = os.environ.get("WANDB_INFERENCE_API_KEY") or os.environ.get("WANDB_API_KEY")
+    env = os.environ if credentials is None else credentials
+    key = env.get("WANDB_INFERENCE_API_KEY") or env.get("WANDB_API_KEY")
     if not key:
         raise RuntimeError("W&B Inference credential missing on the dispatcher")
     base_url = os.environ.get("WANDB_INFERENCE_BASE_URL") or "https://api.inference.wandb.ai/v1"
-    project = os.environ.get("WANDB_INFERENCE_PROJECT")
-    if not project and os.environ.get("WANDB_ENTITY") and os.environ.get("WANDB_PROJECT"):
-        project = f"{os.environ['WANDB_ENTITY']}/{os.environ['WANDB_PROJECT']}"
+    project = env.get("WANDB_INFERENCE_PROJECT")
+    if not project and env.get("WANDB_ENTITY") and env.get("WANDB_PROJECT"):
+        project = f"{env['WANDB_ENTITY']}/{env['WANDB_PROJECT']}"
     headers = {"OpenAI-Project": project} if project else None
     client = OpenAI(base_url=base_url, api_key=key, default_headers=headers)
     params = dict(model=request["model"], messages=request["messages"],
@@ -70,3 +79,8 @@ def complete_local(request):
 class Relay(FileRelay):
     label = "W&B Inference"
     worker = staticmethod(complete_local)
+
+    def __init__(self, credentials=None):
+        super().__init__()
+        if credentials is not None:
+            self.worker = functools.partial(complete_local, credentials=dict(credentials))

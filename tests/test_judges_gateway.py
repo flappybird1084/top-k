@@ -154,6 +154,24 @@ def test_run_needs_the_users_own_notebook(gateway):
     assert r.status_code == 428 and 'Pair with agent' in r.json['error']
 
 
+def test_wandb_run_requires_owners_key_before_it_is_created(gateway, monkeypatch):
+    monkeypatch.setenv('KEVO_UI_LLM', 'wandb:deepseek-ai/DeepSeek-V4-Pro-0813')
+    client = gateway.test_client()
+    token = sign_in(gateway)
+    assert client.post('/api/integrations', headers=headers(token), json={
+        'pair_prompt': 'connect to https://notebook.molab.run/abc '
+                       '--token secret-token-value'}).status_code == 200
+    r = client.post('/api/runs', headers=headers(token, **{'Idempotency-Key': 'own-key'}),
+                    json={'repo': 'https://github.com/a/b'})
+    assert r.status_code == 428
+    assert 'W&B API key' in r.json['error']
+    assert client.post('/api/integrations', headers=headers(token), json={
+        'wandb_api_key': 'k' * 40}).status_code == 200
+    r = client.post('/api/runs', headers=headers(token, **{'Idempotency-Key': 'own-key'}),
+                    json={'repo': 'https://github.com/a/b'})
+    assert r.status_code == 202
+
+
 def test_runs_are_scoped_to_the_github_user_id(gateway, tmp_path):
     import web
     jid = 'b' * 32
@@ -260,6 +278,17 @@ def test_a_public_run_never_borrows_the_servers_wandb_account(tmp_path, monkeypa
     assert env['WANDB_API_KEY'] == 'visitor-key-value'
     assert env['WANDB_ENTITY'] == 'visitor'
     assert 'operator-key-value' not in json.dumps(env)
+
+
+def test_visitor_without_queue_stamp_gets_no_operator_credentials(tmp_path, monkeypatch):
+    import web
+    from kernelevo.molab import MolabTarget
+    monkeypatch.setenv('JUDGES_INTEGRATION_DIR', str(tmp_path / 'integrations'))
+    monkeypatch.setenv('WANDB_API_KEY', 'operator-key-value')
+    job = {'id': 'd' * 32, 'visitor': 'github:7', 'wandb': {}}
+    assert 'WANDB_API_KEY' not in web._job_env(job)
+    with pytest.raises(RuntimeError, match='missing its sandbox allocation'):
+        MolabTarget({}).dispatch(job, str(tmp_path), {}, lambda line: None)
 
 
 def test_the_observer_runs_with_the_owners_credentials_only(tmp_path, monkeypatch):
@@ -423,3 +452,18 @@ def test_the_relay_directory_denies_cross_deletion():
     from kernelevo import judges_sandbox
     source = inspect.getsource(judges_sandbox.user_command)
     assert '0o1733' in source, 'the relay directory must be sticky (01733)'
+
+
+def test_the_sandbox_routes_wandb_completions_through_the_relay(tmp_path, monkeypatch):
+    # No W&B key enters the sandbox; without this flag the run built a direct
+    # W&B client with no key and crashed before doing any work.
+    from kernelevo import judges_sandbox
+    monkeypatch.setattr(judges_sandbox.shutil, 'which', lambda name: '/usr/bin/' + name)
+    monkeypatch.setattr(judges_sandbox.os, 'chown', lambda *a, **k: None)
+    work = tmp_path / 'work'
+    work.mkdir()
+    argv = judges_sandbox.user_command(str(work), ['python', 'search.py'], 200001)
+    env = dict(a.split('=', 1) for a in argv[2:argv.index('/usr/bin/setpriv')])
+    assert env['KEVO_WANDB_INFERENCE_RELAY'] == '1'
+    assert env['KEVO_RELAY_DIR'] == str(work) + '_relay'
+    assert not any(k.startswith('WANDB_API') for k in env)
