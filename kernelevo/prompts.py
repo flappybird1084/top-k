@@ -180,6 +180,12 @@ Hard requirements:
   step should take at least ~20-50ms on a modern GPU, or the harness's timing
   gates have poor signal-to-noise and utilization looks idle. Unless the user's
   comments say otherwise, prefer the repo's real config scale over toy sizes.
+  For diffusion models and other high-resolution image workloads, start with
+  the repository's small training resolution and batch size 1-4, then scale
+  only after a full forward/backward step fits. Do not cache a full image
+  dataset or its latents on the GPU. If precomputing VAE latents, use
+  no_grad(), move each small batch back to CPU, and cap the CPU cache to the
+  bounded training subset. A smaller real-data run is better than an OOM.
 - The repo is already on sys.path (the harness prepends that) — import its
   modules directly; do not copy model code unless imports are impossible.
   build_model() must instantiate at least one module class defined in this
