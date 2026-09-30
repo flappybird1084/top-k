@@ -82,3 +82,25 @@ main{padding-top:28px}.run-identity{margin-bottom:18px}.run-identity:not(:has(.s
 @media(max-width:700px){.generation-buttons{width:100%}.cand-head{white-space:normal}}
 
 #wandb-native{margin:18px 0 0;padding-top:16px;border-top:1px solid var(--line)}.wandb-native-heading{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--quiet);overflow-wrap:anywhere}.wandb-native-heading strong{font-weight:500;color:var(--ink);font-variant-numeric:tabular-nums;text-align:right}.wandb-native-heading+svg{width:100%;height:auto;display:block;margin-top:12px}.wandb-native-axis{display:flex;justify-content:space-between;color:var(--quiet);font:10px ui-monospace,monospace;margin-top:4px}
+
+@media(max-width:700px){
+  main{padding:20px 18px 48px}
+  .run-identity:has(#search-page-link){flex-wrap:wrap;gap:10px}
+  .section-heading{flex-wrap:wrap;align-items:flex-start;gap:8px}
+  .performance-stat-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));overflow:visible;margin:18px 0}
+  .performance-stat-row .metrics>div,.performance-stat-row .metrics:first-child>div:first-child{min-width:0;padding:12px 8px;border-left:0;border-top:1px solid var(--line)}
+  .performance-stat-row .metrics>div>span{font-size:11px}
+  .performance-stat-row strong{font-size:25px;white-space:normal;overflow-wrap:anywhere}
+  .architecture-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0;margin:18px 0 24px}
+  .architecture-metrics>div,.architecture-metrics>div:first-child{min-width:0;padding:10px 8px;border:0;border-top:1px solid var(--line)}
+  .architecture-metrics strong{font-size:26px;overflow-wrap:anywhere}
+  .paired-grid{gap:12px}
+  .paired-grid>div{min-width:0}
+  .pair-bar{max-width:100%;overflow-wrap:anywhere}
+  #architecture-plot,.performance-plot{overflow-x:auto;overscroll-behavior-inline:contain;-webkit-overflow-scrolling:touch}
+  #architecture-chart,#performance-chart{min-width:700px}
+  #architecture-plot .chart-key,.performance-plot .chart-key{min-width:700px}
+  .recorded-demo .integration iframe{height:340px;min-height:340px}
+  #recorded-terminal{padding:14px;font-size:11px}
+  #aria-panel{padding:16px}
+}

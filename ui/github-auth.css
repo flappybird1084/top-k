@@ -46,3 +46,12 @@ html .github-login .github-login-button:disabled{background:#000;color:#fff;opac
 html .github-login .github-login-button:focus-visible{outline-color:#fff}
 .github-login-button img{display:block;filter:invert(1)}
 .github-login .github-gate-status:empty{min-height:0;margin:0}
+@media(max-width:600px){
+  .github-gate{overflow-y:auto;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:16px}
+  .github-gate-card{margin:auto 0;max-width:100%;padding:28px 22px}
+  .github-account{flex:none;min-height:44px;padding:7px 16px;gap:8px;justify-content:flex-end}
+  .github-account button{padding:7px 10px;font-size:11px;min-height:30px}
+  .github-account span:empty{display:none}
+  .topk-setup .setup-card{padding:24px 20px}
+  .setup-form input,.setup-form textarea{font-size:16px}
+}

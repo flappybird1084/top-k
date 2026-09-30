@@ -416,3 +416,30 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
 .rnode.sel i{box-shadow:0 0 0 5px #8b97ff22,0 0 30px #8b97ff80}
 .rnode span{background:var(--bg);border-radius:5px;padding:2px 5px}.hub{width:104px;height:104px;font-size:17px}
 @media(max-width:700px){.web-stage{height:430px;margin:0 8px}.run-card{margin:18px 16px 0}.run-card .body{display:block}.rnode.run{font-size:12px}.hub{width:76px;height:76px;font-size:14px}.hero-console pre{font-size:12px;padding:16px}.hero{padding-left:18px;padding-right:18px}.results{gap:18px}}
+
+@media(max-width:600px){
+  .hero{grid-template-columns:minmax(0,1fr);min-height:100svh;padding:100px 16px 72px}
+  .hero-inner{min-width:0;max-width:100%}
+  .hero h1{font-size:clamp(35px,10vw,48px);line-height:1.08;margin-bottom:28px}
+  .hero-console{max-width:100%;min-width:0}
+  .hero-console pre{max-width:100%;overflow-x:auto;font-size:11px;line-height:1.7;-webkit-overflow-scrolling:touch}
+  .console-bar{font-size:11px}
+  .results{display:grid;grid-template-columns:minmax(0,1fr) 1px minmax(0,1fr);gap:12px;max-width:100%}
+  .results div{min-width:0}
+  .results span{font-size:10px;line-height:1.35}
+  .results i{height:36px}
+  .sec{padding-top:72px}
+  .sec-head{margin-bottom:24px}
+  .sub{font-size:15px}
+  #loop .sub,#kernels .sub,#models .sub{font-size:15px}
+  .panel{padding:16px}
+  .tl{padding:14px 12px 10px}
+  .tl-meta{font-size:10px;gap:10px}
+  .stages{gap:4px}
+  .stages b{font-size:27px}
+  .stages .l{font-size:8px;letter-spacing:0;overflow-wrap:anywhere}
+  .tabbar{padding:0 6px}
+  .tabbar button{flex:none;min-height:44px}
+  .pane{padding:14px 12px 18px}
+  .field input,.field select{font-size:16px}
+}

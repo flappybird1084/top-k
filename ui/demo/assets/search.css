@@ -18,3 +18,25 @@ img[src="agent-gpt.png"]{transform:scaleX(1.18)}
 .agent-avatar img[src="agent-deepseek.png"],.agent-avatar img[src="agent-kimi.png"]{transform:scale(1.4)}
 .final-result{border-color:var(--line);background:var(--surface);box-shadow:0 0 0 3px #417d6409}.final-result .agent-id{font-size:11px;font-weight:600;color:var(--muted)}.final-result .agent-label{font-size:12px;color:var(--muted)}.final-note{display:block;font-size:8px;color:var(--muted);margin-top:5px}.final-result.running{background:var(--surface);border-color:var(--line)}
 #final-results{display:inline-block;background:var(--surface);color:var(--ink);padding:8px 14px;border-radius:8px;margin-left:10px;text-decoration:none;font-size:12px}#final-results:hover{background:var(--surface)}
+
+@media(max-width:700px){
+  main{min-height:0}
+  header{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:start;padding-right:26px}
+  header .source-links{min-width:0}
+  header .source-links p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+  header nav{min-width:0;align-items:flex-end;gap:4px;padding:0}
+  #connection{white-space:normal;text-align:right}
+  #close-search{width:36px;height:36px;top:8px;right:8px}
+  .canvas{min-height:0;overscroll-behavior:contain;touch-action:pan-x pan-y}
+  .orch{width:130px;height:160px;padding:10px 8px}
+  .orch .sprite{width:54px;height:54px}
+  .orch h2{font-size:11px;margin:5px 0}
+  .orch p{font-size:9px;-webkit-line-clamp:2;margin-top:5px}
+  footer{display:grid;grid-template-columns:1fr auto;gap:6px;padding-top:10px}
+  footer>button:first-child{grid-column:1;grid-row:1;text-align:left}
+  footer>button:last-child{grid-column:2;grid-row:1;text-align:right}
+  footer>div{grid-column:1/-1;grid-row:2;justify-content:space-between;gap:8px;flex-wrap:wrap}
+  footer button,footer a{min-height:36px;display:inline-flex;align-items:center;font-size:12px}
+  #final-results{margin-left:0}
+  #detail{bottom:max(12px,env(safe-area-inset-bottom));width:calc(100% - 24px);max-height:55dvh;overflow:auto;padding:16px 18px}
+}

@@ -130,3 +130,15 @@ html .github-account button.ghost{background:var(--surface);border-color:var(--l
 .theme-app .flow-color-key .key-keep::before{background:var(--success)}
 .theme-app .flow-color-key .key-retry::before{background:var(--warning)}
 .theme-app.walk .agent-block[aria-pressed=true]{outline:2px solid var(--accent)}
+
+@media(max-width:700px){
+  .theme-app .app-nav{width:100%;padding:14px 18px;gap:10px}
+  .theme-app .app-nav .app-brand{font-size:22px}
+  .theme-app .app-nav>div{gap:14px;font-size:12px}
+  .theme-start main{min-height:0;padding:36px 18px 60px}
+  .theme-search{display:flex!important;flex-direction:column;height:100dvh;min-height:0;overflow:hidden}
+  .theme-search .app-nav{flex:none}
+  .theme-search main{flex:1;min-height:0;height:auto;width:calc(100% - 20px);margin:8px auto max(8px,env(safe-area-inset-bottom));padding:16px 12px 12px;border-radius:16px}
+  .theme-search .canvas{flex:1;min-height:0}
+  .theme-search footer button{color:var(--accent-2)}
+}
