@@ -65,6 +65,13 @@ def _holdout_loss(adapter, model, n_batches, job=None, device="cpu"):
     # legitimately assert that inside loss_fn — no_grad here tripped them.
     was_training = model.training
     model.eval()
+    # Generated stochastic losses (for example diffusion noise prediction)
+    # must see the same *sequence* of held-out targets for every candidate.
+    # Seed once here, not once per batch: batches still receive distinct noise.
+    if job is not None and "seed" in job:
+        torch.manual_seed(int(job["seed"]) + 100003)
+        if device.startswith("cuda"):
+            torch.cuda.manual_seed_all(int(job["seed"]) + 100003)
     losses = []
     for i, batch in enumerate(adapter.get_dataloader("val")):
         if i >= n_batches:
