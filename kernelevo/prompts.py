@@ -175,6 +175,11 @@ Hard requirements:
   float in [0, 1] BEFORE applying mean/std values defined in [0, 1].
   A plain `.float()` does not scale pixels. Check the actual tensor range at
   the model input; do not divide twice if a transform already scales it.
+  For stochastic objectives such as diffusion, do not reset the same RNG seed
+  inside loss_fn on every call. That makes every training and validation batch
+  share an identical noise target and can produce a meaningless near-zero loss.
+  Keep comparisons reproducible while giving distinct samples/batches distinct
+  noise (for example, derive a stable seed from batch content).
   Only read data from paths you have VERIFIED exist on THIS machine
   (os.path.isdir) — never assume cluster mount points from the repo's docs
   or configs are present here. For normal runs, synthetic data is a LAST

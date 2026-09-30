@@ -39,6 +39,20 @@ def recipe_adapter_violation(source: str) -> str | None:
         tree = ast.parse(source)
     except SyntaxError:
         return None  # The ingest check reports syntax errors with line numbers.
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "loss_fn":
+            calls = [call for call in ast.walk(node) if isinstance(call, ast.Call)]
+            names = {call.func.id if isinstance(call.func, ast.Name) else
+                     call.func.attr if isinstance(call.func, ast.Attribute) else ""
+                     for call in calls}
+            if names.intersection({"randn", "randn_like", "randint", "normal"}) and \
+                    names.intersection({"manual_seed", "seed", "_set_seed",
+                                        "set_seed", "seed_everything"}):
+                return ("Do not reset a fixed RNG seed inside loss_fn while sampling "
+                        "noise/timesteps: identical noise across training and held-out "
+                        "batches creates a shortcut. Use a reproducible generator "
+                        "initialized once per worker, or derive distinct seeds from "
+                        "each batch's content.")
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and (
                 node.module in ("kernelevo.ops", "kernelevo.patch") or

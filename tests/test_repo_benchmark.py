@@ -311,6 +311,24 @@ def test_recipe_adapter_prompt_keeps_native_model_as_baseline():
     assert "A plain `.float()` does not scale pixels" in recipe
 
 
+def test_recipe_adapter_rejects_repeated_diffusion_noise_seed():
+    from kernelevo.adapter_writer import recipe_adapter_violation
+
+    bad = """\
+def loss_fn(model, batch):
+    _set_seed(SEED)
+    noise = torch.randn_like(batch)
+    return ((model(batch) - noise) ** 2).mean()
+"""
+    assert "identical noise" in recipe_adapter_violation(bad)
+    good = """\
+def loss_fn(model, batch):
+    noise = torch.randn_like(batch)
+    return ((model(batch) - noise) ** 2).mean()
+"""
+    assert recipe_adapter_violation(good) is None
+
+
 def test_recipe_adapter_rejects_kernel_rewrites_and_cross_mode_cache(tmp_path, monkeypatch):
     from types import SimpleNamespace
     from kernelevo import adapter_writer
