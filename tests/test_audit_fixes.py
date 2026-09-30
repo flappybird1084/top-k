@@ -327,3 +327,23 @@ def test_public_pool_forces_molab_execution_target(monkeypatch):
                         expires_at=time.time() + 3600, concurrency=1)
     pool.put("j" * 32)
     assert store["j" * 32]["execution_target"] == "molab"
+
+
+def test_public_pool_preserves_bounded_requested_recipe(monkeypatch):
+    import web
+    from kernelevo.judges_pool import NotebookPool
+    monkeypatch.setattr(web, "list_jobs", lambda: [])
+    jid = "k" * 32
+    recipe = {"phases": [{"kind": "architecture", "generations": 1,
+                          "candidates": 2, "train_seconds": 30}],
+              "finals_top_k": 1, "finals_train_seconds": 60,
+              "subagent_parallelism": 2}
+    store = {jid: {"id": jid, "mode": "recipe", "recipe": recipe,
+                   "molab": {"connection": "--token t",
+                             "notebook_url": "https://n.sb.molab.run"}}}
+    pool = NotebookPool(None, run_job=lambda _: None,
+                        load_job=lambda key: dict(store[key]),
+                        save_job=lambda job: store.__setitem__(job["id"], job),
+                        expires_at=time.time() + 3600, concurrency=1)
+    pool.put(jid)
+    assert store[jid]["recipe"] == recipe

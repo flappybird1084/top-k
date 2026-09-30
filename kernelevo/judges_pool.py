@@ -75,7 +75,10 @@ class NotebookPool:
             job['judge_expires_at'] = self.expires_at
             job['judge_uid'] = self.next_uid
             self.next_uid += 1
-            job['recipe'] = {'phases':[{'kind':'architecture','generations':2,'candidates':2,'train_seconds':60},{'kind':'hyperparam','generations':1,'candidates':2,'train_seconds':60}], 'finals_top_k':1,'finals_train_seconds':120,'subagent_parallelism':2}
+            # A signed-in visitor may choose a bounded schedule at intake.
+            # Only supply the judges preset when no recipe was requested.
+            if not job.get('recipe'):
+                job['recipe'] = {'phases':[{'kind':'architecture','generations':2,'candidates':2,'train_seconds':60},{'kind':'hyperparam','generations':1,'candidates':2,'train_seconds':60}], 'finals_top_k':1,'finals_train_seconds':120,'subagent_parallelism':2}
             job['stage'] = ('Queued for GPU ' + str(slot + 1) if self.connections
                             else 'Queued for your notebook GPU')
             self.save_job(job)
