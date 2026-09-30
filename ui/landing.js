@@ -922,7 +922,7 @@
       { img: 'assets/agent-claude.png', name: 'Claude', via: 'Anthropic API or Claude login' },
       { img: 'assets/agent-gpt.png', name: 'GPT', via: 'OpenAI API or ChatGPT login' },
       { img: 'assets/agent-kimi.png', name: 'Kimi K2.7', via: 'W&B Inference · the run above' },
-      { img: 'assets/agent-deepseek.png', name: 'DeepSeek V4 Flash', via: 'W&B Inference · default' },
+      { img: 'assets/agent-deepseek.png', name: 'DeepSeek V4 Pro', via: 'W&B Inference · live default' },
       { img: 'assets/agent-glm.png', name: 'GLM', via: 'W&B Inference' },
     ];
     const tiles = MODELS.map(m => {
