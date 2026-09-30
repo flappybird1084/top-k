@@ -422,7 +422,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   .hero-inner{min-width:0;max-width:100%}
   .hero h1{font-size:clamp(35px,10vw,48px);line-height:1.08;margin-bottom:28px}
   .hero-console{max-width:100%;min-width:0}
-  .hero-console pre{max-width:100%;overflow-x:auto;font-size:11px;line-height:1.7;-webkit-overflow-scrolling:touch}
+  .hero-console pre{max-width:100%;white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px;line-height:1.7}
   .console-bar{font-size:11px}
   .results{display:grid;grid-template-columns:minmax(0,1fr) 1px minmax(0,1fr);gap:12px;max-width:100%}
   .results div{min-width:0}
