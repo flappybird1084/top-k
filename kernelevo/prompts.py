@@ -171,6 +171,8 @@ Hard requirements:
   of this same adapter may already have downloaded it; reuse anything there
   (the harness rebuilds the adapter many times). Fixed seed and order.
   Reserve a held-out split for get_dataloader("val") and never train on it.
+  If the user supplied a specific dataset URL, a download failure must raise
+  its actual exception for repair. Never substitute generated/synthetic data.
   For image data loaded from PIL or uint8 arrays, convert 0-255 pixels to
   float in [0, 1] BEFORE applying mean/std values defined in [0, 1].
   A plain `.float()` does not scale pixels. Check the actual tensor range at

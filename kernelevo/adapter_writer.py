@@ -33,6 +33,17 @@ INGEST_IDLE_TIMEOUT_S = 600   # kill if silent this long (worker heartbeats keep
 _SCORE_WORDS = ("train", "model", "main", "data", "dataset", "loss", "config", "net")
 
 
+def requested_data_violation(source: str, comments: str) -> str | None:
+    """An explicit user dataset must never silently become generated data."""
+    if "Do not substitute synthetic data." in comments and re.search(
+            r"\bsynthetic\b|synthetic[_-]?(?:fallback|dataset|data)", source,
+            flags=re.IGNORECASE):
+        return ("The user supplied a real dataset URL. Remove every synthetic "
+                "fallback; if download fails, raise the actual error so the "
+                "adapter can repair the real-data path.")
+    return None
+
+
 def recipe_adapter_violation(source: str) -> str | None:
     """Reject edits that would change the repository model before recipe search."""
     try:
@@ -203,8 +214,10 @@ def prepare(repo: str, comments: str, max_debug_turns: int, out_dir: str,
         if os.path.exists(candidate) and cached_mode == mode:
             if candidate != adapter_path:
                 shutil.copyfile(candidate, adapter_path)
-            violation = (recipe_adapter_violation(open(adapter_path).read())
-                         if mode == "recipe" else None)
+            cached_source = open(adapter_path).read()
+            violation = (requested_data_violation(cached_source, comments) or
+                         (recipe_adapter_violation(cached_source)
+                          if mode == "recipe" else None))
             info, _ = ((None, violation) if violation else
                        _run_ingest(adapter_path, device, seed, mode=mode,
                                    eval_batches=eval_batches))
@@ -239,7 +252,8 @@ def prepare(repo: str, comments: str, max_debug_turns: int, out_dir: str,
         src = re.sub(r"^from __future__ import .*$\n?", "", src, flags=re.MULTILINE)
         with open(adapter_path, "w") as f:
             f.write("".join(f + "\n" for f in futures) + header + src)
-        violation = recipe_adapter_violation(src) if mode == "recipe" else None
+        violation = (requested_data_violation(src, comments) or
+                     (recipe_adapter_violation(src) if mode == "recipe" else None))
         info, err = ((None, violation) if violation else
                      _run_ingest(adapter_path, device, seed, log=log, mode=mode,
                                  eval_batches=eval_batches))

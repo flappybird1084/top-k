@@ -329,6 +329,21 @@ def loss_fn(model, batch):
     assert recipe_adapter_violation(good) is None
 
 
+def test_explicit_dataset_rejects_synthetic_fallback():
+    from kernelevo.adapter_writer import requested_data_violation
+
+    comments = ("Use this training data link: https://huggingface.co/datasets/"
+                "uoft-cs/cifar10. Do not substitute synthetic data.")
+    source = """\
+try:
+    rows = load_dataset('uoft-cs/cifar10')
+except Exception:
+    rows = make_synthetic_dataset()
+"""
+    assert "Remove every synthetic fallback" in requested_data_violation(source, comments)
+    assert requested_data_violation("rows = load_dataset('uoft-cs/cifar10')", comments) is None
+
+
 def test_recipe_adapter_rejects_kernel_rewrites_and_cross_mode_cache(tmp_path, monkeypatch):
     from types import SimpleNamespace
     from kernelevo import adapter_writer
