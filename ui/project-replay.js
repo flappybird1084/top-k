@@ -75,9 +75,17 @@
   function notebook() {
     const frame = $('#project-notebook');
     frame.hidden = !current?.complete;
-    $('#notebook-progress').hidden = !!current?.complete;
     $('#notebook-source').hidden = !current?.complete;
     if (current?.complete && view === 'marimo' && !frame.getAttribute('src')) frame.src = project.notebook;
+  }
+  function notebookCard(side) {
+    const mode = current.modes[side];
+    const total = project.modes[side].candidates.length;
+    const finished = mode.candidates.filter(row => row.state !== 'running');
+    const measured = finished.filter(row => Number.isFinite(valueOf(row, side))).length;
+    const active = mode.candidates.find(row => row.state === 'running');
+    const state = active ? `Evaluating candidate #${active.ordinal}` : mode.status === 'complete' ? 'Evaluation complete' : mode.status === 'failed' ? 'Evaluation ended' : 'Waiting for evaluation';
+    return `<article class="metric-card notebook-state"><h3>${side === 'architecture' ? 'Architecture' : 'Kernels'}</h3><strong>${finished.length}<small> / ${total} evaluations finished</small></strong><p>${esc(state)}</p><p class="caption">${measured} measured · ${finished.length - measured} without a measurement</p></article>`;
   }
   function render() {
     elapsed = Math.max(0, Date.now() - startedAt);
@@ -96,17 +104,22 @@
     exploration();
     const charts = card('architecture') + card('kernel');
     $('#run-metadata').textContent = project.repo + ' · ' + project.modes.architecture.data_source + ' · ' + project.modes.architecture.model;
-    for (const id of ['dashboard-metrics','wandb-charts','notebook-progress','aria-charts']) $('#' + id).innerHTML = charts;
+    for (const id of ['dashboard-metrics','wandb-charts']) $('#' + id).innerHTML = charts;
+    $('#notebook-progress').innerHTML = notebookCard('architecture') + notebookCard('kernel');
     $('#final-metrics').innerHTML = current.complete ? card('architecture', true) + card('kernel', true) : '';
     const rows = Object.entries(current.modes).flatMap(([side,mode]) => mode.candidates.filter(r => r.state !== 'running').map(r => ({...r, side})));
     $('#evaluation-table').innerHTML = `<table><thead><tr><th>Search</th><th>Candidate</th><th>Budget</th><th>Measurement</th><th>Gate</th><th>Result</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.side)}</td><td>${r.ordinal}</td><td>${r.train_secs ? r.train_secs + 's' : '—'}</td><td>${fmt(valueOf(r,r.side))}${Number.isFinite(r.step_time_ms) ? ' ms' : ''}</td><td>${r.gate_reached ?? '—'}</td><td class="${r.accepted ? 'accepted' : 'rejected'}">${r.accepted ? 'Accepted' : 'Not accepted'}</td></tr>`).join('')}</tbody></table>`;
-    for (const [id,side] of [['wandb-mini','architecture'],['marimo-mini','kernel'],['aria-mini','architecture']]) {
-      const groups = ProjectReplay.series(current.modes[side], side);
-      const group = groups.find(g => g.rows.length > 1) || groups.find(g => g.rows.length) || groups[0];
-      const node = $('#' + id);node.setAttribute('viewBox', '0 0 470 205');
-      node.setAttribute('aria-label', side === 'architecture' ? 'Validation loss measurements' : 'Training-step measurements');
-      node.innerHTML = group ? plot(group.rows, side, group.baseline, group.budget).replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '') : '<text x="20" y="100" fill="var(--muted)" font-size="14">No measurements recorded</text>';
-    }
+    const groups = ProjectReplay.series(current.modes.architecture, 'architecture');
+    const group = groups.find(g => g.rows.length > 1) || groups.find(g => g.rows.length) || groups[0];
+    const mini = $('#wandb-mini');mini.setAttribute('viewBox', '0 0 470 205');
+    mini.setAttribute('aria-label', 'Validation loss measurements');
+    mini.innerHTML = group ? plot(group.rows, 'architecture', group.baseline, group.budget).replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '') : '<text x="20" y="100" fill="var(--muted)" font-size="14">No measurements recorded</text>';
+    const finished = Object.values(current.modes).flatMap(mode => mode.candidates.filter(row => row.state !== 'running'));
+    const active = Object.values(current.modes).flatMap(mode => mode.candidates.filter(row => row.state === 'running'));
+    $('#marimo-mini').textContent = `${finished.length} evaluations finished${active.length ? ` · ${active.length} running` : ''}`;
+    $('#aria-mini').textContent = current.complete ? 'Review the run in W&B ↗' : 'Gathering evidence for review';
+    const accepted = finished.filter(row => row.accepted).length;
+    $('#aria-evidence').innerHTML = `<h3>Evidence for review</h3><p>${finished.length} evaluations finished · ${accepted} accepted · ${finished.length - accepted} not accepted.</p><p>ARIA's response is not part of this replay. Open W&B to analyze the run, or copy the prompt below.</p>`;
     $('#aria-prompt').value = `Analyze ${project.repo} using ${project.wandb_url}. Compare kernel step time and held-out validation loss at matching training budgets. Explain accepted changes and failed checks. Data: deterministic synthetic batches. Do not infer downstream quality from near-zero losses.\n\n${JSON.stringify(Object.fromEntries(Object.entries(current.modes).map(([side,m])=>[side,m.result])))}`;
     notebook();
     if (current.complete && view === 'exploration') selectView('dashboard');
