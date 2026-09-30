@@ -308,6 +308,7 @@ def test_recipe_adapter_prompt_keeps_native_model_as_baseline():
     assert "Do not import kernelevo.ops" in recipe
     assert "ops.gelu_mlp" not in recipe
     assert "ops.gelu_mlp" in kernel
+    assert "A plain `.float()` does not scale pixels" in recipe
 
 
 def test_recipe_adapter_rejects_kernel_rewrites_and_cross_mode_cache(tmp_path, monkeypatch):

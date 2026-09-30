@@ -171,6 +171,10 @@ Hard requirements:
   of this same adapter may already have downloaded it; reuse anything there
   (the harness rebuilds the adapter many times). Fixed seed and order.
   Reserve a held-out split for get_dataloader("val") and never train on it.
+  For image data loaded from PIL or uint8 arrays, convert 0-255 pixels to
+  float in [0, 1] BEFORE applying mean/std values defined in [0, 1].
+  A plain `.float()` does not scale pixels. Check the actual tensor range at
+  the model input; do not divide twice if a transform already scales it.
   Only read data from paths you have VERIFIED exist on THIS machine
   (os.path.isdir) — never assume cluster mount points from the repo's docs
   or configs are present here. For normal runs, synthetic data is a LAST
