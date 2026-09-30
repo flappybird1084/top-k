@@ -156,3 +156,28 @@ def test_a_failed_capability_probe_is_fatal(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError):
         claude_oauth.complete_local({'messages': [{'role': 'user', 'content': 'x'}]})
     claude_oauth._flags_for.cache_clear()
+
+
+def test_runner_can_finish_a_request_whose_answer_it_cannot_delete(tmp_path, monkeypatch):
+    # In a public run the dispatcher (root) writes the answer into a sticky
+    # relay directory; the runner uid can read it but unlink raises EPERM.
+    # That used to crash the run right after the first successful completion.
+    import types
+    import uuid
+    from pathlib import Path
+    from kernelevo import codex_oauth
+    rid = 'a' * 32
+    monkeypatch.setattr(uuid, 'uuid4', lambda: types.SimpleNamespace(hex=rid))
+    monkeypatch.setenv('KEVO_RELAY_DIR', str(tmp_path))
+    (tmp_path / (rid + '.res.json')).write_text('{"text": "answer", "input_tokens": 2}')
+    real_unlink = Path.unlink
+
+    def unlink(self, missing_ok=False):
+        if self.name.endswith('.res.json'):
+            raise PermissionError(1, 'Operation not permitted', str(self))
+        return real_unlink(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, 'unlink', unlink)
+    answer = codex_oauth.relay_complete({'messages': []}, 'wandb_inference', 'W&B Inference')
+    assert answer['text'] == 'answer'
+    assert not (tmp_path / (rid + '.req.json')).exists()

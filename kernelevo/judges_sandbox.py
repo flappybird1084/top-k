@@ -36,6 +36,9 @@ def user_command(work, argv, uid, relay_dir=None, relay_token=''):
     env = {'HOME': home, 'USER': 'runner', 'LOGNAME': 'runner', 'PATH': '/usr/local/bin:/usr/bin:/bin',
            'PYTHONUNBUFFERED': '1', 'TMPDIR': home,
            'KEVO_RELAY_DIR': relay, 'KEVO_RELAY_TOKEN': relay_token,
+           # No W&B key enters the sandbox, so W&B completions must go through
+           # the dispatcher, which answers them with the job owner's key.
+           'KEVO_WANDB_INFERENCE_RELAY': '1',
            'WANDB_MODE': 'disabled'}
     return ['/usr/bin/env', '-i', *[k+'='+v for k, v in env.items()],
             '/usr/bin/setpriv', '--reuid='+str(uid), '--regid='+str(uid),

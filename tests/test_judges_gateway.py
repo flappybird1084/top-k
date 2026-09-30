@@ -423,3 +423,18 @@ def test_the_relay_directory_denies_cross_deletion():
     from kernelevo import judges_sandbox
     source = inspect.getsource(judges_sandbox.user_command)
     assert '0o1733' in source, 'the relay directory must be sticky (01733)'
+
+
+def test_the_sandbox_routes_wandb_completions_through_the_relay(tmp_path, monkeypatch):
+    # No W&B key enters the sandbox; without this flag the run built a direct
+    # W&B client with no key and crashed before doing any work.
+    from kernelevo import judges_sandbox
+    monkeypatch.setattr(judges_sandbox.shutil, 'which', lambda name: '/usr/bin/' + name)
+    monkeypatch.setattr(judges_sandbox.os, 'chown', lambda *a, **k: None)
+    work = tmp_path / 'work'
+    work.mkdir()
+    argv = judges_sandbox.user_command(str(work), ['python', 'search.py'], 200001)
+    env = dict(a.split('=', 1) for a in argv[2:argv.index('/usr/bin/setpriv')])
+    assert env['KEVO_WANDB_INFERENCE_RELAY'] == '1'
+    assert env['KEVO_RELAY_DIR'] == str(work) + '_relay'
+    assert not any(k.startswith('WANDB_API') for k in env)

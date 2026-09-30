@@ -398,6 +398,8 @@ def test_repository_job_does_not_inherit_operator_credentials(monkeypatch, tmp_p
 def test_inference_relay_limits_model_and_keeps_upstream_key(monkeypatch):
     from scripts.inference_proxy import InferenceRelay
 
+    # web.py loads a developer's .env on import; keep a real inference key out
+    monkeypatch.delenv("WANDB_INFERENCE_API_KEY", raising=False)
     monkeypatch.setenv("WANDB_API_KEY", "private-key")
     monkeypatch.setenv("WANDB_ENTITY", "team")
     monkeypatch.setenv("WANDB_PROJECT", "benchmark")
@@ -447,6 +449,8 @@ def test_inference_relay_limits_model_and_keeps_upstream_key(monkeypatch):
 def test_inference_relay_marks_provider_credit_error(monkeypatch):
     from scripts.inference_proxy import InferenceRelay
 
+    # web.py loads a developer's .env on import; keep a real inference key out
+    monkeypatch.delenv("WANDB_INFERENCE_API_KEY", raising=False)
     monkeypatch.setenv("WANDB_API_KEY", "private-key")
     monkeypatch.setenv("WANDB_ENTITY", "team")
     monkeypatch.setenv("WANDB_PROJECT", "benchmark")

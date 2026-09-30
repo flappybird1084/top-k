@@ -483,7 +483,12 @@ class MolabTarget:
         from kernelevo.wandb_relay import Relay as WandbRelay
         oauth_relay = Relay()
         claude_relay = ClaudeRelay()
-        wandb_relay = WandbRelay()
+        # An untrusted (public) run is billed to its owner: its relay gets only
+        # the owner's W&B credentials from the launch env, never the server's.
+        wandb_relay = WandbRelay({k: env_updates[k] for k in
+                                  ("WANDB_API_KEY", "WANDB_ENTITY", "WANDB_PROJECT")
+                                  if env_updates.get(k)}
+                                 if policy.untrusted else None)
         served_searches: dict = {}
         offset, misses = 0, 0
         last_archive_sync = 0.0
