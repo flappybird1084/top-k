@@ -17,7 +17,6 @@ window.topkProjectReplay = (() => {
   }
   return {
     async pair() {return ProjectReplay.runPair(await load(), Math.max(0, Date.now() - start));},
-    finished() {return Date.now() - start >= ProjectReplay.duration;},
     destination: '../replay.html?project=' + encodeURIComponent(repo) + '&view=dashboard'
   };
 })();

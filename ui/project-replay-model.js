@@ -53,9 +53,8 @@
     for (const side of ['architecture', 'kernel']) {
       const mode = current.modes[side];
       const rows = mode.candidates.map(row => ({...row, id: row.id || row.ordinal,
-        display_id: row.id || row.ordinal,
         strategy: row.strategy || `${row.phase || 'Kernel'} evaluation ${row.ordinal}`}));
-      pair[side] = {repo:'https://github.com/' + project.repo, data:mode.data_source,
+      pair[side] = {replay_complete:current.complete, repo:'https://github.com/' + project.repo, data:mode.data_source,
         agent_model:mode.model, subagent_model:mode.model,
         status:mode.status === 'complete' ? 'complete' : mode.status,
         rows, message:mode.status, architecture:{candidates: side === 'architecture' ? rows : []},
