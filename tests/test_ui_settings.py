@@ -41,6 +41,21 @@ def test_sanitize_ignored_in_judge_deployment(monkeypatch):
     assert out == {}
 
 
+def test_judge_can_choose_bounded_short_recipe(monkeypatch):
+    monkeypatch.setenv("JUDGES_EXPIRES_AT", "9999999999")
+    out = ui_server.sanitize_settings({"settings": dict(
+        profile="DEV", arch_gens=1, arch_cands=2, arch_secs=30,
+        hp_gens=0, finals_secs=60, llm="stub", spend_cap=500,
+        molab_connection="--token forbidden")})
+    assert set(out) == {"profile", "recipe"}
+    assert out["profile"] == "DEV"
+    assert out["recipe"]["phases"][0] == dict(
+        kind="architecture", generations=1, candidates=2, train_seconds=30)
+    assert out["recipe"]["phases"][2]["generations"] == 0
+    assert out["recipe"]["finals_train_seconds"] == 60
+    assert "molab_connection" not in out
+
+
 def test_create_applies_settings_over_env(monkeypatch, tmp_path):
     monkeypatch.setenv("KEVO_UI_LLM", "wandb")
     monkeypatch.setenv("KEVO_UI_PROFILE", "RUN")

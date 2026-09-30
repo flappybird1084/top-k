@@ -65,11 +65,40 @@ SETTINGS_PROVIDERS = {'stub', 'anthropic', 'openai', 'wandb', 'codex_oauth', 'cl
 def sanitize_settings(payload):
     """Validated per-job overrides from the front page's Settings dialog.
     Everything is optional; server env (KEVO_UI_*) is the fallback. In the
-    public judging deployment, server policy is absolute — client settings
-    are ignored wholesale."""
+    public judging deployment, credentials and provider choices remain server
+    controlled; only a bounded search budget may be shortened."""
     s = payload.get('settings') or {}
-    if not isinstance(s, dict) or os.getenv('JUDGES_EXPIRES_AT'):
+    if not isinstance(s, dict):
         return {}
+    if os.getenv('JUDGES_EXPIRES_AT'):
+        out = {'profile': 'DEV'} if s.get('profile') == 'DEV' else {}
+        limits = {'arch_gens': (0, 2, 2), 'arch_cands': (1, 3, 2),
+                  'arch_secs': (10, 60, 30), 'hp_gens': (0, 1, 0),
+                  'hp_cands': (1, 2, 2), 'hp_secs': (10, 60, 30),
+                  'finals_k': (1, 2, 1), 'finals_secs': (10, 120, 60),
+                  'parallelism': (1, 4, 2), 'parent_pool': (1, 3, 2),
+                  'eval_batches': (1, 8, 4)}
+        if any(key in s and str(s[key]).strip() for key in limits):
+            recipe = {}
+            for key, (lo, hi, default) in limits.items():
+                try:
+                    requested = int(s.get(key, default))
+                except (TypeError, ValueError):
+                    requested = default
+                recipe[key] = min(max(requested, lo), hi)
+            out['recipe'] = dict(
+                phases=[dict(kind='architecture', generations=recipe['arch_gens'],
+                             candidates=recipe['arch_cands'], train_seconds=recipe['arch_secs']),
+                        dict(kind='mixed', generations=0, candidates=8,
+                             train_seconds=180),
+                        dict(kind='hyperparam', generations=recipe['hp_gens'],
+                             candidates=recipe['hp_cands'], train_seconds=recipe['hp_secs'])],
+                finals_top_k=recipe['finals_k'],
+                finals_train_seconds=recipe['finals_secs'],
+                subagent_parallelism=recipe['parallelism'],
+                parent_pool=recipe['parent_pool'],
+                eval_batches=recipe['eval_batches'])
+        return out
     out = {}
     llm = str(s.get('llm') or '').strip()
     if llm and len(llm) < 80 and llm.partition(':')[0] in SETTINGS_PROVIDERS:
