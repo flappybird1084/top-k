@@ -33,7 +33,7 @@ class UI(unittest.TestCase):
    put.assert_not_called()
  def test_actual_rian_schema_and_no_secret_leak(self):
   jid='a'*32;root=self.p/jid; (root/'run').mkdir(parents=True)
-  ui.web.save_job(dict(id=jid,status='done',created_at=1,repo='https://github.com/a/b',data='https://huggingface.co/datasets/a/b',molab={'connection':'secret'},wandb={'api_key':'secret'}))
+  ui.web.save_job(dict(id=jid,status='done',created_at=1,repo='https://github.com/a/b',data='https://huggingface.co/datasets/a/b',llm='wandb:deepseek-ai/DeepSeek-V4-Pro-0813',molab={'connection':'secret'},wandb={'api_key':'secret'}))
   with sqlite3.connect(root/'run/archive.sqlite') as db:
    db.executescript(SCHEMA)
    db.execute("insert into models(id) values(1)");db.execute("insert into lineages(id,model_id,op_name) values(1,1,'layer_norm')")
@@ -41,6 +41,8 @@ class UI(unittest.TestCase):
   db.close()
   data=self.client.get('/api/runs/'+jid).json
   self.assertEqual(data['baseline_ms'],10);self.assertEqual(data['candidates'][0]['lineage_id'],'layer_norm')
+  self.assertEqual(data['agent_model'],'wandb:deepseek-ai/DeepSeek-V4-Pro-0813')
+  self.assertEqual(data['subagent_model'],data['agent_model'])
   self.assertNotIn('secret',json.dumps(data));self.assertNotIn('secret',self.client.get('/api/jobs/'+jid).text)
  def test_no_source_or_cross_origin(self):
   self.assertEqual(self.client.get('/ui_server.py').status_code,404)

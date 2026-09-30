@@ -259,7 +259,13 @@ def snapshot(jid):
     root=job_path(jid);job=read_json(root/'job.json')
     if not job:raise FileNotFoundError()
     status={'done':'complete','interrupted':'failed'}.get(job['status'],job['status'])
-    result=dict(id=jid,repo=job.get('repo'),data=job.get('data'),status=status,mode=job.get('mode','kernel'),message=job.get('stage',''),candidates=[],traces=[],activity=[],integrations=dict(job.get('integrations',{})))
+    result=dict(
+        id=jid,repo=job.get('repo'),data=job.get('data'),status=status,
+        mode=job.get('mode','kernel'),message=job.get('stage',''),
+        candidates=[],traces=[],activity=[],integrations=dict(job.get('integrations',{})),
+        agent_model=job.get('planner_llm') or job.get('llm'),
+        subagent_model=job.get('subagent_llm') or job.get('llm'),
+    )
     result['integrations'].update(read_json(root/'observability.json',{}))
     result['related_runs']=job.get('related_runs',{})
     result['dataset_options']=job.get('dataset_options',[])

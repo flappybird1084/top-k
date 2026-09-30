@@ -14,5 +14,7 @@ body{background:var(--surface);padding:24px;min-height:100dvh;display:flex;align
 .agent-header{min-width:0;padding-right:18px;overflow:hidden}.agent-block .agent-avatar{flex:0 0 18px}.agent-block.has-avatar .agent-id,.agent-block .agent-id{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;display:block}
 /* Balance the tall GPT artwork without changing the other model sprites. */
 img[src="agent-gpt.png"]{transform:scaleX(1.18)}
+.sprite[src="agent-deepseek.png"],.sprite[src="agent-kimi.png"]{transform:scale(1.3)}
+.agent-avatar img[src="agent-deepseek.png"],.agent-avatar img[src="agent-kimi.png"]{transform:scale(1.4)}
 .final-result{border-color:var(--line);background:var(--surface);box-shadow:0 0 0 3px #417d6409}.final-result .agent-id{font-size:11px;font-weight:600;color:var(--muted)}.final-result .agent-label{font-size:12px;color:var(--muted)}.final-note{display:block;font-size:8px;color:var(--muted);margin-top:5px}.final-result.running{background:var(--surface);border-color:var(--line)}
 #final-results{display:inline-block;background:var(--surface);color:var(--ink);padding:8px 14px;border-radius:8px;margin-left:10px;text-decoration:none;font-size:12px}#final-results:hover{background:var(--surface)}
