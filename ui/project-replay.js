@@ -13,18 +13,9 @@
     if (status === 'running') return running;
     return finished;
   }
-  function candidateText(row, side) {
-    if (Number.isFinite(valueOf(row, side))) return fmt(valueOf(row, side)) + (side === 'kernel' ? ' ms' : ' loss');
-    return row.state === 'running' ? 'Evaluating…' : 'Check failed';
-  }
-  function candidateIcon(row) {
-    if (row.state === 'running') return '◌';
-    return row.accepted ? '✓' : '×';
-  }
-  const checked = (value, otherwise = 'Failed') => value ? 'Passed' : otherwise;
   const views = ['exploration', 'dashboard', 'results', 'wandb', 'marimo', 'aria'];
   const url = new URL(location.href), repo = url.searchParams.get('project');
-  let project, current, elapsed = 0, timer, lastFrame = '', selected = null;
+  let project, current, elapsed = 0, timer, lastFrame = '';
   let view = views.includes(url.searchParams.get('view')) ? url.searchParams.get('view') : 'exploration';
   let startedAt = Date.now();
   const storageKey = 'topk-project-replay:' + repo;
@@ -77,20 +68,9 @@
     if (!charts) charts = `<div class="empty">${pendingText(mode.status, 'Evaluating candidates…', 'No accepted ' + side + ' result')}</div>`;
     return `<article class="metric-card"><h3>${architecture ? 'Architecture' : 'Kernels'}</h3>${comparison ? `<div class="numbers"><div><small>Baseline</small><strong>${fmt(base)}</strong></div><div><small>Candidate</small><strong>${fmt(candidate)}</strong></div></div><p class="gain">${floor ? 'Loss floor reached' : gain.toFixed(3) + '% lower ' + (architecture ? 'validation loss' : 'step time')}</p>` : ''}${charts}${comparison ? `<p class="caption">${architecture ? 'Equal ' + result.final_budget_s + 's training budget' : 'Full training step · milliseconds'}</p>` : ''}${architecture && project.caveat ? `<p class="caption caveat">${floor ? 'Synthetic-task loss floor; downstream quality not established.' : 'Near-zero synthetic loss; relative reduction is sensitive to scale.'}</p>` : ''}</article>`;
   }
-  function detail() {
-    if (!selected) return;
-    const [side, ordinal] = selected.split(':');
-    const row = current.modes[side].candidates.find(r => r.ordinal === Number(ordinal));
-    if (!row) {$('#candidate-detail').hidden = true;return;}
-    $('#candidate-title').textContent = phase(row) + ' · candidate ' + ordinal;
-    const fields = [['State', row.state], ['Generation', row.generation], ['Training budget', (row.train_secs ?? null) === null ? null : row.train_secs + 's'], ['Validation loss', (row.val_loss ?? null) === null ? null : fmt(row.val_loss)], ['Step time', (row.step_time_ms ?? null) === null ? null : fmt(row.step_time_ms) + ' ms'], ['Gate', row.gate_reached], ['Compile check', (row.compile_ok ?? null) === null ? null : checked(row.compile_ok)], ['Correctness check', (row.correct_ok ?? null) === null ? null : checked(row.correct_ok, 'Not passed')], ['Model', current.modes[side].model]];
-    $('#candidate-metrics').innerHTML = fields.filter(([,v]) => (v ?? null) !== null).map(([k,v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('');
-    $('#candidate-detail').hidden = false;
-  }
   function exploration() {
     const frame = $('#exploration-frame');
     if (!frame.getAttribute('src')) frame.src = 'assets/project-search.html?project=' + encodeURIComponent(project.repo) + '&started=' + startedAt;
-    detail();
   }
   function notebook() {
     const frame = $('#project-notebook');
@@ -134,12 +114,8 @@
   document.addEventListener('click', event => {
     const navigation = event.target.closest('[data-view]');
     if (navigation && !navigation.disabled) selectView(navigation.dataset.view);
-    const candidate = event.target.closest('[data-candidate]');
-    if (candidate) {selected = candidate.dataset.candidate;detail();}
   });
-  $('#close-candidate').onclick = () => {selected = null;$('#candidate-detail').hidden = true;};
-  document.addEventListener('keydown', event => {if (event.key === 'Escape') $('#close-candidate').click();});
-  $('#restart-run').onclick = () => {startedAt = Date.now();storeStart();lastFrame = '';selected = null;$('#candidate-detail').hidden = true;$('#project-notebook').removeAttribute('src');$('#exploration-frame').removeAttribute('src');render();selectView('exploration');};
+  $('#restart-run').onclick = () => {startedAt = Date.now();storeStart();lastFrame = '';$('#project-notebook').removeAttribute('src');$('#exploration-frame').removeAttribute('src');render();selectView('exploration');};
   $('#copy-analysis').onclick = async () => {try {await navigator.clipboard.writeText($('#aria-prompt').value);$('#copy-status').textContent = 'Copied';} catch {$('#aria-prompt').focus();$('#aria-prompt').select();$('#copy-status').textContent = 'Select and copy the prompt';}};
   try {
     const response = await fetch('assets/project-replays.json', {cache:'no-store'});

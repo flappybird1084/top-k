@@ -44,7 +44,7 @@ def _(mo, json, html, Path):
                 _path = ' '.join(('M' if i == 0 else 'L') + f'{x},{y}' for i,(x,y) in enumerate(_points))
                 _dots = ''.join(f'<circle cx="{x}" cy="{y}" r="5" fill="#65ac91"><title>Evaluation {_measured[i]["ordinal"]}: {_values[i]:.8g}</title></circle><text x="{x}" y="195" fill="currentColor">#{_measured[i]["ordinal"]}</text>' for i,(x,y) in enumerate(_points))
                 _axis = ''.join(f'<text x="0" y="{24+t*150}" fill="currentColor">{_high-t*_span:.5g}</text><line x1="80" x2="660" y1="{20+t*150}" y2="{20+t*150}" stroke="#555"/>' for t in (0,.5,1))
-                _panels.extend([mo.md(f'### {_seconds or "Kernel"} {"s evaluations" if _seconds else "evaluations"}'), mo.Html(f'<svg viewBox="0 0 700 210" role="img" aria-label="Candidate measurements">{_axis}<path d="{_path}" fill="none" stroke="#a9b3ff" stroke-width="2"/>{_dots}</svg>')])
+                _panels.extend([mo.md(('### ' + format(_seconds, 'g') + 's evaluations') if _seconds else '### Kernel evaluations'), mo.Html(f'<svg viewBox="0 0 700 210" role="img" aria-label="Candidate measurements">{_axis}<path d="{_path}" fill="none" stroke="#a9b3ff" stroke-width="2"/>{_dots}</svg>')])
             _panels.append(mo.ui.table(_rows, selection=None, page_size=len(_rows)))
         else:
             _panels.append(mo.md('No candidate measurements recorded.'))

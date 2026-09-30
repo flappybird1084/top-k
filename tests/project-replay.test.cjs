@@ -52,6 +52,8 @@ test('chart series include every measured point once and separate training budge
     }
     const initial=replay.snapshot(project,0);
     assert.ok(replay.series(initial.modes.architecture,'architecture').every(g=>g.rows.length===0));
+    assert.equal(initial.modes.architecture.baseline.baseline_val_loss,project.modes.architecture.result.baseline_val_loss);
+    assert.deepEqual(initial.modes.architecture.result,{});
     const pair=replay.runPair(project,replay.duration);
     for(const side of ['architecture','kernel']){
       assert.equal(pair[side].rows.length,project.modes[side].candidates.length);

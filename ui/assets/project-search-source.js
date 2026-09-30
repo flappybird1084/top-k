@@ -3,15 +3,21 @@
 window.topkProjectReplay = (() => {
   const params = new URLSearchParams(location.search);
   const repo = params.get('project');
-  const start = Number(params.get('started'));
-  const evidence = fetch('project-replays.json', {cache:'no-store'}).then(async response => {
-    if (!response.ok) throw Error('Run evidence unavailable');
-    const project = (await response.json()).projects.find(p => p.repo === repo);
-    if (!project) throw Error('Project unavailable');
-    return project;
-  });
+  const requestedStart = Number(params.get('started'));
+  const start = Number.isFinite(requestedStart) && requestedStart > 0 && requestedStart <= Date.now() ? requestedStart : Date.now();
+  let evidence;
+  function load() {
+    if (!evidence) evidence = fetch('project-replays.json', {cache:'no-store'}).then(async response => {
+      if (!response.ok) throw Error('Run evidence unavailable');
+      const project = (await response.json()).projects.find(p => p.repo === repo);
+      if (!project) throw Error('Project unavailable');
+      return project;
+    }).catch(error => {evidence = null;throw error;});
+    return evidence;
+  }
   return {
-    async pair() {return ProjectReplay.runPair(await evidence, Math.max(0, Date.now() - start));},
+    async pair() {return ProjectReplay.runPair(await load(), Math.max(0, Date.now() - start));},
+    finished() {return Date.now() - start >= ProjectReplay.duration;},
     destination: '../replay.html?project=' + encodeURIComponent(repo) + '&view=dashboard'
   };
 })();

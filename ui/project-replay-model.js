@@ -30,6 +30,7 @@
       if (done) status = source.status === 'done' ? 'complete' : 'failed';
       else if (started) status = 'running';
       modes[side] = {status,
+        // Calibration precedes the candidate search; final candidate outcomes stay gated below.
         baseline: Object.fromEntries(Object.entries(source.result).filter(([key]) => ['baseline_ms', 'baseline_val_loss', 'final_budget_s'].includes(key))),
         candidates: rows, result: done ? {...source.result} : {}, model: source.model,
         data_source: source.data_source, commit: source.commit};
@@ -52,7 +53,7 @@
     for (const side of ['architecture', 'kernel']) {
       const mode = current.modes[side];
       const rows = mode.candidates.map(row => ({...row, id: row.id || row.ordinal,
-        display_id: row.id || 'evaluation ' + row.ordinal,
+        display_id: row.id || row.ordinal,
         strategy: row.strategy || `${row.phase || 'Kernel'} evaluation ${row.ordinal}`}));
       pair[side] = {repo:'https://github.com/' + project.repo, data:mode.data_source,
         agent_model:mode.model, subagent_model:mode.model,
