@@ -269,16 +269,27 @@ def create_app():
             validate_notebook_connection(notebook)
         except ValueError as e:
             return jsonify(error=str(e)), 428
-        if not run_limit.allow(g.visitor):
-            return jsonify(error='You have started several runs recently. Try again later.'), 429
         with admission_lock, ui_server.lock:
             jobs = web.list_jobs()
             pending = [j for j in jobs if j['status'] in ('exploring', 'awaiting_data', 'queued', 'running')]
-            if len(pending) >= max_jobs:
-                return jsonify(error='All GPU queue slots are reserved. Please try again later.'), 429
             own = [j for j in pending if j.get('visitor') == g.visitor]
             if own:
-                return jsonify(id=own[0]['id']), 202
+                # A different request must not look like a successful launch of
+                # the previous repository. Preserve retries of the same request.
+                key = request.headers.get('Idempotency-Key', '')
+                forwarded_key = hashlib.sha256((g.visitor + key).encode()).hexdigest()
+                prior_id = hashlib.sha256(forwarded_key.encode()).hexdigest()[:32]
+                prior = ui_server.read_json(ui_server.job_path(prior_id) / 'job.json', {})
+                payload = request.get_json(silent=True) or {}
+                if (prior.get('visitor') == g.visitor and prior.get('repo') == payload.get('repo')
+                        and prior.get('requested_mode', prior.get('mode')) == payload.get('mode', 'recipe')):
+                    return jsonify(id=prior_id), 202
+                return jsonify(error='A run is already active on your notebook. Finish it before starting another repository.',
+                               active_run=own[0]['id']), 409
+            if not run_limit.allow(g.visitor):
+                return jsonify(error='You have started several runs recently. Try again later.'), 429
+            if len(pending) >= max_jobs:
+                return jsonify(error='All GPU queue slots are reserved. Please try again later.'), 429
             response = delegate('/api/runs')
             if response.status_code == 202:
                 jid = response.get_json()['id']

@@ -117,12 +117,17 @@
    '<li><a href="https://wandb.ai/authorize" target="_blank" rel="noopener noreferrer">Open W&amp;B</a>, create an API key, and connect the project where you want Top-K to report.</li>'+
    '</ol>';
   const form=document.createElement('form');form.className='setup-form';form.noValidate=true;
-  const pair=document.createElement('textarea');pair.rows=3;pair.required=true;
+  const pair=document.createElement('textarea');pair.rows=3;pair.required=!setup?.notebook?.configured;
   pair.placeholder='Paste the whole "Pair with agent" prompt';
-  const wandbKey=document.createElement('input');wandbKey.type='password';wandbKey.required=true;
+  const wandbKey=document.createElement('input');wandbKey.type='password';wandbKey.required=!setup?.wandb?.configured;
   wandbKey.autocomplete='off';wandbKey.placeholder='W&B API key';
   const entity=document.createElement('input');entity.type='text';entity.placeholder='W&B entity';
   const project=document.createElement('input');project.type='text';project.placeholder='W&B project';
+  if(setup?.notebook?.configured)pair.placeholder='Connected — paste a new prompt to change notebook';
+  if(setup?.wandb?.configured){
+   wandbKey.placeholder='Connected — leave blank to keep current key';
+   entity.value=setup.wandb.entity||'';project.value=setup.wandb.project||'';
+  }
   const pairRow=field('Your marimo notebook','From the notebook’s "Pair with agent" prompt.',pair);
   const wandbRow=field('Connect W&B','Create a personal or team API key in W&B. It stays private to your signed-in Top-K account and lets us show your run metrics here.',wandbKey);
   const names=document.createElement('div');names.className='setup-names';names.append(entity,project);
@@ -132,8 +137,8 @@
   card.append(form);panel.append(card);
   form.addEventListener('submit',async event=>{
    event.preventDefault();
-   if(!pair.value.trim()||!wandbKey.value.trim()){
-    setupStatus.textContent='Add the pair prompt and your W&B API key to continue.';return;
+   if((!pair.value.trim()&&!setup?.notebook?.configured)||(!wandbKey.value.trim()&&!setup?.wandb?.configured)){
+    setupStatus.textContent='Connect your notebook and W&B account to continue.';return;
    }
    submit.disabled=true;setupStatus.textContent='Connecting…';
    try{

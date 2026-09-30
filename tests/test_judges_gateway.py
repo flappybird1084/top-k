@@ -172,6 +172,30 @@ def test_wandb_run_requires_owners_key_before_it_is_created(gateway, monkeypatch
     assert r.status_code == 202
 
 
+def test_new_repository_does_not_reuse_active_run(gateway):
+    import web
+    client = gateway.test_client()
+    token = sign_in(gateway)
+    assert client.post('/api/integrations', headers=headers(token), json={
+        'pair_prompt': 'connect to https://notebook.molab.run/abc '
+                       '--token secret-token-value'}).status_code == 200
+    first = client.post('/api/runs', headers=headers(token, **{'Idempotency-Key': 'first'}),
+                        json={'repo': 'https://github.com/huggingface/pytorch-image-models',
+                              'mode': 'recipe'})
+    assert first.status_code == 202
+    retry = client.post('/api/runs', headers=headers(token, **{'Idempotency-Key': 'first'}),
+                        json={'repo': 'https://github.com/huggingface/pytorch-image-models',
+                              'mode': 'recipe'})
+    assert retry.status_code == 202 and retry.json['id'] == first.json['id']
+    second = client.post('/api/runs', headers=headers(token, **{'Idempotency-Key': 'second'}),
+                         json={'repo': 'https://github.com/huggingface/diffusers',
+                               'mode': 'recipe'})
+    assert second.status_code == 409
+    assert second.json['active_run'] == first.json['id']
+    assert 'already active' in second.json['error']
+    assert len(web.list_jobs()) == 1
+
+
 def test_runs_are_scoped_to_the_github_user_id(gateway, tmp_path):
     import web
     jid = 'b' * 32
