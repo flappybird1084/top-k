@@ -31,6 +31,20 @@ def _(mo, json, html, Path):
             _panels.extend([mo.md(f'**{_unit}{_budget}**'), mo.Html(_svg)])
         _rows = [{k: c.get(k) for k in ('ordinal', 'generation', 'phase', 'train_secs', 'val_loss', 'step_time_ms', 'gate_reached', 'accepted')} for c in _mode['candidates']]
         if _rows:
+            _metric = 'val_loss' if _side == 'architecture' else 'step_time_ms'
+            _budgets = sorted({r['train_secs'] for r in _rows if r[_metric] is not None}) if _side == 'architecture' else [None]
+            for _seconds in _budgets:
+                _measured = [r for r in _rows if r[_metric] is not None and (_side == 'kernel' or r['train_secs'] == _seconds)]
+                if not _measured:
+                    continue
+                _values = [r[_metric] for r in _measured]
+                _low, _high = min(_values) * .95, max(_values) * 1.05
+                _span = _high - _low or 1
+                _points = [(85 + i * 560 / max(1, len(_measured)-1), 20 + (_high-r[_metric])/_span*150) for i,r in enumerate(_measured)]
+                _path = ' '.join(('M' if i == 0 else 'L') + f'{x},{y}' for i,(x,y) in enumerate(_points))
+                _dots = ''.join(f'<circle cx="{x}" cy="{y}" r="5" fill="#65ac91"><title>Evaluation {_measured[i]["ordinal"]}: {_values[i]:.8g}</title></circle><text x="{x}" y="195" fill="currentColor">#{_measured[i]["ordinal"]}</text>' for i,(x,y) in enumerate(_points))
+                _axis = ''.join(f'<text x="0" y="{24+t*150}" fill="currentColor">{_high-t*_span:.5g}</text><line x1="80" x2="660" y1="{20+t*150}" y2="{20+t*150}" stroke="#555"/>' for t in (0,.5,1))
+                _panels.extend([mo.md(f'### {_seconds or "Kernel"} {"s evaluations" if _seconds else "evaluations"}'), mo.Html(f'<svg viewBox="0 0 700 210" role="img" aria-label="Candidate measurements">{_axis}<path d="{_path}" fill="none" stroke="#a9b3ff" stroke-width="2"/>{_dots}</svg>')])
             _panels.append(mo.ui.table(_rows, selection=None, page_size=len(_rows)))
         else:
             _panels.append(mo.md('No candidate measurements recorded.'))

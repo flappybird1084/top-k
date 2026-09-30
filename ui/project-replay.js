@@ -53,10 +53,13 @@
     const values = measured.map(r => valueOf(r, side)).concat(Number.isFinite(baseline) ? [baseline] : []);
     const low = Math.min(...values) * .95, high = Math.max(...values) * 1.05, range = high - low || 1;
     const y = value => 18 + (high - value) / range * 150;
-    const maxOrdinal = Math.max(1, ...rows.map(r => r.ordinal));
-    const points = measured.map(r => `<circle cx="${82 + (r.ordinal - 1) * 350 / Math.max(1, maxOrdinal - 1)}" cy="${y(valueOf(r, side))}" r="4" fill="${r.accepted ? 'var(--success)' : 'var(--warning)'}"><title>${esc(phase(r))} #${r.ordinal}: ${fmt(valueOf(r, side))}</title></circle>`).join('');
-    return `<svg viewBox="0 0 470 195" role="img" aria-label="${side === 'architecture' ? 'Validation loss' : 'Training-step milliseconds'}${budget ? ' at ' + budget + ' seconds' : ''}">${[0,.5,1].map(t => `<line x1="80" x2="455" y1="${18+t*150}" y2="${18+t*150}" stroke="var(--line)"/><text x="0" y="${22+t*150}" fill="var(--muted)" font-size="10">${fmt(high-t*range)}</text>`).join('')}${Number.isFinite(baseline) ? `<path d="M80 ${y(baseline)} H455" stroke="var(--muted)" stroke-dasharray="5 5"><title>Baseline: ${fmt(baseline)}</title></path>` : ''}${points}<text x="80" y="192" fill="var(--muted)" font-size="10">Candidate evaluations →</text></svg>`;
+    const x = i => 82 + i * 350 / Math.max(1, measured.length - 1);
+    const coords = measured.map((r,i) => [x(i), y(valueOf(r,side))]);
+    const line = coords.length > 1 ? `<path d="${coords.map((p,i) => (i ? 'L' : 'M') + p.join(',')).join(' ')}" fill="none" stroke="var(--accent-2)" stroke-width="2"/>` : '';
+    const points = measured.map((r,i) => `<circle cx="${x(i)}" cy="${y(valueOf(r, side))}" r="5" fill="${r.accepted ? 'var(--success)' : 'var(--warning)'}"><title>${esc(phase(r))} #${r.ordinal}: ${fmt(valueOf(r, side))}</title></circle><text x="${x(i)}" y="188" text-anchor="middle" fill="var(--muted)" font-size="11">#${r.ordinal}</text>`).join('');
+    return `<svg viewBox="0 0 470 205" role="img" aria-label="${side === 'architecture' ? 'Validation loss' : 'Training-step milliseconds'}${budget ? ' at ' + budget + ' seconds' : ''}">${[0,.5,1].map(t => `<line x1="80" x2="455" y1="${18+t*150}" y2="${18+t*150}" stroke="var(--line)"/><text x="0" y="${22+t*150}" fill="var(--muted)" font-size="11">${fmt(high-t*range)}</text>`).join('')}${Number.isFinite(baseline) ? `<path d="M80 ${y(baseline)} H455" stroke="var(--muted)" stroke-dasharray="5 5"><title>Baseline: ${fmt(baseline)}</title></path>` : ''}${line}${points}</svg>`;
   }
+
   function card(side, final = false) {
     const mode = current.modes[side], result = mode.result, architecture = side === 'architecture';
     const base = result[architecture ? 'baseline_val_loss' : 'baseline_ms'];
@@ -68,10 +71,9 @@
     if (final && comparison) {
       const max = Math.max(base, candidate), width = candidate / max * 100;
       charts = `<div class="comparison-label"><span>Baseline</span><span>${fmt(base)}</span></div><div class="result-bar"><span style="width:${base/max*100}%"></span></div><div class="comparison-label"><span>Candidate</span><span>${fmt(candidate)}</span></div><div class="result-bar improved"><span style="width:${width}%"></span></div>`;
-    } else if (architecture) {
-      const budgets = [...new Set(mode.candidates.filter(r => Number.isFinite(r.val_loss)).map(r => r.train_secs).concat(comparison ? [result.final_budget_s] : []))].sort((a,b) => b-a);
-      charts = budgets.map((b,i) => {const graph = plot(mode.candidates.filter(r => r.train_secs === b), side, b === result.final_budget_s ? base : null, b);return i ? `<details class="screening-chart"><summary>${b}s screening</summary>${graph}</details>` : `<p class="caption">${b}s training · held-out validation loss</p>${graph}`;}).join('');
-    } else charts = plot(mode.candidates, side, base);
+    } else {
+      charts = ProjectReplay.series(mode, side).map(group => `<section class="budget-chart"><h4>${architecture ? group.budget + 's training · held-out validation loss' : 'Full training step · milliseconds'}</h4>${plot(group.rows, side, group.baseline, group.budget)}<p class="caption">${group.rows.length} measured evaluations${Number.isFinite(group.baseline) ? ' · dashed baseline ' + fmt(group.baseline) : ''}</p></section>`).join('');
+    }
     if (!charts) charts = `<div class="empty">${pendingText(mode.status, 'Evaluating candidates…', 'No accepted ' + side + ' result')}</div>`;
     return `<article class="metric-card"><h3>${architecture ? 'Architecture' : 'Kernels'}</h3>${comparison ? `<div class="numbers"><div><small>Baseline</small><strong>${fmt(base)}</strong></div><div><small>Candidate</small><strong>${fmt(candidate)}</strong></div></div><p class="gain">${floor ? 'Loss floor reached' : gain.toFixed(3) + '% lower ' + (architecture ? 'validation loss' : 'step time')}</p>` : ''}${charts}${comparison ? `<p class="caption">${architecture ? 'Equal ' + result.final_budget_s + 's training budget' : 'Full training step · milliseconds'}</p>` : ''}${architecture && project.caveat ? `<p class="caption caveat">${floor ? 'Synthetic-task loss floor; downstream quality not established.' : 'Near-zero synthetic loss; relative reduction is sensitive to scale.'}</p>` : ''}</article>`;
   }
@@ -86,13 +88,8 @@
     $('#candidate-detail').hidden = false;
   }
   function exploration() {
-    const focused = document.activeElement?.dataset?.candidate;
-    $('#exploration-graph').innerHTML = ['kernel','architecture'].map(side => {
-      const mode = current.modes[side], groups = new Map();
-      for (const row of mode.candidates) {const key = row.phase === 'finals' ? 'Finals' : 'Generation ' + row.generation;if (!groups.has(key)) groups.set(key, []);groups.get(key).push(row);}
-      return `<section class="generation-lane"><div class="lane-heading"><h3>${side === 'architecture' ? 'Architecture' : 'Kernel'} search</h3><small>${esc(mode.model)}</small></div><div class="generation-track">${[...groups].map(([name,rows]) => `<div class="generation-column"><span>${esc(name)}</span>${rows.map(r => `<button class="candidate-node ${r.state}" data-candidate="${side}:${r.ordinal}" aria-label="${esc(phase(r))} candidate ${r.ordinal}: ${r.state}"><span>${esc(phase(r))} ${r.ordinal}<br><small>${candidateText(r, side)}</small></span><span aria-hidden="true">${candidateIcon(r)}</span></button>`).join('')}</div>`).join('') || `<span class="quiet">${pendingText(mode.status, 'Preparing evaluation…', 'Stopped before candidate measurement')}</span>`}</div></section>`;
-    }).join('');
-    if (focused) {const button = [...document.querySelectorAll('[data-candidate]')].find(b => b.dataset.candidate === focused);button?.focus({preventScroll:true});}
+    const frame = $('#exploration-frame');
+    if (!frame.getAttribute('src')) frame.src = 'assets/project-search.html?project=' + encodeURIComponent(project.repo) + '&started=' + startedAt;
     detail();
   }
   function notebook() {
@@ -118,18 +115,17 @@
     document.querySelectorAll('[data-view="results"]').forEach(b => {b.disabled = !current.complete;});
     exploration();
     const charts = card('architecture') + card('kernel');
+    $('#run-metadata').textContent = project.repo + ' · ' + project.modes.architecture.data_source + ' · ' + project.modes.architecture.model;
     for (const id of ['dashboard-metrics','wandb-charts','notebook-progress','aria-charts']) $('#' + id).innerHTML = charts;
     $('#final-metrics').innerHTML = current.complete ? card('architecture', true) + card('kernel', true) : '';
     const rows = Object.entries(current.modes).flatMap(([side,mode]) => mode.candidates.filter(r => r.state !== 'running').map(r => ({...r, side})));
     $('#evaluation-table').innerHTML = `<table><thead><tr><th>Search</th><th>Candidate</th><th>Budget</th><th>Measurement</th><th>Gate</th><th>Result</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.side)}</td><td>${r.ordinal}</td><td>${r.train_secs ? r.train_secs + 's' : '—'}</td><td>${fmt(valueOf(r,r.side))}${Number.isFinite(r.step_time_ms) ? ' ms' : ''}</td><td>${r.gate_reached ?? '—'}</td><td class="${r.accepted ? 'accepted' : 'rejected'}">${r.accepted ? 'Accepted' : 'Not accepted'}</td></tr>`).join('')}</tbody></table>`;
-    const miniSide = current.modes.architecture.candidates.some(r => Number.isFinite(r.val_loss)) ? 'architecture' : 'kernel';
-    const miniMode = current.modes[miniSide], miniBudget = miniMode.result.final_budget_s || miniMode.candidates.find(r => Number.isFinite(r.val_loss))?.train_secs;
-    const miniRows = miniMode.candidates.filter(r => miniSide === 'kernel' || r.train_secs === miniBudget);
-    const mini = plot(miniRows, miniSide, miniMode.result[miniSide === 'architecture' ? 'baseline_val_loss' : 'baseline_ms'], miniBudget);
-    for (const id of ['wandb-mini','marimo-mini','aria-mini']) {
-      const node = $('#' + id);node.setAttribute('viewBox', '0 0 470 195');
-      node.setAttribute('aria-label', miniSide === 'architecture' ? 'Validation loss measurements' : 'Training-step measurements');
-      node.innerHTML = mini.replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '');
+    for (const [id,side] of [['wandb-mini','architecture'],['marimo-mini','kernel'],['aria-mini','architecture']]) {
+      const groups = ProjectReplay.series(current.modes[side], side);
+      const group = groups.find(g => g.rows.length > 1) || groups.find(g => g.rows.length) || groups[0];
+      const node = $('#' + id);node.setAttribute('viewBox', '0 0 470 205');
+      node.setAttribute('aria-label', side === 'architecture' ? 'Validation loss measurements' : 'Training-step measurements');
+      node.innerHTML = group ? plot(group.rows, side, group.baseline, group.budget).replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '') : '<text x="20" y="100" fill="var(--muted)" font-size="14">No measurements recorded</text>';
     }
     $('#aria-prompt').value = `Analyze ${project.repo} using ${project.wandb_url}. Compare kernel step time and held-out validation loss at matching training budgets. Explain accepted changes and failed checks. Data: deterministic synthetic batches. Do not infer downstream quality from near-zero losses.\n\n${JSON.stringify(Object.fromEntries(Object.entries(current.modes).map(([side,m])=>[side,m.result])))}`;
     notebook();
@@ -143,10 +139,10 @@
   });
   $('#close-candidate').onclick = () => {selected = null;$('#candidate-detail').hidden = true;};
   document.addEventListener('keydown', event => {if (event.key === 'Escape') $('#close-candidate').click();});
-  $('#restart-run').onclick = () => {startedAt = Date.now();storeStart();lastFrame = '';selected = null;$('#candidate-detail').hidden = true;$('#project-notebook').removeAttribute('src');render();selectView('exploration');};
+  $('#restart-run').onclick = () => {startedAt = Date.now();storeStart();lastFrame = '';selected = null;$('#candidate-detail').hidden = true;$('#project-notebook').removeAttribute('src');$('#exploration-frame').removeAttribute('src');render();selectView('exploration');};
   $('#copy-analysis').onclick = async () => {try {await navigator.clipboard.writeText($('#aria-prompt').value);$('#copy-status').textContent = 'Copied';} catch {$('#aria-prompt').focus();$('#aria-prompt').select();$('#copy-status').textContent = 'Select and copy the prompt';}};
   try {
-    const response = await fetch('assets/project-replays.json');
+    const response = await fetch('assets/project-replays.json', {cache:'no-store'});
     if (!response.ok) throw Error('Run evidence unavailable.');
     const data = await response.json();project = data.projects.find(p => p.repo === repo);
     if (!project) throw Error('Choose a project from the homepage.');
