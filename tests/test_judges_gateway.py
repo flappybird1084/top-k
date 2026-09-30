@@ -154,6 +154,24 @@ def test_run_needs_the_users_own_notebook(gateway):
     assert r.status_code == 428 and 'Pair with agent' in r.json['error']
 
 
+def test_wandb_run_requires_owners_key_before_it_is_created(gateway, monkeypatch):
+    monkeypatch.setenv('KEVO_UI_LLM', 'wandb:deepseek-ai/DeepSeek-V4-Pro-0813')
+    client = gateway.test_client()
+    token = sign_in(gateway)
+    assert client.post('/api/integrations', headers=headers(token), json={
+        'pair_prompt': 'connect to https://notebook.molab.run/abc '
+                       '--token secret-token-value'}).status_code == 200
+    r = client.post('/api/runs', headers=headers(token, **{'Idempotency-Key': 'own-key'}),
+                    json={'repo': 'https://github.com/a/b'})
+    assert r.status_code == 428
+    assert 'W&B API key' in r.json['error']
+    assert client.post('/api/integrations', headers=headers(token), json={
+        'wandb_api_key': 'k' * 40}).status_code == 200
+    r = client.post('/api/runs', headers=headers(token, **{'Idempotency-Key': 'own-key'}),
+                    json={'repo': 'https://github.com/a/b'})
+    assert r.status_code == 202
+
+
 def test_runs_are_scoped_to_the_github_user_id(gateway, tmp_path):
     import web
     jid = 'b' * 32
@@ -260,6 +278,17 @@ def test_a_public_run_never_borrows_the_servers_wandb_account(tmp_path, monkeypa
     assert env['WANDB_API_KEY'] == 'visitor-key-value'
     assert env['WANDB_ENTITY'] == 'visitor'
     assert 'operator-key-value' not in json.dumps(env)
+
+
+def test_visitor_without_queue_stamp_gets_no_operator_credentials(tmp_path, monkeypatch):
+    import web
+    from kernelevo.molab import MolabTarget
+    monkeypatch.setenv('JUDGES_INTEGRATION_DIR', str(tmp_path / 'integrations'))
+    monkeypatch.setenv('WANDB_API_KEY', 'operator-key-value')
+    job = {'id': 'd' * 32, 'visitor': 'github:7', 'wandb': {}}
+    assert 'WANDB_API_KEY' not in web._job_env(job)
+    with pytest.raises(RuntimeError, match='missing its sandbox allocation'):
+        MolabTarget({}).dispatch(job, str(tmp_path), {}, lambda line: None)
 
 
 def test_the_observer_runs_with_the_owners_credentials_only(tmp_path, monkeypatch):

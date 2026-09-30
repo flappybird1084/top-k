@@ -295,6 +295,12 @@ class MolabTarget:
                  poll_interval: float = 5.0, artifacts_dir: str | None = None) -> int:
         """Run the job on the remote notebook; streams its log through
         write_line(line). Returns the remote search.py exit code."""
+        # The public queue stamps both the isolation deadline and a unique uid.
+        # If another path dispatches a visitor job without those fields, refuse
+        # it before connecting to or uploading code onto the visitor's notebook.
+        if job.get('visitor') and (not job.get('judge_expires_at') or
+                                   int(job.get('judge_uid') or 0) < 200000):
+            raise RuntimeError('Public run is missing its sandbox allocation')
         url, token = parse_connection(self.details)
         client = MolabClient(url, token)
         write_line(f"[molab] connecting to {url}")

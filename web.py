@@ -108,6 +108,7 @@ def _job_env(job, own_only=False):
     A job owned by a signed-in visitor keeps no secret in its job file: the
     W&B key is read from that owner's integration record here, on the way into
     the child process environment."""
+    own_only = own_only or bool(job.get("visitor") or job.get("judge_expires_at"))
     env = {} if own_only else {k: os.environ[k] for k in PASS_ENV if os.environ.get(k)}
     for key, envname in (("api_key", "WANDB_API_KEY"), ("entity", "WANDB_ENTITY"),
                          ("project", "WANDB_PROJECT")):
@@ -160,7 +161,7 @@ def _run_job(jid):
             # even if this server process has been up for days
             env = dict(os.environ)
             env["KEVO_REMOTE_ENV"] = json.dumps(
-                _job_env(job, own_only=bool(job.get("judge_expires_at"))))
+                _job_env(job, own_only=bool(job.get("visitor") or job.get("judge_expires_at"))))
             if job.get("visitor"):
                 # The notebook token lives in the owner's integration record,
                 # not in job.json; hand it to the dispatcher in its environment.
