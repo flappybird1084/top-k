@@ -40,3 +40,31 @@ test('different project replays retain their own values and missing domains',()=
   assert.equal(nano.modes.architecture.result.measured,false);
   assert.equal(replay.snapshot(nano,replay.duration).modes.architecture.candidates.length,0);
 });
+
+test('chart series include every measured point once and separate training budgets',()=>{
+  for(const project of projects){
+    const snapshot=replay.snapshot(project,replay.duration);
+    for(const side of ['architecture','kernel']){
+      const mode=snapshot.modes[side], metric=side==='architecture'?'val_loss':'step_time_ms';
+      const groups=replay.series(mode,side);
+      assert.deepEqual(groups.flatMap(g=>g.rows).map(r=>r.ordinal).sort(),mode.candidates.filter(r=>Number.isFinite(r[metric])).map(r=>r.ordinal).sort());
+      for(const group of groups)if(side==='architecture')assert.ok(group.rows.every(r=>r.train_secs===group.budget));
+    }
+    const initial=replay.snapshot(project,0);
+    assert.ok(replay.series(initial.modes.architecture,'architecture').every(g=>g.rows.length===0));
+    assert.equal(initial.modes.architecture.baseline.baseline_val_loss,project.modes.architecture.result.baseline_val_loss);
+    assert.deepEqual(initial.modes.architecture.result,{});
+    const pair=replay.runPair(project,replay.duration);
+    for(const side of ['architecture','kernel']){
+      assert.equal(pair[side].rows.length,project.modes[side].candidates.length);
+      if(pair[side].final_result?.parent_id)assert.ok(pair[side].rows.some(r=>r.id===pair[side].final_result.parent_id&&r.accepted));
+      assert.ok(pair[side].rows.every(r=>r.parent_id===undefined));
+    }
+  }
+});
+
+test('graph completion uses the rendered snapshot boundary',()=>{
+ const project=projects.find(p=>p.name==='timm');
+ assert.ok(Object.values(replay.runPair(project,replay.duration-1)).every(s=>!s.replay_complete));
+ assert.ok(Object.values(replay.runPair(project,replay.duration)).every(s=>s.replay_complete&&s.final_result));
+});
