@@ -2,7 +2,7 @@
 const params=new URLSearchParams(location.search),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const finite=v=>Number.isFinite(v)&&v>0;
 const median=values=>{const v=values.slice().sort((a,b)=>a-b),m=Math.floor(v.length/2);return v.length%2?v[m]:(v[m-1]+v[m])/2;};
-function external(url,label){try{const u=new URL(url,location.href);if(!['http:','https:'].includes(u.protocol))return '';return `<a href="${esc(u.href)}" target="_blank" rel="noopener noreferrer">${label} ↗</a>`}catch{return ''}}
+function external(url,label){if(typeof url!=='string'||!url.trim())return '';try{const u=new URL(url);if(!['http:','https:'].includes(u.protocol))return '';return `<a href="${esc(u.href)}" target="_blank" rel="noopener noreferrer">${label} ↗</a>`}catch{return ''}}
 function links(s,side){const p=new URLSearchParams(params);p.set('view',side);return `<div class="result-links"><a href="../workspace.html?${esc(p)}">All metrics & logs ↗</a>${external(s.integrations?.wandb_url,'W&B')}${external(s.integrations?.weave_url,'Weave')}${external(s.integrations?.marimo_url,'marimo')}</div>`}
 function architecture(s){
  const rows=s?.architecture?.candidates||[],finals=rows.filter(r=>r.phase==='finals'&&r.accepted&&finite(r.val_loss)),winner=finals.sort((a,b)=>a.val_loss-b.val_loss)[0];
