@@ -50,7 +50,6 @@ nav.top.scrolled{background:rgba(9,9,11,.72);backdrop-filter:blur(12px);-webkit-
 form.repo{width:min(580px,100%);margin:0 auto}
 .field{display:flex;align-items:center;gap:10px;height:60px;padding:0 8px 0 18px;border:1px solid var(--line-2);border-radius:12px;background:rgba(17,17,20,.85);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);transition:border-color .2s,box-shadow .2s}
 .field:focus-within{border-color:#4a4f7a;box-shadow:0 0 0 4px rgba(139,151,255,.1)}
-.glyph{font:20px var(--mono);color:var(--faint)}
 .field input{flex:1;min-width:0;border:0;outline:0;background:none;color:var(--ink);font:15px var(--sans);padding:8px 0}
 .field input::placeholder{color:#6f6f78}
 .field select{appearance:none;-webkit-appearance:none;border:1px solid var(--line);color:var(--muted);font:12px var(--mono);letter-spacing:.03em;border-radius:7px;padding:8px 26px 8px 10px;cursor:pointer;background:var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23a1a1aa' stroke-width='1.4'/%3E%3C/svg%3E") no-repeat right 10px center}
@@ -442,4 +441,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   .tabbar button{flex:none;min-height:44px}
   .pane{padding:14px 12px 18px}
   .field input,.field select{font-size:16px}
+  .field{height:auto;display:grid;grid-template-columns:minmax(0,1fr) 44px;gap:8px;padding:8px}
+  .field input{grid-column:1/-1;width:100%;padding:9px 6px}
+  .field select{grid-column:1;max-width:none;width:100%;height:44px;padding-left:12px}
+  .field button{grid-column:2;width:44px;height:44px}
 }

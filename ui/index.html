@@ -8,7 +8,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Top-Kernel</title>
 <meta name="description" content="Point it at a PyTorch repo. Agents evolve the architecture and the kernels, and only what measurably wins survives.">
-<link rel="stylesheet" href="landing.css?v=mobile-1">
+<link rel="stylesheet" href="landing.css?v=mobile-2">
 <script>
 const intake = new URLSearchParams(location.search).get('intake');
 if (intake && /^[a-f0-9]{32}$/.test(intake)) location.replace(`start.html?intake=${intake}`);
@@ -41,8 +41,7 @@ uv run python search.py \
     <form class="repo" id="hero-form" hidden novalidate>
       <label class="sr-only" for="repo-hero">Repository URL</label>
       <div class="field">
-        <span class="glyph" aria-hidden="true">↳</span>
-        <input id="repo-hero" type="text" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="github.com/you/your-training-repo">
+        <input id="repo-hero" type="text" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="github.com/you/repo">
         <select aria-label="What to optimize"><option value="recipe">Architecture</option><option value="kernel" selected>Kernels</option><option value="both">Both</option></select>
         <button type="submit" aria-label="Start">→</button>
       </div>
