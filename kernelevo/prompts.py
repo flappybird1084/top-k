@@ -182,6 +182,8 @@ Hard requirements:
   comments say otherwise, prefer the repo's real config scale over toy sizes.
 - The repo is already on sys.path (the harness prepends that) — import its
   modules directly; do not copy model code unless imports are impossible.
+  build_model() must instantiate at least one module class defined in this
+  repository; substituting a torchvision or torch.hub model is invalid.
 - After constructing the model in build_model(), you may call
   `from kernelevo import patch; patch.fuse_mlp_blocks(model)` to expose fused
   Linear+GELU(tanh) blocks to the optimizer. F.layer_norm and F.rms_norm calls

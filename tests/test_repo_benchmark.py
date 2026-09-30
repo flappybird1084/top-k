@@ -355,6 +355,29 @@ def test_ingest_rejects_loss_without_model_gradient():
     check_training_signal((model.weight ** 2).sum(), model)
 
 
+def test_generated_adapter_rejects_unrelated_library_model(tmp_path):
+    import torch
+    from types import SimpleNamespace
+    from kernelevo.ingest import check_repository_model
+
+    (tmp_path / "repo").mkdir()
+    adapter_path = tmp_path / "adapter.py"
+    adapter_path.write_text("# generated adapter\n")
+    adapter = SimpleNamespace(__file__=str(adapter_path))
+    with pytest.raises(SystemExit, match="target repository"):
+        check_repository_model(adapter, torch.nn.Linear(2, 2))
+
+    source = tmp_path / "repo" / "model.py"
+    source.write_text("import torch\nclass Model(torch.nn.Linear):\n    pass\n")
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("test_source_model", source)
+    module = importlib.util.module_from_spec(spec)
+    import sys
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    check_repository_model(adapter, module.Model(2, 2))
+
+
 def test_recipe_ingest_checks_native_model_and_heldout_loader(monkeypatch):
     import torch
     from kernelevo.ingest import ingest

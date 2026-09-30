@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import inspect
 from functools import wraps
 from itertools import islice
 import os
@@ -70,10 +71,33 @@ def check_training_signal(loss: torch.Tensor, model: torch.nn.Module) -> None:
         raise SystemExit("loss produced only zero model gradients")
 
 
+def check_repository_model(adapter, model: torch.nn.Module) -> None:
+    """A generated adapter must train code from the repository it was given."""
+    adapter_path = getattr(adapter, "__file__", "")
+    if os.path.basename(adapter_path) != "adapter.py":
+        return
+    repo_dir = os.path.realpath(os.path.join(os.path.dirname(adapter_path), "repo"))
+    if not os.path.isdir(repo_dir):
+        return
+    for module in model.modules():
+        try:
+            source = os.path.realpath(inspect.getfile(type(module)))
+        except (OSError, TypeError):
+            continue
+        if os.path.commonpath((repo_dir, source)) == repo_dir:
+            return
+    raise SystemExit(
+        "build_model() did not instantiate any module defined in the target "
+        "repository. Import and train the repository's actual model instead "
+        "of a model from torchvision, torch.hub, or another library."
+    )
+
+
 def ingest(adapter, cfg) -> dict:
     from kernelevo import patch
     torch.manual_seed(cfg["seed"])
     model = adapter.build_model().to(cfg["device"])
+    check_repository_model(adapter, model)
     batch = next(iter(adapter.get_dataloader("train")))
     # Routing-fidelity reference: loss on the UNROUTED model, same weights and
     # batch. auto_route replaces module forwards one-way; without this check a
