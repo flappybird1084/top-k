@@ -41,6 +41,15 @@
   const onScroll = () => nav.classList.toggle('scrolled', scrollY > 24);
   addEventListener('scroll', onScroll, { passive: true });
   onScroll();
+  const snapSections = [...document.querySelectorAll('.hero, .sec, .final')];
+  const syncSnap = () => snapSections.forEach(section =>
+    section.classList.toggle('snap-tall', section.getBoundingClientRect().height >= innerHeight - 48));
+  addEventListener('resize', syncSnap, { passive: true });
+  if ('ResizeObserver' in window) {
+    const observer = new ResizeObserver(syncSnap);
+    snapSections.forEach(section => observer.observe(section));
+  }
+  syncSnap();
   document.querySelectorAll('form.repo').forEach(f => f.addEventListener('submit', e => {
     e.preventDefault();
     const input = f.querySelector('input'), note = f.querySelector('.note');
@@ -565,7 +574,7 @@
   });
 
   /* ---------------- repos: accepted results from published benchmark reports ---------------- */
-  (function web() {
+  (async function web() {
     const box = $('#web'), stage = $('#web-stage'), cv = $('#web-canvas'), layer = $('#web-nodes'), hub = $('#hub'), card = $('#run-card');
     if (!box) return;
     const benchmark = window.TOPK_BENCHMARKS;
@@ -606,6 +615,32 @@
       if (result.architecture?.caveat === 'loss-floor') chip = 'architecture · loss floor';
       return { name: result.name, short: result.short, chip, metrics, evidence: result.evidence_url || benchmark.evidence_url, replay: result.replay_available ? `replay.html?project=${encodeURIComponent(result.name)}&start=1` : null };
     });
+    // Show recently completed public GitHub repositories without publishing
+    // their owner's private run id, metrics, dataset, or traces.
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2500);
+      let response;
+      try {
+        response = await fetch('https://api.top-k.dev/api/public/repos', { signal: controller.signal });
+      } finally {
+        clearTimeout(timeout);
+      }
+      if (response.ok) {
+        const known = new Set(RUNS.map(r => r.name.toLowerCase()));
+        const recent = (await response.json()).repos;
+        if (Array.isArray(recent)) for (const repo of recent) {
+          if (RUNS.length >= benchmark.results.length + 3) break;
+          if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo.name) || known.has(repo.name.toLowerCase())) continue;
+          const expected = `https://github.com/${repo.name}`;
+          if (repo.url !== expected) continue;
+          known.add(repo.name.toLowerCase());
+          const label = repo.name.split('/')[1];
+          RUNS.push({ name: repo.name, short: label.length > 14 ? label.slice(0, 13) + '…' : label,
+            chip: 'community', metrics: [], evidence: expected, replay: null, community: true });
+        }
+      }
+    } catch { /* Public feed is optional; measured benchmarks remain visible. */ }
     const nodes = RUNS.map((r, idx) => ({ ...r, idx }));
 
     hub.addEventListener('click', () => go(''));
@@ -614,7 +649,8 @@
       b.type = 'button';
       b.className = 'rnode run';
       b.innerHTML = `<i aria-hidden="true"></i><span>${esc(n.short)}</span>`;
-      b.setAttribute('aria-label', `${n.name}: accepted ${n.chip} improvement. Show details.`);
+      b.setAttribute('aria-label', n.community ? `${n.name}: completed user run. Show repository.` :
+        `${n.name}: accepted ${n.chip} improvement. Show details.`);
       b.addEventListener('click', () => show(n.idx, true));
       layer.appendChild(b);
       n.el = b;
@@ -636,11 +672,13 @@
     function show(i, user) {
       const restorePagerFocus = user && card.contains(document.activeElement) && document.activeElement.matches('.pager button');
       const r = RUNS[i];
+      card.classList.toggle('community', !!r.community);
       card.setAttribute('aria-live', user ? 'polite' : 'off');
-      card.innerHTML = `<div class="body"><span class="k">Accepted benchmark result</span><h3>${esc(r.name)}</h3>`
+      card.innerHTML = `<div class="body"><span class="k">${r.community ? 'Completed user run' : 'Accepted benchmark result'}</span><h3>${esc(r.name)}</h3>`
         + r.metrics.map(m => `<div class="run-metric"><div class="big">${esc(m.value)}<small>${esc(m.label)}</small></div><p>${esc(m.detail)}</p></div>`).join('')
+        + (r.community ? '<p>Run metrics stay private to the GitHub account that ran this repo.</p>' : '')
         + '</div>'
-        + `<div class="act"><a class="go" href="${esc(r.replay || r.evidence)}">${r.replay ? 'Replay run ↗' : 'View measured evidence ↗'}</a><div class="pager">`
+        + `<div class="act"><a class="go" href="${esc(r.replay || r.evidence)}">${r.community ? 'View repo ↗' : r.replay ? 'Replay run ↗' : 'View measured evidence ↗'}</a><div class="pager">`
         + RUNS.map((q, k) => `<button type="button" class="${k === i ? 'on' : ''}" aria-label="Show ${esc(q.name)}"></button>`).join('')
         + '</div></div>';
       card.querySelectorAll('.pager button').forEach((b, k) => b.addEventListener('click', () => show(k, true)));
@@ -652,7 +690,11 @@
     let W = 0, H = 0;
     function draw(ctx) {
       ctx.clearRect(0, 0, W, H);
-      const cx = W / 2, cy = H / 2, rx = Math.max(90, W / 2 - 88), ry = Math.max(1, H / 2 - 60);
+      const cx = W / 2, cy = H / 2;
+      const mobile = W <= 700;
+      const radius = Math.max(75, Math.min(W / 2 - 54, H / 2 - 82));
+      const rx = mobile ? radius : Math.max(90, W / 2 - 88);
+      const ry = mobile ? radius : Math.max(1, H / 2 - 60);
       ctx.lineWidth = 1;
       for (const scale of [.65, 1]) {
         ctx.strokeStyle = `rgba(${C.accent},.18)`;

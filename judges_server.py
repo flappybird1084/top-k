@@ -25,13 +25,12 @@ from kernelevo.judges_pool import NotebookPool
 from kernelevo.molab import MolabClient
 
 DEFAULT_ORIGIN = 'https://top-kernel-demo.andre520395.chatgpt.site'
-DEFAULT_ALLOWED_GITHUB_LOGINS = frozenset({'flappybird1084', 'andred1729'})
 # Written by the edge worker; a request that reaches the origin without them
 # did not come through the edge and is refused.
 EDGE_AUTH_HEADER = 'X-TopK-Edge-Auth'
 CLIENT_IP_HEADER = 'X-TopK-Client-IP'
 AUTH_PATHS = ('/auth/github/login', '/auth/github/callback')
-PUBLIC_API = ('/api/auth/config',)
+PUBLIC_API = ('/api/auth/config', '/api/public/repos')
 
 
 # The gateway itself connects to whatever notebook address a visitor pastes in
@@ -94,15 +93,10 @@ def validate_notebook_connection(notebook):
 
 
 def allowed_github_logins():
-    """Return the case-insensitive GitHub login allowlist.
-
-    The production default deliberately admits only the two project owners.
-    Deployments can override it through the private environment file without
-    changing source, which keeps widening access an explicit operation.
-    """
-    value = os.getenv('JUDGES_ALLOWED_GITHUB_LOGINS')
-    if value is None:
-        return DEFAULT_ALLOWED_GITHUB_LOGINS
+    """Return an optional case-insensitive allowlist; * admits any GitHub login."""
+    value = os.getenv('JUDGES_ALLOWED_GITHUB_LOGINS', '*').strip()
+    if value == '*':
+        return None
     return frozenset(login.strip().casefold() for login in value.split(',') if login.strip())
 
 
@@ -112,7 +106,8 @@ def create_app():
     origin = os.environ.get('JUDGES_ORIGIN', DEFAULT_ORIGIN)
     allowed_logins = allowed_github_logins()
     github = GitHubSignIn(app, origin,
-                          allowed_login=lambda login: login.casefold() in allowed_logins)
+                          allowed_login=lambda login: allowed_logins is None or
+                          login.casefold() in allowed_logins)
     # Shared secret installed on the edge worker. Missing means the deployment
     # is half-configured, and the gateway refuses everything rather than
     # accepting requests that bypassed the edge.
@@ -213,6 +208,30 @@ def create_app():
         # Readiness only: queue depth, worker counts and the exact expiry are
         # operational detail, not something an anonymous prober should learn.
         return dict(ready=time.time() < expires_at)
+
+    @app.get('/api/public/repos')
+    def public_repos():
+        """Public repository names from completed user runs; no owner or run data."""
+        repos = []
+        seen = set()
+        for job in web.list_jobs():
+            if job.get('status') != 'done' or not job.get('visitor'):
+                continue
+            try:
+                repo = ui_server.repo_url(job.get('repo', ''))
+            except ValueError:
+                continue
+            # Branch and commit URLs still name the same repository. Never
+            # publish a private run id, dataset, account, metric, or trace.
+            parts = repo.removeprefix('https://github.com/').split('/')
+            name = '/'.join(parts[:2])
+            if name.casefold() in seen:
+                continue
+            seen.add(name.casefold())
+            repos.append({'name': name, 'url': 'https://github.com/' + name})
+            if len(repos) == 12:
+                break
+        return jsonify(repos=repos)
 
     @app.route('/api/integrations', methods=['GET', 'POST'])
     def user_integrations():

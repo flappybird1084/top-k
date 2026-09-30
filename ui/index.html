@@ -8,7 +8,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Top-Kernel</title>
 <meta name="description" content="Point it at a PyTorch repo. Agents evolve the architecture and the kernels, and only what measurably wins survives.">
-<link rel="stylesheet" href="landing.css?v=mobile-2">
+<link rel="stylesheet" href="landing.css?v=orbit-2">
 <script>
 const intake = new URLSearchParams(location.search).get('intake');
 if (intake && /^[a-f0-9]{32}$/.test(intake)) location.replace(`start.html?intake=${intake}`);
@@ -167,7 +167,7 @@ uv run python search.py \
 <section class="final" id="repos">
   <div class="web reveal" id="web">
     <div class="web-head">
-      <h2>A growing orbit of results.</h2>
+      <h2>A growing orbit of runs.</h2>
     </div>
     <div class="web-stage" id="web-stage">
       <canvas id="web-canvas" aria-hidden="true"></canvas>
@@ -175,7 +175,7 @@ uv run python search.py \
       <button class="hub" id="hub" type="button" aria-label="Your repo: go to the search box"><i aria-hidden="true"></i><span>Your repo</span></button>
     </div>
     <article class="run-card" id="run-card"></article>
-    <p class="web-evidence">Measured on real projects with synthetic batches. <a id="benchmark-evidence" href="https://github.com/flappybird1084/top-k/tree/main/benchmarks/results" target="_blank" rel="noopener noreferrer">Results &amp; methodology ↗</a></p>
+    <p class="web-evidence">Published benchmarks used synthetic batches; user-run metrics stay private. <a id="benchmark-evidence" href="https://github.com/flappybird1084/top-k/tree/main/benchmarks/results" target="_blank" rel="noopener noreferrer">Results &amp; methodology ↗</a></p>
   </div>
 </section>
 
@@ -191,6 +191,6 @@ uv run python search.py \
 <script src="landing-data.js?v=ui-moment-v2-3"></script>
 <script src="landing-timeline.js?v=ui-moment-v2-3"></script>
 <script src="landing-benchmarks.js?v=showcase-1"></script>
-<script src="landing.js?v=replay-1"></script>
+<script src="landing.js?v=orbit-2"></script>
 </body>
 </html>

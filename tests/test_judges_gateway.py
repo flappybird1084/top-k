@@ -97,6 +97,38 @@ def test_unlisted_github_session_cannot_use_any_protected_route(gateway):
     assert client.get('/api/health', headers=headers(allowed)).status_code == 200
 
 
+def test_wildcard_allows_any_authenticated_github_account(gateway, monkeypatch):
+    import judges_server
+    monkeypatch.setenv('JUDGES_ALLOWED_GITHUB_LOGINS', '*')
+    open_gateway = judges_server.create_app()
+    token = sign_in(open_gateway, 201, 'new-contributor')
+    client = open_gateway.test_client()
+    assert client.get('/api/auth/me', headers=headers(token)).status_code == 200
+    assert client.get('/api/health', headers=headers(token)).status_code == 200
+    assert client.get('/api/health', headers=headers()).status_code == 401
+    assert client.post('/api/runs', headers=headers(token),
+                       json={'repo': 'https://github.com/new-contributor/model'}).status_code == 428
+
+
+def test_public_repos_show_only_completed_names_without_run_data(gateway):
+    import web
+    now = time.time()
+    for jid, repo, status, visitor in (
+            ('a' * 32, 'https://github.com/new-user/vision/tree/main', 'done', 'github:7'),
+            ('b' * 32, 'https://github.com/new-user/vision', 'done', 'github:8'),
+            ('c' * 32, 'https://github.com/private/lab', 'running', 'github:9'),
+            ('d' * 32, 'https://github.com/operator/internal', 'done', None)):
+        web.save_job(dict(id=jid, repo=repo, status=status, visitor=visitor,
+                          created_at=now, data='private-data', token='private-token'))
+        now -= 1
+    response = gateway.test_client().get('/api/public/repos', headers=headers())
+    assert response.status_code == 200
+    assert response.json == {'repos': [{'name': 'new-user/vision',
+                                       'url': 'https://github.com/new-user/vision'}]}
+    assert 'private-data' not in response.get_data(as_text=True)
+    assert 'private-token' not in response.get_data(as_text=True)
+
+
 def test_integration_secrets_never_come_back(gateway):
     client = gateway.test_client()
     token = sign_in(gateway)

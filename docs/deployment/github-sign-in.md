@@ -1,10 +1,13 @@
 # GitHub sign-in
 
-Website: https://top-kernel-demo.andre520395.chatgpt.site/
+Website: https://top-k.dev/
 
-Everything on the site is behind GitHub sign-in: a visitor who is not signed in
-sees only the sign-in card. Any signed-in GitHub user may submit any public
-repository — that open access is intentional, and there is no allowlist.
+The landing page is public; starting a run and viewing its details require
+GitHub sign-in. Any signed-in GitHub user may submit a public repository.
+`JUDGES_ALLOWED_GITHUB_LOGINS=*` (the default) admits all GitHub accounts; a
+comma-separated list can restrict a private deployment. Completed public
+repository names may appear on the landing orbit, but owner identities, run
+IDs, datasets, metrics, and traces remain private.
 
 After signing in, each visitor connects **their own** GPU notebook and **their
 own** Weights & Biases account before a run can start. The operator's notebooks
