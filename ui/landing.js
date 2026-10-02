@@ -541,7 +541,7 @@
   });
 
   /* ---------------- repos: accepted results from published benchmark reports ---------------- */
-  (async function web() {
+  (function web() {
     const box = $('#web'), stage = $('#web-stage'), cv = $('#web-canvas'), layer = $('#web-nodes'), hub = $('#hub'), card = $('#run-card');
     if (!box) return;
     const benchmark = window.TOPK_BENCHMARKS;
@@ -580,42 +580,15 @@
       if (result.architecture?.caveat === 'loss-floor') chip = 'architecture · loss floor';
       return { name: result.name, short: result.short, chip, metrics, evidence: result.evidence_url || benchmark.evidence_url };
     });
-    // Show recently completed public GitHub repositories without publishing
-    // their owner's private run id, metrics, dataset, or traces.
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 2500);
-      let response;
-      try {
-        response = await fetch('https://api.top-k.dev/api/public/repos', { signal: controller.signal });
-      } finally {
-        clearTimeout(timeout);
-      }
-      if (response.ok) {
-        const known = new Set(RUNS.map(r => r.name.toLowerCase()));
-        const recent = (await response.json()).repos;
-        if (Array.isArray(recent)) for (const repo of recent) {
-          if (RUNS.length >= benchmark.results.length + 3) break;
-          if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo.name) || known.has(repo.name.toLowerCase())) continue;
-          const expected = `https://github.com/${repo.name}`;
-          if (repo.url !== expected) continue;
-          known.add(repo.name.toLowerCase());
-          const label = repo.name.split('/')[1];
-          RUNS.push({ name: repo.name, short: label.length > 14 ? label.slice(0, 13) + '…' : label,
-            chip: 'community', metrics: [], evidence: expected, replay: null, community: true });
-        }
-      }
-    } catch { /* Public feed is optional; measured benchmarks remain visible. */ }
     const nodes = RUNS.map((r, idx) => ({ ...r, idx }));
 
-    hub.addEventListener('click', () => go(''));
+    hub.addEventListener('click', go);
     nodes.forEach(n => {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'rnode run';
       b.innerHTML = `<i aria-hidden="true"></i><span>${esc(n.short)}</span>`;
-      b.setAttribute('aria-label', n.community ? `${n.name}: completed user run. Show repository.` :
-        `${n.name}: accepted ${n.chip} improvement. Show details.`);
+      b.setAttribute('aria-label', `${n.name}: accepted ${n.chip} improvement. Show details.`);
       b.addEventListener('click', () => show(n.idx, true));
       layer.appendChild(b);
       n.el = b;
@@ -637,13 +610,11 @@
     function show(i, user) {
       const restorePagerFocus = user && card.contains(document.activeElement) && document.activeElement.matches('.pager button');
       const r = RUNS[i];
-      card.classList.toggle('community', !!r.community);
       card.setAttribute('aria-live', user ? 'polite' : 'off');
-      card.innerHTML = `<div class="body"><span class="k">${r.community ? 'Completed user run' : 'Accepted benchmark result'}</span><h3>${esc(r.name)}</h3>`
+      card.innerHTML = `<div class="body"><span class="k">Accepted benchmark result</span><h3>${esc(r.name)}</h3>`
         + r.metrics.map(m => `<div class="run-metric"><div class="big">${esc(m.value)}<small>${esc(m.label)}</small></div><p>${esc(m.detail)}</p></div>`).join('')
-        + (r.community ? '<p>Run metrics stay private to the GitHub account that ran this repo.</p>' : '')
         + '</div>'
-        + `<div class="act"><a class="go" href="${esc(r.evidence)}">${r.community ? 'View repo ↗' : 'View measured evidence ↗'}</a><div class="pager">`
+        + `<div class="act"><a class="go" href="${esc(r.evidence)}">View measured evidence ↗</a><div class="pager">`
         + RUNS.map((q, k) => `<button type="button" class="${k === i ? 'on' : ''}" aria-label="Show ${esc(q.name)}"></button>`).join('')
         + '</div></div>';
       card.querySelectorAll('.pager button').forEach((b, k) => b.addEventListener('click', () => show(k, true)));

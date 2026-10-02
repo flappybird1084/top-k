@@ -2,6 +2,11 @@
 
 Website: https://top-k.dev/
 
+The hosted EC2 backend has been removed. The website is a static frontend:
+it makes no gateway API calls and offers no hosted sign-in or search. Runs
+start through the CLI. The gateway configuration below is retained as
+reference for the retired deployment.
+
 The landing page is public and provides CLI instructions. The hosted dashboard
 and search pages are unpublished. The private gateway admits only
 `andred1729` and `flappybird1084` by default. Set

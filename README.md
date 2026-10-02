@@ -74,7 +74,8 @@ Engineering choices that keep the numbers honest:
 
 ## Run it from CLI
 
-The public website shows the project and measured examples. To run a search,
+The website is a static frontend with project information and measured examples.
+Searches run through the CLI on your own machine. To run a search,
 use a Linux machine with a CUDA GPU and Python 3.11+:
 
 ```bash
@@ -117,9 +118,6 @@ repository commits, run one GPU job at a time with W&B Inference, and publish
 the complete result table to W&B, including failures. A repository appears in
 the intake set only as a candidate workload; measured improvements are recorded
 per run after deterministic verification.
-
-For operator access to the production EC2 host through AWS Systems Manager,
-see [Session Manager setup](docs/deployment/ec2-ssm.md).
 
 ## Scope and honesty
 
