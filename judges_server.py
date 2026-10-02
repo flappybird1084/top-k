@@ -7,15 +7,13 @@ immutable GitHub numeric user id.
 """
 import hashlib
 import hmac
-import json
 import os
-from pathlib import Path
 import re
 import secrets
 import threading
 import time
 
-from flask import Flask, jsonify, request, g, send_from_directory
+from flask import Flask, jsonify, request, g
 
 import ui_server
 import web
@@ -93,10 +91,8 @@ def validate_notebook_connection(notebook):
 
 
 def allowed_github_logins():
-    """Return an optional case-insensitive allowlist; * admits any GitHub login."""
-    value = os.getenv('JUDGES_ALLOWED_GITHUB_LOGINS', '*').strip()
-    if value == '*':
-        return None
+    """Return the case-insensitive GitHub login allowlist (closed by default)."""
+    value = os.getenv('JUDGES_ALLOWED_GITHUB_LOGINS', 'andred1729,flappybird1084').strip()
     return frozenset(login.strip().casefold() for login in value.split(',') if login.strip())
 
 
@@ -106,8 +102,7 @@ def create_app():
     origin = os.environ.get('JUDGES_ORIGIN', DEFAULT_ORIGIN)
     allowed_logins = allowed_github_logins()
     github = GitHubSignIn(app, origin,
-                          allowed_login=lambda login: allowed_logins is None or
-                          login.casefold() in allowed_logins)
+                          allowed_login=lambda login: login.casefold() in allowed_logins)
     # Shared secret installed on the edge worker. Missing means the deployment
     # is half-configured, and the gateway refuses everything rather than
     # accepting requests that bypassed the edge.
@@ -333,43 +328,6 @@ def create_app():
         if action not in allowed or request.method != allowed[action]:
             return jsonify(error='Not found'), 404
         return delegate('/api/runs/' + jid + ('/' + action if action else ''))
-
-    @app.get('/api/recorded/runs')
-    def recorded_runs():
-        """The recorded demo evidence carries private Weave links and run logs
-        from the operator's W&B account, so it is served here — to signed-in
-        users — instead of sitting in the published static bundle."""
-        source = ui_server.UI / 'assets' / 'recorded-data.js'
-        try:
-            text = source.read_text()
-        except OSError:
-            return jsonify(error='No recorded evidence is installed.'), 404
-        _, _, body = text.partition('=')
-        try:
-            return app.response_class(json.dumps(json.loads(body.strip().rstrip(';'))),
-                                      content_type='application/json')
-        except ValueError:
-            return jsonify(error='No recorded evidence is installed.'), 404
-
-    @app.get('/')
-    def index():
-        return send_from_directory(ui_server.UI, 'index.html')
-
-    @app.get('/assets/<path:name>')
-    def assets(name):
-        if Path(name).suffix.lower() not in {'.html', '.js', '.css', '.png', '.svg', '.woff2', '.json'}:
-            return jsonify(error='Not found'), 404
-        if name.startswith('recorded') and not getattr(g, 'visitor', None):
-            return jsonify(error='Not found'), 404
-        return send_from_directory(ui_server.UI / 'assets', name)
-
-    @app.get('/<name>')
-    def public_file(name):
-        if name not in {'evolution.js', 'demo.js', 'index.html', 'front.js', 'front.css',
-                        'live-api.js', 'github-auth.css', 'workspace.html', 'run.js',
-                        'run.css', 'results.html', 'results.js'}:
-            return jsonify(error='Not found'), 404
-        return send_from_directory(ui_server.UI, name)
 
     return app
 

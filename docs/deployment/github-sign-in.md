@@ -2,17 +2,17 @@
 
 Website: https://top-k.dev/
 
-The landing page is public; starting a run and viewing its details require
-GitHub sign-in. Any signed-in GitHub user may submit a public repository.
-`JUDGES_ALLOWED_GITHUB_LOGINS=*` (the default) admits all GitHub accounts; a
-comma-separated list can restrict a private deployment. Completed public
-repository names may appear on the landing orbit, but owner identities, run
-IDs, datasets, metrics, and traces remain private.
+The landing page is public and provides CLI instructions. The hosted dashboard
+and search pages are unpublished. The private gateway admits only
+`andred1729` and `flappybird1084` by default. Set
+`JUDGES_ALLOWED_GITHUB_LOGINS=andred1729,flappybird1084` in production;
+the literal `*` is not a wildcard. Completed public repository names may
+appear on the landing orbit, but owner identities, run IDs, datasets,
+metrics, and traces remain private.
 
-After signing in, each visitor connects **their own** GPU notebook and **their
-own** Weights & Biases account before a run can start. The operator's notebooks
-and API keys are never handed to a visitor, and a run that has no notebook of
-its own is refused (HTTP 428) rather than falling back to ours.
+The CLI runs on the user's own GPU and logs to their own W&B account. The
+private API still enforces per-user notebook and W&B credentials for its two
+approved accounts; it never hands out operator notebooks or keys.
 
 ## The pieces
 
@@ -43,21 +43,18 @@ has the edge secret and sees it on the request.
    `npx wrangler secret put EDGE_SECRET` and `npx wrangler secret put GPU_ORIGIN`.
    Remove `GPU_ORIGIN` when compute is offline. Neither value belongs in
    `wrangler.jsonc`, the repository, or the static site.
-5. Publish the static client (`ui/`) to the Sites project as before. **Do not
-   publish `ui/assets/recorded/**` or `ui/assets/recorded-data.js`**: the
-   recorded demo evidence contains private Weave links and run logs from the
-   operator's W&B account. The signed-in client fetches it from
-   `/api/recorded/runs` instead.
+5. Publish the CLI-only landing page (`ui/`) to the Sites project. Do not
+   publish the removed dashboard, search, or recorded notebook pages. Private
+   Weave links and operator run logs must not be exposed as static assets.
 6. Test sign-in, sign-out, callback replay rejection, and ownership with two
    distinct GitHub accounts before activating. Unit tests mock GitHub and
    cannot verify a real app registration.
 
 ## What a visitor connects
 
-The setup card after sign-in walks through it: create or sign in to marimo,
-start a notebook on a GPU runtime, choose **Pair with agent**, paste that whole
-prompt (the token on screen is masked — only the copied text carries it), then
-add a W&B API key. Both are stored server-side under `JUDGES_INTEGRATION_DIR`,
+For the private gateway API, a visitor creates or signs in to marimo,
+starts a notebook on a GPU runtime, chooses **Pair with agent**, supplies that
+prompt, then adds a W&B API key. Both are stored server-side under `JUDGES_INTEGRATION_DIR`,
 in files named by a hash of the GitHub user id, created with owner-only
 permissions from the first byte, in a directory only the gateway user can
 enter. Neither the notebook token nor the W&B key is ever returned by the API,

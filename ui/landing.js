@@ -22,7 +22,6 @@
   const watch = (node, cb) => new IntersectionObserver(es => cb(es[es.length - 1].isIntersecting), { threshold: 0 }).observe(node);
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const pct = g => (g >= 0 ? '−' : '+') + Math.abs(g).toFixed(2) + '%';
-  const HANDOFF_KEY = 'topk_start_handoff_v1'; // Also consumed by front.js on start.html.
 
   // Canvas palette (RGB triplets) — mirrors the CSS variables.
   const C = { ink: '237,237,240', gray: '107,107,117', coral: '239,122,109', amber: '242,181,96', accent: '139,151,255', accent2: '196,202,255' };
@@ -50,38 +49,6 @@
     snapSections.forEach(section => observer.observe(section));
   }
   syncSnap();
-  document.querySelectorAll('form.repo').forEach(f => f.addEventListener('submit', e => {
-    e.preventDefault();
-    const input = f.querySelector('input'), note = f.querySelector('.note');
-    const raw = input.value.trim();
-    if (!raw) { note.textContent = 'Paste the URL of a PyTorch training repo.'; input.focus(); return; }
-    let url;
-    try {
-      url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
-      if (url.protocol === 'http:') url.protocol = 'https:';
-      if (url.protocol !== 'https:' || !['github.com', 'www.github.com'].includes(url.hostname)
-        || url.username || url.password || url.pathname.split('/').filter(Boolean).length < 2) throw new Error('Invalid GitHub URL');
-    } catch { note.textContent = 'Paste a GitHub repository URL, such as github.com/owner/repo.'; input.focus(); return; }
-    try {
-      sessionStorage.setItem(HANDOFF_KEY, JSON.stringify({ repo: url.href, mode: f.querySelector('select')?.value || 'kernel', requestKey: crypto.randomUUID(), attempted: false, createdAt: Date.now() }));
-    } catch { note.textContent = 'This browser could not save the run request. Use a secure browser tab and allow session storage.'; return; }
-    location.assign('start.html');
-  }));
-
-  const entryToggle = $('#entry-toggle'), terminal = $('.hero-console'), repoForm = $('#hero-form');
-  function showSearch(show, focus = false) {
-    terminal.hidden = show; repoForm.hidden = !show;
-    entryToggle.textContent = show ? 'Back to terminal ↗' : 'Try in browser ↗';
-    entryToggle.setAttribute('aria-expanded', String(show));
-    if (show && focus) $('#repo-hero').focus({ preventScroll: true });
-  }
-  entryToggle.addEventListener('click', () => showSearch(repoForm.hidden, true));
-  entryToggle.addEventListener('pointermove', e => {
-    if (reduce || e.pointerType !== 'mouse') return;
-    const r = entryToggle.getBoundingClientRect();
-    entryToggle.style.transform = `translate(${(e.clientX-r.left-r.width/2)*.12}px,${(e.clientY-r.top-r.height/2)*.18}px)`;
-  });
-  entryToggle.addEventListener('pointerleave', () => { entryToggle.style.transform = ''; });
   $('#copy-cli').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText($('#cli-terminal code').textContent);
@@ -586,14 +553,12 @@
       if (value < 1e-3) return value.toFixed(8);
       return value.toFixed(5);
     };
-    const go = url => {
-      showSearch(true);
-      const input = $('#repo-hero');
-      if (url) input.value = url;
-      if (reduce) { $('#hero').scrollIntoView(); input.focus({ preventScroll: true }); return; }
+    const go = () => {
+      const terminal = $('.hero-console');
+      if (reduce) { terminal.scrollIntoView(); $('#copy-cli').focus({ preventScroll: true }); return; }
       box.classList.add('expanding');
-      setTimeout(() => $('#hero').scrollIntoView({ behavior: 'smooth', block: 'start' }), 520);
-      setTimeout(() => { input.focus({ preventScroll: true }); box.classList.remove('expanding'); }, 1400);
+      setTimeout(() => terminal.scrollIntoView({ behavior: 'smooth', block: 'center' }), 520);
+      setTimeout(() => { $('#copy-cli').focus({ preventScroll: true }); box.classList.remove('expanding'); }, 1400);
     };
     const RUNS = benchmark.results.map(result => {
       const metrics = [];
@@ -613,7 +578,7 @@
       let chip = result.kernel ? 'kernel' : 'architecture';
       if (result.kernel && result.architecture) chip = 'kernel + architecture';
       if (result.architecture?.caveat === 'loss-floor') chip = 'architecture · loss floor';
-      return { name: result.name, short: result.short, chip, metrics, evidence: result.evidence_url || benchmark.evidence_url, replay: result.replay_available ? `replay.html?project=${encodeURIComponent(result.name)}&start=1` : null };
+      return { name: result.name, short: result.short, chip, metrics, evidence: result.evidence_url || benchmark.evidence_url };
     });
     // Show recently completed public GitHub repositories without publishing
     // their owner's private run id, metrics, dataset, or traces.
@@ -678,7 +643,7 @@
         + r.metrics.map(m => `<div class="run-metric"><div class="big">${esc(m.value)}<small>${esc(m.label)}</small></div><p>${esc(m.detail)}</p></div>`).join('')
         + (r.community ? '<p>Run metrics stay private to the GitHub account that ran this repo.</p>' : '')
         + '</div>'
-        + `<div class="act"><a class="go" href="${esc(r.replay || r.evidence)}">${r.community ? 'View repo ↗' : r.replay ? 'Replay run ↗' : 'View measured evidence ↗'}</a><div class="pager">`
+        + `<div class="act"><a class="go" href="${esc(r.evidence)}">${r.community ? 'View repo ↗' : 'View measured evidence ↗'}</a><div class="pager">`
         + RUNS.map((q, k) => `<button type="button" class="${k === i ? 'on' : ''}" aria-label="Show ${esc(q.name)}"></button>`).join('')
         + '</div></div>';
       card.querySelectorAll('.pager button').forEach((b, k) => b.addEventListener('click', () => show(k, true)));

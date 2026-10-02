@@ -97,17 +97,21 @@ def test_unlisted_github_session_cannot_use_any_protected_route(gateway):
     assert client.get('/api/health', headers=headers(allowed)).status_code == 200
 
 
-def test_wildcard_allows_any_authenticated_github_account(gateway, monkeypatch):
+def test_default_allowlist_admits_only_the_two_owners(gateway, monkeypatch):
     import judges_server
-    monkeypatch.setenv('JUDGES_ALLOWED_GITHUB_LOGINS', '*')
-    open_gateway = judges_server.create_app()
-    token = sign_in(open_gateway, 201, 'new-contributor')
-    client = open_gateway.test_client()
-    assert client.get('/api/auth/me', headers=headers(token)).status_code == 200
-    assert client.get('/api/health', headers=headers(token)).status_code == 200
+    monkeypatch.delenv('JUDGES_ALLOWED_GITHUB_LOGINS')
+    restricted = judges_server.create_app()
+    client = restricted.test_client()
+    assert client.get('/api/health', headers=headers(sign_in(restricted, 201, 'andred1729'))).status_code == 200
+    assert client.get('/api/health', headers=headers(sign_in(restricted, 202, 'flappybird1084'))).status_code == 200
+    token = sign_in(restricted, 203, 'new-contributor')
+    assert client.get('/api/auth/me', headers=headers(token)).status_code == 403
+    assert client.get('/api/health', headers=headers(token)).status_code == 403
     assert client.get('/api/health', headers=headers()).status_code == 401
-    assert client.post('/api/runs', headers=headers(token),
-                       json={'repo': 'https://github.com/new-contributor/model'}).status_code == 428
+    monkeypatch.setenv('JUDGES_ALLOWED_GITHUB_LOGINS', '*')
+    literal_star = judges_server.create_app()
+    assert literal_star.test_client().get('/api/health',
+        headers=headers(sign_in(literal_star, 204, 'new-contributor'))).status_code == 403
 
 
 def test_public_repos_show_only_completed_names_without_run_data(gateway):
@@ -242,6 +246,10 @@ def test_recorded_evidence_is_not_served_anonymously(gateway):
     client = gateway.test_client()
     assert client.get('/assets/recorded-data.js', headers=headers()).status_code == 401
     assert client.get('/assets/recorded/kernel.json', headers=headers()).status_code == 401
+    token = sign_in(gateway)
+    for path in ('/', '/workspace.html', '/results.html', '/assets/search.html',
+                 '/assets/final.html', '/api/recorded/runs'):
+        assert client.get(path, headers=headers(token)).status_code == 404
 
 
 def test_a_users_own_notebook_is_never_replaced_by_the_operators(tmp_path, monkeypatch):

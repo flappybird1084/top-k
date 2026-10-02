@@ -72,14 +72,10 @@ Engineering choices that keep the numbers honest:
   MLPs, cross-entropy, …) by *behavioral* probing, never by class names. No
   per-repo code, no runtime vocabulary growth.
 
-## Run it on the web or in a terminal
+## Run it from CLI
 
-For the hosted flow, open [top-k.dev](https://top-k.dev), paste a GitHub
-repository URL, and choose Architecture, Kernels, or Both. The website can
-dispatch work to your [molab](https://molab.marimo.run) notebook using its
-"Pair with agent" prompt.
-
-For a headless CLI run, use a Linux machine with a CUDA GPU and Python 3.11+:
+The public website shows the project and measured examples. To run a search,
+use a Linux machine with a CUDA GPU and Python 3.11+:
 
 ```bash
 git clone https://github.com/flappybird1084/top-k.git
@@ -98,10 +94,6 @@ directory under `runs/` and logs candidates to W&B. Use `--comments` for repo
 guidance, `--spend-cap` for an inference budget, and `--out` to choose the output
 directory. See `.venv/bin/python search.py --help` for all options. Do not put
 API keys on the command line.
-
-To use the local web UI on the same GPU machine instead, run
-`.venv/bin/python web.py` and open `http://127.0.0.1:8420`. It shows generations,
-the repair trail, and lineage as the run progresses.
 
 Observability: per-candidate runs, metrics, and artifacts in
 [W&B](https://wandb.ai/rianbutala-ucla/kernel-evolution); every LLM call and
